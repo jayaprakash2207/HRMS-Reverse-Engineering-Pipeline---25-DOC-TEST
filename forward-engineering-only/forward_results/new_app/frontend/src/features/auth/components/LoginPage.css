@@ -1,0 +1,23 @@
+/*
+ * Baseline layout only - no visual design system (color, typography, spacing
+ * tokens) exists yet; that is explicitly out of scope for this sprint
+ * (UI/UX Specification §7).
+ */
+.login-page {
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.login-page__form {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  width: 100%;
+  max-width: 320px;
+}
+
+.login-page__error {
+  color: #b00020;
+}

@@ -1,0 +1,27 @@
+/*
+ * Baseline usability styles only - no visual design system (colors, typography
+ * scale, spacing tokens) is defined yet; that is explicitly out of scope for
+ * this sprint per the UI/UX Specification §7.
+ */
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  color: #1a1a1a;
+  background-color: #fafafa;
+}
+
+button,
+input {
+  font: inherit;
+}
+
+:focus-visible {
+  outline: 2px solid #0b5fff;
+  outline-offset: 2px;
+}

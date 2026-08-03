@@ -1,0 +1,38 @@
+{
+  "Security/Identity Context": {
+    "status": "FAILED_BLOCKED",
+    "attempts": 3,
+    "notes": [],
+    "last_updated": "2026-07-29T07:14:37.450641+00:00"
+  },
+  "Employee Management Context": {
+    "status": "FAILED_BLOCKED",
+    "attempts": 3,
+    "notes": [],
+    "last_updated": "2026-07-29T07:19:09.341757+00:00"
+  },
+  "Action Audit Logging (cross-cutting)": {
+    "status": "FAILED_BLOCKED",
+    "attempts": 3,
+    "notes": [],
+    "last_updated": "2026-07-29T07:23:43.417332+00:00"
+  },
+  "Leave Management Context": {
+    "status": "FAILED_BLOCKED",
+    "attempts": 3,
+    "notes": [],
+    "last_updated": "2026-07-29T07:28:13.033310+00:00"
+  },
+  "Payroll Context": {
+    "status": "FAILED_BLOCKED",
+    "attempts": 3,
+    "notes": [],
+    "last_updated": "2026-07-29T07:32:45.921474+00:00"
+  },
+  "Performance Context": {
+    "status": "FAILED_BLOCKED",
+    "attempts": 3,
+    "notes": [],
+    "last_updated": "2026-07-29T07:37:16.373183+00:00"
+  }
+}

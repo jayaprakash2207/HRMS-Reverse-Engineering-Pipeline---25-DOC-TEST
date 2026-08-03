@@ -1,0 +1,169 @@
+Sub-project: backend
+Stack family detected: java
+Project dir: C:\Users\BharathM\Downloads\automated-reverse-engineering-pipeline-main (2)\automated-reverse-engineering-pipeline-main\automated-reverse-engineering-pipeline-main\forward-engineering-only\forward_results\new_app\backend
+
+=== TEST RUN ===
+[INFO] Scanning for projects...
+[INFO] 
+[INFO] ----------------------< com.clarium:hrms-backend >----------------------
+[INFO] Building hrms-backend 0.0.1-SNAPSHOT
+[INFO]   from pom.xml
+[INFO] --------------------------------[ jar ]---------------------------------
+[INFO] 
+[INFO] --- resources:3.3.1:resources (default-resources) @ hrms-backend ---
+[INFO] Copying 1 resource from src\main\resources to target\classes
+[INFO] Copying 2 resources from src\main\resources to target\classes
+[INFO] 
+[INFO] --- compiler:3.13.0:compile (default-compile) @ hrms-backend ---
+[INFO] Recompiling the module because of changed source code.
+[INFO] Compiling 33 source files with javac [debug parameters release 17] to target\classes
+[INFO] Annotation processing is enabled because one or more processors were found
+  on the class path. A future release of javac may disable annotation processing
+  unless at least one processor is specified by name (-processor), or a search
+  path is specified (--processor-path, --processor-module-path), or annotation
+  processing is enabled explicitly (-proc:only, -proc:full).
+  Use -Xlint:-options to suppress this message.
+  Use -proc:none to disable annotation processing.
+[INFO] -------------------------------------------------------------
+[ERROR] COMPILATION ERROR : 
+[INFO] -------------------------------------------------------------
+[ERROR] /C:/Users/BharathM/Downloads/automated-reverse-engineering-pipeline-main (2)/automated-reverse-engineering-pipeline-main/automated-reverse-engineering-pipeline-main/forward-engineering-only/forward_results/new_app/backend/src/main/java/com/clarium/hrms/security/config/SecurityConfig.java:[7,51] cannot find symbol
+  symbol:   class UsernamePasswordAuthenticationFilter
+  location: package org.springframework.security.authentication
+[INFO] 1 error
+[INFO] -------------------------------------------------------------
+[INFO] ------------------------------------------------------------------------
+[INFO] BUILD FAILURE
+[INFO] ------------------------------------------------------------------------
+[INFO] Total time:  4.345 s
+[INFO] Finished at: 2026-07-29T12:33:49+05:30
+[INFO] ------------------------------------------------------------------------
+[ERROR] Failed to execute goal org.apache.maven.plugins:maven-compiler-plugin:3.13.0:compile (default-compile) on project hrms-backend: Compilation failure
+[ERROR] /C:/Users/BharathM/Downloads/automated-reverse-engineering-pipeline-main (2)/automated-reverse-engineering-pipeline-main/automated-reverse-engineering-pipeline-main/forward-engineering-only/forward_results/new_app/backend/src/main/java/com/clarium/hrms/security/config/SecurityConfig.java:[7,51] cannot find symbol
+[ERROR]   symbol:   class UsernamePasswordAuthenticationFilter
+[ERROR]   location: package org.springframework.security.authentication
+[ERROR] 
+[ERROR] -> [Help 1]
+[ERROR] 
+[ERROR] To see the full stack trace of the errors, re-run Maven with the -e switch.
+[ERROR] Re-run Maven using the -X switch to enable full debug logging.
+[ERROR] 
+[ERROR] For more information about the errors and possible solutions, please read the following articles:
+[ERROR] [Help 1] http://cwiki.apache.org/confluence/display/MAVEN/MojoFailureException
+
+
+
+Sub-project: frontend
+Stack family detected: node
+Project dir: C:\Users\BharathM\Downloads\automated-reverse-engineering-pipeline-main (2)\automated-reverse-engineering-pipeline-main\automated-reverse-engineering-pipeline-main\forward-engineering-only\forward_results\new_app\frontend
+
+=== DEPENDENCY INSTALL ===
+
+npm WARN deprecated inflight@1.0.6: This module is not supported, and leaks memory. Do not use it. Check out lru-cache if you want a good and tested way to coalesce async requests by a key value, which is much more comprehensive and powerful.
+npm WARN deprecated whatwg-encoding@2.0.0: Use @exodus/bytes instead for a more spec-conformant and faster implementation
+npm WARN deprecated glob@7.2.3: Old versions of glob are not supported, and contain widely publicized security vulnerabilities, which have been fixed in the current version. Please update. Support for old versions may be purchased (at exorbitant rates) by contacting i@izs.me
+npm WARN deprecated abab@2.0.6: Use your platform's native atob() and btoa() methods instead
+npm WARN deprecated domexception@4.0.0: Use your platform's native DOMException instead
+npm WARN cleanup Failed to remove some directories [
+npm WARN cleanup   [
+npm WARN cleanup     'C:\\Users\\BharathM\\Downloads\\automated-reverse-engineering-pipeline-main (2)\\automated-reverse-engineering-pipeline-main\\automated-reverse-engineering-pipeline-main\\forward-engineering-only\\forward_results\\new_app\\frontend\\node_modules\\jest-message-util',
+npm WARN cleanup     [Error: EPERM: operation not permitted, rmdir 'C:\Users\BharathM\Downloads\automated-reverse-engineering-pipeline-main (2)\automated-reverse-engineering-pipeline-main\automated-reverse-engineering-pipeline-main\forward-engineering-only\forward_results\new_app\frontend\node_modules\jest-message-util\node_modules\pretty-format\build'] {
+npm WARN cleanup       errno: -4048,
+npm WARN cleanup       code: 'EPERM',
+npm WARN cleanup       syscall: 'rmdir',
+npm WARN cleanup       path: 'C:\\Users\\BharathM\\Downloads\\automated-reverse-engineering-pipeline-main (2)\\automated-reverse-engineering-pipeline-main\\automated-reverse-engineering-pipeline-main\\forward-engineering-only\\forward_results\\new_app\\frontend\\node_modules\\jest-message-util\\node_modules\\pretty-format\\build'
+npm WARN cleanup     }
+npm WARN cleanup   ],
+npm WARN cleanup   [
+npm WARN cleanup     'C:\\Users\\BharathM\\Downloads\\automated-reverse-engineering-pipeline-main (2)\\automated-reverse-engineering-pipeline-main\\automated-reverse-engineering-pipeline-main\\forward-engineering-only\\forward_results\\new_app\\frontend\\node_modules\\jest-message-util\\node_modules',
+npm WARN cleanup     [Error: EPERM: operation not permitted, rmdir 'C:\Users\BharathM\Downloads\automated-reverse-engineering-pipeline-main (2)\automated-reverse-engineering-pipeline-main\automated-reverse-engineering-pipeline-main\forward-engineering-only\forward_results\new_app\frontend\node_modules\jest-message-util\node_modules\pretty-format\build'] {
+npm WARN cleanup       errno: -4048,
+npm WARN cleanup       code: 'EPERM',
+npm WARN cleanup       syscall: 'rmdir',
+npm WARN cleanup       path: 'C:\\Users\\BharathM\\Downloads\\automated-reverse-engineering-pipeline-main (2)\\automated-reverse-engineering-pipeline-main\\automated-reverse-engineering-pipeline-main\\forward-engineering-only\\forward_results\\new_app\\frontend\\node_modules\\jest-message-util\\node_modules\\pretty-format\\build'
+npm WARN cleanup     }
+npm WARN cleanup   ]
+npm WARN cleanup ]
+npm ERR! code 1
+npm ERR! path C:\Users\BharathM\Downloads\automated-reverse-engineering-pipeline-main (2)\automated-reverse-engineering-pipeline-main\automated-reverse-engineering-pipeline-main\forward-engineering-only\forward_results\new_app\frontend\node_modules\esbuild
+npm ERR! command failed
+npm ERR! command C:\Windows\system32\cmd.exe /d /s /c node install.js
+npm ERR! node:internal/errors:984
+npm ERR!   const err = new Error(message);
+npm ERR!               ^
+npm ERR! 
+npm ERR! Error: Command failed: C:\Program Files\nodejs\node.exe C:\Users\BharathM\Downloads\automated-reverse-engineering-pipeline-main (2)\automated-reverse-engineering-pipeline-main\automated-reverse-engineering-pipeline-main\forward-engineering-only\forward_results\new_app\frontend\node_modules\esbuild\bin\esbuild --version
+npm ERR! node:child_process:929
+npm ERR!     throw err;
+npm ERR!     ^
+npm ERR! 
+npm ERR! <ref *1> Error: spawnSync C:\Users\BharathM\Downloads\automated-reverse-engineering-pipeline-main (2)\automated-reverse-engineering-pipeline-main\automated-reverse-engineering-pipeline-main\forward-engineering-only\forward_results\new_app\frontend\node_modules\@esbuild\win32-x64\esbuild.exe ENOENT
+npm ERR!     at Object.spawnSync (node:internal/child_process:1124:20)
+npm ERR!     at spawnSync (node:child_process:876:24)
+npm ERR!     at Object.execFileSync (node:child_process:919:15)
+npm ERR!     at Object.<anonymous> (C:\Users\BharathM\Downloads\automated-reverse-engineering-pipeline-main (2)\automated-reverse-engineering-pipeline-main\automated-reverse-engineering-pipeline-main\forward-engineering-only\forward_results\new_app\frontend\node_modules\esbuild\bin\esbuild:219:28)
+npm ERR!     at Module._compile (node:internal/modules/cjs/loader:1369:14)
+npm ERR!     at Module._extensions..js (node:internal/modules/cjs/loader:1427:10)
+npm ERR!     at Module.load (node:internal/modules/cjs/loader:1206:32)
+npm ERR!     at Module._load (node:internal/modules/cjs/loader:1022:12)
+npm ERR!     at Function.executeUserEntryPoint [as runMain] (node:internal/modules/run_main:135:12)
+npm ERR!     at node:internal/main/run_main_module:28:49 {
+npm ERR!   errno: -4058,
+npm ERR!   code: 'ENOENT',
+npm ERR!   syscall: 'spawnSync C:\\Users\\BharathM\\Downloads\\automated-reverse-engineering-pipeline-main (2)\\automated-reverse-engineering-pipeline-main\\automated-reverse-engineering-pipeline-main\\forward-engineering-only\\forward_results\\new_app\\frontend\\node_modules\\@esbuild\\win32-x64\\esbuild.exe',
+npm ERR!   path: 'C:\\Users\\BharathM\\Downloads\\automated-reverse-engineering-pipeline-main (2)\\automated-reverse-engineering-pipeline-main\\automated-reverse-engineering-pipeline-main\\forward-engineering-only\\forward_results\\new_app\\frontend\\node_modules\\@esbuild\\win32-x64\\esbuild.exe',
+npm ERR!   spawnargs: [ '--version' ],
+npm ERR!   error: [Circular *1],
+npm ERR!   status: null,
+npm ERR!   signal: null,
+npm ERR!   output: null,
+npm ERR!   pid: 0,
+npm ERR!   stdout: null,
+npm ERR!   stderr: null
+npm ERR! }
+npm ERR! 
+npm ERR! Node.js v20.12.2
+npm ERR! 
+npm ERR!     at genericNodeError (node:internal/errors:984:15)
+npm ERR!     at wrappedFn (node:internal/errors:538:14)
+npm ERR!     at checkExecSyncError (node:child_process:890:11)
+npm ERR!     at Object.execFileSync (node:child_process:926:15)
+npm ERR!     at validateBinaryVersion (C:\Users\BharathM\Downloads\automated-reverse-engineering-pipeline-main (2)\automated-reverse-engineering-pipeline-main\automated-reverse-engineering-pipeline-main\forward-engineering-only\forward_results\new_app\frontend\node_modules\esbuild\install.js:99:28)
+npm ERR!     at C:\Users\BharathM\Downloads\automated-reverse-engineering-pipeline-main (2)\automated-reverse-engineering-pipeline-main\automated-reverse-engineering-pipeline-main\forward-engineering-only\forward_results\new_app\frontend\node_modules\esbuild\install.js:281:5 {
+npm ERR!   status: 1,
+npm ERR!   signal: null,
+npm ERR!   output: [
+npm ERR!     null,
+npm ERR!     Buffer(0) [Uint8Array] [],
+npm ERR!     Buffer(2023) [Uint8Array] [
+npm ERR!       110, 111, 100, 101,  58,  99, 104, 105, 108, 100,  95, 112,
+npm ERR!       114, 111,  99, 101, 115, 115,  58,  57,  50,  57,  13,  10,
+npm ERR!        32,  32,  32,  32, 116, 104, 114, 111, 119,  32, 101, 114,
+npm ERR!       114,  59,  13,  10,  32,  32,  32,  32,  94,  13,  10,  13,
+npm ERR!        10,  60, 114, 101, 102,  32,  42,  49,  62,  32,  69, 114,
+npm ERR!       114, 111, 114,  58,  32, 115, 112,  97, 119, 110,  83, 121,
+npm ERR!       110,  99,  32,  67,  58,  92,  85, 115, 101, 114, 115,  92,
+npm ERR!        66, 104,  97, 114,  97, 116, 104,  77,  92,  68, 111, 119,
+npm ERR!       110, 108, 111,  97,
+npm ERR!       ... 1923 more items
+npm ERR!     ]
+npm ERR!   ],
+npm ERR!   pid: 20084,
+npm ERR!   stdout: Buffer(0) [Uint8Array] [],
+npm ERR!   stderr: Buffer(2023) [Uint8Array] [
+npm ERR!     110, 111, 100, 101,  58,  99, 104, 105, 108, 100,  95, 112,
+npm ERR!     114, 111,  99, 101, 115, 115,  58,  57,  50,  57,  13,  10,
+npm ERR!      32,  32,  32,  32, 116, 104, 114, 111, 119,  32, 101, 114,
+npm ERR!     114,  59,  13,  10,  32,  32,  32,  32,  94,  13,  10,  13,
+npm ERR!      10,  60, 114, 101, 102,  32,  42,  49,  62,  32,  69, 114,
+npm ERR!     114, 111, 114,  58,  32, 115, 112,  97, 119, 110,  83, 121,
+npm ERR!     110,  99,  32,  67,  58,  92,  85, 115, 101, 114, 115,  92,
+npm ERR!      66, 104,  97, 114,  97, 116, 104,  77,  92,  68, 111, 119,
+npm ERR!     110, 108, 111,  97,
+npm ERR!     ... 1923 more items
+npm ERR!   ]
+npm ERR! }
+npm ERR! 
+npm ERR! Node.js v20.12.2
+
+npm ERR! A complete log of this run can be found in: C:\Users\BharathM\AppData\Local\npm-cache\_logs\2026-07-29T07_03_50_441Z-debug-0.log
