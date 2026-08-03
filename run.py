@@ -18,7 +18,8 @@ Steps:
   Step 10  — TA Agent 2 Batch 2 (Claude — second-half analysis + synthesis → TA_Deep_Analyst.md)
   Step 11  — AA Agent 1        (Claude T1+T2 — produce AA_App_Extractor.md)
   Step 12  — AA Agent 2        (Claude — produce AA_Quality_Review.md)
-  Step 13  — Foundation        (Claude, 2 calls — KG + all 20 docs)
+  Step 12.5— Cross Validator   (Claude — cross-track consistency check, fills gaps)
+  Step 13  — Foundation        (Claude, 3 calls — KG + all 25 docs + verification)
 
 TA Agent 2 is split into two processes (steps 9-10) instead of one giant
 Turn-2 call: step 9 gets the file list and deep-analyses the first half of
@@ -45,7 +46,8 @@ Batch suggestions:
   Batch 3 (Data)      : --from-step 6  --to-step 7   (DA Agent 1 + DA Agent 2)
   Batch 4 (Tech)      : --from-step 8  --to-step 10  (TA Agent 1, TA Agent 2 Batch 1+2)
   Batch 5 (App)       : --from-step 11 --to-step 12  (AA Agent 1 + AA Agent 2)
-  Batch 6 (Synthesis) : --from-step 13 --to-step 13  (Foundation KG + 25 docs)
+  Batch 5.5 (CrossVal): --from-step 13 --to-step 13  (Cross-track validator — Step 12.5)
+  Batch 6 (Synthesis) : --from-step 14 --to-step 14  (Foundation KG + 25 docs + verify)
 """
 
 import argparse
@@ -75,7 +77,7 @@ def bold(t):   return _c("1",  t)
 def cyan(t):   return _c("36", t)
 def dim(t):    return _c("2",  t)
 
-_TOTAL_STEPS = 13
+_TOTAL_STEPS = 14
 
 def _banner(step, label):
     print(f"\n{'─' * 64}")
@@ -216,10 +218,36 @@ def _agent_step(runner: str, label: str, input_dir: Path, output_dir: Path,
     )
 
 
+def step_implicit_rules(output_dir: Path) -> dict:
+    implicit_path = output_dir / "implicit_rules.json"
+    if implicit_path.exists() and implicit_path.stat().st_size > 0:
+        print(f"\n[STEP 3.5] Implicit Rules — already done (implicit_rules.json exists), skipping.")
+        return {"label": "[STEP 3.5] Implicit Rules", "returncode": 0,
+                "stdout": "skipped", "stderr": "", "duration_s": 0.0}
+    return _run_or_exit(
+        [py, str(PIPELINE_DIR / "implicit_rules_runner.py"), "--output", str(output_dir)],
+        label="[STEP 3.5] Implicit Rules — Extract Implicit Business Rules",
+        timeout=1800,
+    )
+
+
+def step_cross_validator(output_dir: Path) -> dict:
+    report_path = output_dir / "cross_validation_report.json"
+    if report_path.exists() and report_path.stat().st_size > 0:
+        print(f"\n[STEP 13] Cross Validator — already done (cross_validation_report.json exists), skipping.")
+        return {"label": "[STEP 13] Cross Validator", "returncode": 0,
+                "stdout": "skipped", "stderr": "", "duration_s": 0.0}
+    return _run_or_exit(
+        [py, str(PIPELINE_DIR / "cross_validator_runner.py"), "--output", str(output_dir)],
+        label="[STEP 13] Cross Validator — Cross-Track Consistency Check",
+        timeout=3600,
+    )
+
+
 def step_foundation(output_dir: Path) -> dict:
     return _run_or_exit(
         [py, str(PIPELINE_DIR / "foundation_runner.py"), "--output", str(output_dir)],
-        label="[STEP 14-15] Foundation — Knowledge Graph + 20 Documents",
+        label="[STEP 14] Foundation — Knowledge Graph + 25 Documents + Verification",
         timeout=7200,
     )
 
@@ -345,10 +373,22 @@ def orchestrate(source: str, output_dir: Path, skip_layer1: bool,
     else:
         all_results.append(step_scan_agent(output_dir))
 
+    # ── Step 3.5: Implicit Rules (runs after scan agent, before analysis tracks) ──
+    # Uses _should_run(3) because it's part of the "setup" track (steps 1-3)
+    print(f"\n{'─' * 64}")
+    print(bold(cyan(f"[STEP 3.5/{_TOTAL_STEPS}]  Implicit Rules — Extract Rules from Seeds/Forms/PL/SQL")))
+    print(f"{'─' * 64}")
+    if not _should_run(3):
+        print(yellow(f"\n  [STEP 3.5] Implicit Rules — skipped (outside batch range)"))
+        all_results.append({"label": "[STEP 3.5] Implicit Rules", "returncode": 0,
+                             "stdout": "skipped (batch)", "stderr": "", "duration_s": 0.0})
+    else:
+        all_results.append(step_implicit_rules(output_dir))
+
     # ── Steps 4-12: Analysis tracks — run BA / DA / TA / AA in parallel ─────────
     # Each track reads only from shared read-only files (DEEP_SCAN_OUTPUT.md,
-    # file_cache.json, Source_Extraction/) and writes to its own output folder.
-    # No cross-track dependencies until Step 13, so all 4 run simultaneously.
+    # file_cache.json, Source_Extraction/, implicit_rules.json) and writes to its
+    # own output folder. No cross-track dependencies until Step 13.
 
     # Determine which tracks have any steps in the requested range
     ba_needed = any(_should_run(s) for s in (4, 5))
@@ -473,10 +513,17 @@ def orchestrate(source: str, output_dir: Path, skip_layer1: bool,
     for key in ("ba", "da", "ta", "aa"):
         all_results.extend(track_results.get(key, []))
 
-    # ── Step 13: Foundation ───────────────────────────────────────────────────
-    _banner(13, "Foundation — Knowledge Graph + 20 Documents")
+    # ── Step 13: Cross Validator ──────────────────────────────────────────────
+    _banner(13, "Cross Validator — Cross-Track Consistency Check")
     if not _should_run(13):
-        all_results.append(_skip(13, "Foundation"))
+        all_results.append(_skip(13, "Cross Validator"))
+    else:
+        all_results.append(step_cross_validator(output_dir))
+
+    # ── Step 14: Foundation ───────────────────────────────────────────────────
+    _banner(14, "Foundation — Knowledge Graph + 25 Documents + Verification Pass")
+    if not _should_run(14):
+        all_results.append(_skip(14, "Foundation"))
     else:
         all_results.append(step_foundation(output_dir))
 
@@ -490,12 +537,13 @@ def orchestrate(source: str, output_dir: Path, skip_layer1: bool,
 # ── Track map ─────────────────────────────────────────────────────────────────
 
 _TRACKS = {
-    "setup":       (1,  3),   # Layer 1 + Scan Once + Scan Agent
+    "setup":       (1,  3),   # Layer 1 + Scan Once + Scan Agent + Implicit Rules
     "business":    (4,  5),   # BA Agent 1 + BA Agent 2
     "data":        (6,  7),   # DA Agent 1 + DA Agent 2
     "technology":  (8,  10),  # TA Agent 1 + TA Agent 2 Batch 1 + Batch 2
     "application": (11, 12),  # AA Agent 1 + AA Agent 2
-    "foundation":  (13, 13),  # Foundation KG + all 25 documents
+    "validate":    (13, 13),  # Cross-track validator (Step 13)
+    "foundation":  (14, 14),  # Foundation KG + all 25 documents + verification
 }
 
 
@@ -521,12 +569,13 @@ Examples:
   python run.py --source "C:/projects/legacy-app" --output ./results --track foundation
 
   Available tracks:
-    setup        steps 1–3   Layer 1 + Scan Once + Scan Agent           ~25 min
-    business     steps 4–5   BA Agent 1 + BA Agent 2                    ~30 min
-    data         steps 6–7   DA Agent 1 + DA Agent 2                    ~30 min
-    technology   steps 8–10  TA Agent 1 + TA Agent 2 (Batch 1 + Batch 2) ~30 min
-    application  steps 11–12 AA Agent 1 + AA Agent 2                    ~30 min
-    foundation   step  13    Foundation KG + 25 documents               ~30 min
+    setup        steps 1–3   Layer 1 + Scan Once + Scan Agent + Implicit Rules  ~30 min
+    business     steps 4–5   BA Agent 1 + BA Agent 2                            ~30 min
+    data         steps 6–7   DA Agent 1 + DA Agent 2                            ~30 min
+    technology   steps 8–10  TA Agent 1 + TA Agent 2 (Batch 1 + Batch 2)        ~30 min
+    application  steps 11–12 AA Agent 1 + AA Agent 2                            ~30 min
+    validate     step  13    Cross-track validator (gaps + contradictions)       ~15 min
+    foundation   step  14    Foundation KG + 25 documents + verification         ~45 min
 
   # Step range mode — power users (re-run a single step, custom ranges)
   python run.py --source "C:/projects/legacy-app" --output ./results --from-step 9 --to-step 9
@@ -559,9 +608,9 @@ Examples:
         to_step   = args.to_step   if args.to_step   is not None else _TOTAL_STEPS
 
     if not (1 <= from_step <= _TOTAL_STEPS):
-        parser.error(f"--from-step must be between 1 and {_TOTAL_STEPS}")
+        parser.error(f"--from-step must be between 1 and {_TOTAL_STEPS} (14 = Foundation)")
     if not (1 <= to_step <= _TOTAL_STEPS):
-        parser.error(f"--to-step must be between 1 and {_TOTAL_STEPS}")
+        parser.error(f"--to-step must be between 1 and {_TOTAL_STEPS} (14 = Foundation)")
     if from_step > to_step:
         parser.error("--from-step cannot be greater than --to-step")
 

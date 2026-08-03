@@ -139,6 +139,72 @@ def _correct_chunk(
     return chunk_file.read_text(encoding="utf-8", errors="replace")
 
 
+def _check_file_truncation(
+    chunk_file: "Path",
+    chunk_paths: list,
+    cache: dict,
+    label: str,
+    total_chunks: int,
+) -> None:
+    """
+    Detect files whose extracted content in the chunk is significantly shorter
+    than their raw source — indicating Claude truncated mid-file.
+
+    For each such file, re-scan it alone in its own Claude call and append
+    the recovered full extraction. Up to 2 attempts per file.
+
+    Threshold: extracted chars < 30% of raw source chars (and raw > 500 chars).
+    """
+    import re as _re
+
+    content = chunk_file.read_text(encoding="utf-8", errors="replace")
+    truncated = []
+
+    for fp in chunk_paths:
+        raw_len = len(cache.get(fp, ""))
+        if raw_len < 500:
+            continue  # small file — not worth checking
+
+        # Find extracted section for this file
+        pattern = _re.compile(
+            r"=== FILE:\s*" + _re.escape(fp) + r"\s*===(.*?)(?====\s*FILE:|\Z)",
+            _re.DOTALL | _re.IGNORECASE,
+        )
+        m = pattern.search(content)
+        if not m:
+            continue  # already handled by _correct_chunk
+        extracted_len = len(m.group(1).strip())
+
+        # If extracted is less than 30% of raw source — likely truncated
+        if extracted_len < raw_len * 0.30:
+            truncated.append((fp, raw_len, extracted_len))
+
+    if not truncated:
+        return
+
+    print(f"  [{label}/{total_chunks:02d}] Truncation check: {len(truncated)} file(s) appear truncated — re-scanning each individually...")
+
+    for fp, raw_len, extracted_len in truncated:
+        print(f"    Truncated: {fp} (raw={raw_len} chars, extracted={extracted_len} chars, {int(extracted_len/raw_len*100)}%)")
+        for attempt in range(1, 3):
+            single_prompt = (
+                f"{SCAN_CHUNK_PROMPT}\n\n"
+                f"IMPORTANT: Extract this file COMPLETELY — do not stop until the entire file is processed.\n\n"
+                f"--- SOURCE: {fp} ---\n{cache[fp]}\n"
+            )
+            recovered = call_claude(
+                single_prompt,
+                label=f"{label} truncation-fix {fp[-30:]} attempt {attempt}",
+                timeout=2700,
+            )
+            if recovered.strip():
+                with chunk_file.open("a", encoding="utf-8") as fh:
+                    fh.write(f"\n\n[TRUNCATION RECOVERY — attempt {attempt}]\n\n")
+                    fh.write(recovered)
+                print(f"    Recovered: {fp} — appended to chunk.")
+                break
+
+
 def run(output_dir: str) -> None:
     out = Path(output_dir)
     scan_dir = out / SCAN_DIR_NAME
@@ -194,6 +260,7 @@ def run(output_dir: str) -> None:
             elif found_markers < expected_count:
                 print(f"  [{label}/{total_chunks:02d}] Incomplete ({found_markers}/{expected_count} files) — running self-correction.")
                 _correct_chunk(chunk_file, chunk_paths, cache, label, total_chunks)
+                _check_file_truncation(chunk_file, chunk_paths, cache, label, total_chunks)
                 print(f"  [{label}/{total_chunks:02d}] Self-correction done — skipping re-scan.")
                 continue
             else:
@@ -210,6 +277,8 @@ def run(output_dir: str) -> None:
 
         # Self-correction: ensure every expected file has a marker
         _correct_chunk(chunk_file, chunk_paths, cache, label, total_chunks)
+        # Truncation check: re-scan files whose extracted content is suspiciously short
+        _check_file_truncation(chunk_file, chunk_paths, cache, label, total_chunks)
 
     # Merge all chunks into DEEP_SCAN_OUTPUT.md
     print(f"\n[Scan Agent] Merging {total_chunks} chunks into {DEEP_SCAN_FILE} ...")

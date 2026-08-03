@@ -291,63 +291,81 @@ def supplement_from_cache(output_dir: str, file_paths: list, existing_sections: 
 
 def detect_and_fill_gaps(output_text: str, scan_dir: str, label: str) -> str:
     """
-    Post-generation gap detection: ask Claude what data is missing from the output,
-    fetch it from DEEP_SCAN → file_cache, then do a supplement call.
+    Post-generation gap detection: scan ALL windows of the output for missing data,
+    fetch from DEEP_SCAN → file_cache, then supplement.
     Returns enriched output. Never raises — returns original on any failure.
 
-    This implements the full fallback chain:
-      Agent output → detects gap → DEEP_SCAN → file_cache → source
+    Scans in 60,000-char windows so large outputs (>60k chars) are fully checked —
+    not just the first window. All gap_files from all windows are deduplicated and
+    fetched in one supplement call.
     """
-    gap_detection_prompt = (
-        "Review the following analysis output and identify any entities, procedures, "
-        "tables, packages, or files that are REFERENCED or expected but have MISSING "
-        "or INCOMPLETE data (e.g. 'procedures not found', 'no data available', "
-        "'could not locate', empty sections, or placeholder text).\n\n"
-        "Return ONLY a JSON array of source file paths that would contain the missing "
-        "data. Use paths exactly as they appear in the FILE MAP (e.g. "
-        "'ts-plsql-oracle-forms-hrms-main/plsql/packages/PKG_PAYROLL.pkb'). "
-        "Return [] if nothing is missing.\n\n"
-        f"Output to review:\n{output_text[:60000]}"
-    )
+    WINDOW = 60_000
 
     try:
-        gap_response = call_claude(
-            gap_detection_prompt, label=f"{label} gap-detect", timeout=300
-        )
+        # Split output into overlapping windows so gaps near boundaries are caught
+        windows = []
+        for i in range(0, max(1, len(output_text)), WINDOW):
+            windows.append(output_text[i:i + WINDOW])
 
-        # Parse file paths from response
-        gap_files = []
-        try:
-            parsed = json.loads(gap_response.strip())
-            if isinstance(parsed, list):
-                gap_files = parsed
-        except Exception:
-            matches = re.findall(r'\[[\s\S]*?\]', gap_response)
-            for candidate in matches:
-                try:
-                    parsed = json.loads(candidate)
-                    if isinstance(parsed, list) and len(parsed) > len(gap_files):
-                        gap_files = parsed
-                except Exception:
-                    pass
+        all_gap_files = []
+        seen_files = set()
 
-        if not gap_files:
-            print(f"  [{label}] Gap detection: no gaps found — output is complete.")
+        for window_idx, window_text in enumerate(windows):
+            gap_detection_prompt = (
+                "Review the following analysis output window and identify any entities, "
+                "procedures, tables, packages, or files that are REFERENCED or expected "
+                "but have MISSING or INCOMPLETE data (e.g. 'procedures not found', "
+                "'no data available', 'could not locate', empty sections, placeholder text).\n\n"
+                "Return ONLY a JSON array of source file paths that would contain the "
+                "missing data. Use paths exactly as they appear in the FILE MAP "
+                "(e.g. 'ts-plsql-oracle-forms-hrms-main/plsql/packages/PKG_PAYROLL.pkb'). "
+                "Return [] if nothing is missing.\n\n"
+                f"Output window {window_idx + 1}/{len(windows)}:\n{window_text}"
+            )
+
+            gap_response = call_claude(
+                gap_detection_prompt,
+                label=f"{label} gap-detect w{window_idx + 1}/{len(windows)}",
+                timeout=300,
+            )
+
+            # Parse file paths from response
+            gap_files = []
+            try:
+                parsed = json.loads(gap_response.strip())
+                if isinstance(parsed, list):
+                    gap_files = parsed
+            except Exception:
+                matches = re.findall(r'\[[\s\S]*?\]', gap_response)
+                for candidate in matches:
+                    try:
+                        parsed = json.loads(candidate)
+                        if isinstance(parsed, list) and len(parsed) > len(gap_files):
+                            gap_files = parsed
+                    except Exception:
+                        pass
+
+            for fp in gap_files:
+                if fp not in seen_files:
+                    seen_files.add(fp)
+                    all_gap_files.append(fp)
+
+        if not all_gap_files:
+            print(f"  [{label}] Gap detection ({len(windows)} window(s)): no gaps found — output is complete.")
             return output_text
 
-        print(f"  [{label}] Gap detection: {len(gap_files)} missing file(s) — fetching from DEEP_SCAN/cache...")
+        print(f"  [{label}] Gap detection: {len(all_gap_files)} missing file(s) across {len(windows)} window(s) — fetching...")
 
         # Fetch from DEEP_SCAN first, then fill from file_cache
-        sections = extract_deep_scan_sections(scan_dir, gap_files)
-        sections = supplement_from_cache(scan_dir, gap_files, sections)
+        sections = extract_deep_scan_sections(scan_dir, all_gap_files)
+        sections = supplement_from_cache(scan_dir, all_gap_files, sections)
 
-        # Check if we actually got any real content
-        real_content = [
-            s for s in sections.split("=== FILE:")[1:]
-            if "[Not found in deep scan]" not in s and "[Recovered from file_cache" not in s.split("\n")[0]
-               or "[Recovered from file_cache" in s
-        ]
-        if not real_content:
+        # Only proceed if we actually got real content
+        has_real = any(
+            "[Not found in deep scan]" not in part
+            for part in sections.split("=== FILE:")[1:]
+        )
+        if not has_real:
             print(f"  [{label}] Gap detection: files not found in DEEP_SCAN or cache — cannot supplement.")
             return output_text
 
@@ -368,7 +386,7 @@ def detect_and_fill_gaps(output_text: str, scan_dir: str, label: str) -> str:
         supplemented = call_claude(
             supplement_prompt, label=f"{label} supplement", timeout=2400
         )
-        print(f"  [{label}] Supplement complete — {len(gap_files)} gap(s) filled.")
+        print(f"  [{label}] Supplement complete — {len(all_gap_files)} gap(s) filled across {len(windows)} window(s).")
         return supplemented
 
     except Exception as exc:

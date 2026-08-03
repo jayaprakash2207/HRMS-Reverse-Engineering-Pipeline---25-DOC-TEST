@@ -169,6 +169,39 @@ CRITICAL RULES:
 
 """
 
+# ── Call 3 prompt: verification pass ──────────────────────────────────────────
+
+CALL3_PROMPT = """
+# Foundation Synthesis Agent — Verification Pass (Part 3 of 3)
+
+You are given all 25 generated Foundation documents plus the original 8 agent
+outputs that were used to create them.
+
+Your job: find ANYTHING in the agent outputs that did NOT make it into the
+25 documents. Cross-check every document against the agent outputs.
+
+Specifically find:
+1. Tables documented in agent outputs but NOT in 06_DATA_DICTIONARY.md or 08_ERD.md
+2. Procedures documented in agent outputs but NOT in 10_SERVICE_CATALOG.md or 11_API_CONTRACT_SPECIFICATION.md
+3. Business rules in BA agent output NOT reflected in 01_BRD.md or 03_USE_CASE_SPECIFICATION.md
+4. Security findings in TA agent output NOT in 13_SECURITY_ARCHITECTURE.md
+5. Form triggers or UI patterns NOT in 19_FRONTEND_ARCHITECTURE.md or 20_UI_UX_SPECIFICATION.md
+
+For each gap found, specify which document needs updating and what needs to be added.
+Then PRODUCE THE UPDATED DOCUMENT CONTENT for each affected document.
+
+Output format — for each document that needs updating:
+=== UPDATE: <filename> ===
+<the complete updated document content including the new additions>
+
+Only output documents that actually need changes. If a document is already complete, skip it.
+Mark all added content with [VERIFIED-SUPPLEMENT] so changes are visible.
+
+CRITICAL: Only add what is genuinely missing. Do not rewrite documents that are already complete.
+
+---
+"""
+
 
 # ── Helpers ────────────────────────────────────────────────────────────────────
 
@@ -200,6 +233,21 @@ def _split_documents(text: str) -> dict:
     import re
     docs = {}
     pattern = re.compile(r"=== DOCUMENT:\s*(.+?)\s*===", re.IGNORECASE)
+    parts = pattern.split(text)
+    i = 1
+    while i < len(parts) - 1:
+        filename = parts[i].strip()
+        content  = parts[i + 1].strip()
+        docs[filename] = content
+        i += 2
+    return docs
+
+
+def _split_documents_updates(text: str) -> dict:
+    """Parse Call 3 output which uses === UPDATE: <filename> === markers."""
+    import re
+    docs = {}
+    pattern = re.compile(r"=== UPDATE:\s*(.+?)\s*===", re.IGNORECASE)
     parts = pattern.split(text)
     i = 1
     while i < len(parts) - 1:
@@ -495,8 +543,65 @@ def run(output_dir: str) -> None:
             print("  [Warning] Call 2 — no markers found. Saving raw output.")
             save_output(str(fwd_eng_dir), "Foundation_Call2_Raw.md", call2_output)
 
+    # ── Call 3: Verification pass — cross-check all 25 docs against agent outputs ──
+    part3_raw = Path(output_dir) / "Foundation_Raw_Output_Part3.md"
+    if part3_raw.exists() and part3_raw.stat().st_size > 0:
+        print("\n[Foundation] Call 3 — already done, loading saved output...")
+        call3_output = part3_raw.read_text(encoding="utf-8")
+        docs3 = _split_documents_updates(call3_output)
+        print(f"  Loaded {len(docs3)} document update(s) from previous run.")
+    else:
+        print("\n[Foundation] Call 3 — Verification pass (cross-checking 25 docs against agent outputs)...")
+
+        # Build context: all 25 generated docs + original 8 agent outputs (truncated)
+        all_25_docs = {}
+        all_25_docs.update(docs1_filled)
+        for filename, content in docs2.items():
+            all_25_docs[filename] = content
+
+        generated_docs_text = "\n\n---\n\n".join(
+            f"## {fname}\n\n{content[:8000]}"
+            for fname, content in all_25_docs.items()
+            if content
+        )
+
+        agent_outputs_text = "\n\n---\n\n".join(
+            f"## {key}\n\n{content[:6000]}"
+            for key, content in layers.items()
+            if content
+        )
+
+        call3_prompt = (
+            f"{CALL3_PROMPT}\n\n"
+            f"# All 25 Generated Documents (check these for completeness)\n\n"
+            f"{generated_docs_text}\n\n"
+            f"# Original 8 Agent Outputs (source of truth)\n\n"
+            f"{agent_outputs_text}\n\n"
+            f"Begin verification pass now. Only output documents that need changes."
+        )
+
+        call3_output = call_claude(call3_prompt, label="Foundation Call 3 (verification)", timeout=5400, allow_tools=False)
+        save_output(output_dir, "Foundation_Raw_Output_Part3.md", call3_output)
+        docs3 = _split_documents_updates(call3_output)
+
+        # Apply updates to the affected documents on disk
+        updated_count = 0
+        for filename, updated_content in docs3.items():
+            if filename in {"ENTERPRISE_KNOWLEDGE_GRAPH.json", "CANONICAL_ENTERPRISE_MODEL.md",
+                            "ARCHITECTURE_INVENTORY.md", "TRACEABILITY_MATRIX.md",
+                            "FORWARD_ENGINEERING_INPUT_MAP.md"}:
+                path = foundation_dir / filename
+            else:
+                path = fwd_eng_dir / filename
+            if path.exists() and updated_content.strip():
+                path.write_text(updated_content, encoding="utf-8")
+                updated_count += 1
+                print(f"  Updated → {path}")
+        print(f"  Call 3: {updated_count} document(s) updated with verified supplements.")
+
     total = len(docs1) + len(docs2)
-    print(f"\n[Foundation] Complete — {total} documents saved.")
+    verified = len(docs3) if 'docs3' in dir() else 0
+    print(f"\n[Foundation] Complete — {total} documents generated, {verified} updated by verification pass.")
     print(f"  Foundation_KnowledgeGraph: {foundation_dir}")
     print(f"  ForwardEngineering_Docs:   {fwd_eng_dir}")
 
