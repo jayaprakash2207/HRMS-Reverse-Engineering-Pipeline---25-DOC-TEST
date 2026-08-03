@@ -1,26 +1,22 @@
 <div align="center">
 
-<img src="https://capsule-render.vercel.app/api?type=waving&color=gradient&customColorList=6,11,20&height=300&section=header&text=Automated%20Reverse%20%26%20Forward%20Engineering%20Pipeline&fontSize=34&fontColor=ffffff&fontAlignY=38&desc=Transform%20any%20legacy%20codebase%20into%2025%20architecture%20documents%20%2B%20working%20modern%20code%20—%20fully%20automated%20with%20Claude%20AI&descAlignY=60&descSize=14&animation=fadeIn" width="100%"/>
+<img src="https://capsule-render.vercel.app/api?type=waving&color=gradient&customColorList=6,11,20&height=280&section=header&text=Oracle%20HRMS%20Reverse%20Engineering%20Pipeline&fontSize=36&fontColor=ffffff&fontAlignY=38&desc=Fully%20automated%20reverse%20engineering%20of%20Oracle%20Forms%20%2B%20PL%2FSQL%20legacy%20systems%20into%2025%20architecture%20documents&descAlignY=60&descSize=14&animation=fadeIn" width="100%"/>
 
 <br/>
 
 [![Python](https://img.shields.io/badge/Python-3.9+-3776AB?style=for-the-badge&logo=python&logoColor=white)](https://python.org)
-[![Claude AI](https://img.shields.io/badge/Claude-AI%20Agents-D97706?style=for-the-badge&logo=anthropic&logoColor=white)](https://anthropic.com)
-[![Java](https://img.shields.io/badge/Java-17-ED8B00?style=for-the-badge&logo=openjdk&logoColor=white)](https://openjdk.org)
-[![React](https://img.shields.io/badge/React-18-61DAFB?style=for-the-badge&logo=react&logoColor=black)](https://react.dev)
-[![Spring Boot](https://img.shields.io/badge/Spring%20Boot-3.x-6DB33F?style=for-the-badge&logo=springboot&logoColor=white)](https://spring.io/projects/spring-boot)
-[![PostgreSQL](https://img.shields.io/badge/PostgreSQL-15-4169E1?style=for-the-badge&logo=postgresql&logoColor=white)](https://postgresql.org)
+[![Claude AI](https://img.shields.io/badge/Claude-AI%20Powered-D97706?style=for-the-badge&logo=anthropic&logoColor=white)](https://anthropic.com)
+[![Oracle](https://img.shields.io/badge/Oracle-Forms%20%2B%20PL%2FSQL-F80000?style=for-the-badge&logo=oracle&logoColor=white)](https://oracle.com)
 [![License](https://img.shields.io/badge/License-MIT-22c55e?style=for-the-badge)](LICENSE)
 
 <br/>
 
-> **The world's first fully automated pipeline that reads a legacy codebase, reverse-engineers it into 25 architecture documents + an Enterprise Knowledge Graph, then forward-engineers a clean modern application — end to end, zero human involvement.**
+> **Point this pipeline at any Oracle Forms + PL/SQL legacy codebase. Walk away.  
+> Come back to 25 complete architecture documents + an Enterprise Knowledge Graph — fully automated.**
 
 <br/>
 
-[🚀 Quick Start](#-quick-start) · [🧠 How It Works](#-how-it-works) · [📄 What It Produces](#-what-it-produces) · [🏗️ Architecture](#️-architecture) · [🔧 Configuration](#-configuration) · [📊 Example Output](#-example-output)
-
-<br/>
+[🚀 Quick Start](#-quick-start) · [🧠 How It Works](#-how-it-works) · [🛡️ Fallback Chain](#️-fallback-chain-nothing-gets-missed) · [📄 What It Produces](#-what-it-produces) · [🏗️ Architecture](#️-architecture) · [👥 Team Setup](#-team-setup)
 
 </div>
 
@@ -28,11 +24,14 @@
 
 ## ✨ What This Does
 
-Point this pipeline at **any legacy codebase** — a GitHub URL or a local folder. Walk away. Come back to:
+Point this pipeline at your **Oracle Forms + PL/SQL legacy HRMS source code** and it:
 
-1. **25 architecture documents** — BRD, ERD, API contracts, security architecture, domain model, and more
-2. **An Enterprise Knowledge Graph** — every entity, service, API, and table, cross-linked and evidence-cited
-3. **A working modern application** — Java 17 + Spring Boot 3 backend, React 18 + TypeScript frontend, PostgreSQL database — generated sprint by sprint
+1. Reads every source file — `.frmxml`, `.pks`, `.pkb`, `.sql`, triggers, schema — with **zero manual work**
+2. Extracts all business logic, procedures, tables, rules, and form triggers into a structured deep scan
+3. Runs **4 analysis tracks in parallel** (Business, Data, Technology, Application)
+4. Synthesises everything into **25 architecture documents** + an **Enterprise Knowledge Graph**
+
+Every gap at every stage is automatically detected and filled from lower layers — nothing is lost.
 
 <br/>
 
@@ -40,12 +39,12 @@ Point this pipeline at **any legacy codebase** — a GitHub URL or a local folde
 
 | | Manual (traditional) | This Pipeline |
 |---|:---:|:---:|
-| ⏱️ Time to full architecture | 2–4 weeks | **~1.5 hours** |
+| ⏱️ Time to full architecture | **2–4 weeks** | **~1.5 hours** |
 | 👤 Human involvement | Every step | **Zero** |
 | 📄 Documents produced | Varies | **25 docs + KG** |
-| 🔁 Reproducible | No | **Yes — re-run anytime** |
+| 🔁 Resume after interruption | Start over | **Continues exactly where it stopped** |
 | 🔍 Evidence-cited findings | Depends on analyst | **Every single finding** |
-| 💻 Working code generated | Months | **Per sprint, automated** |
+| 🛡️ Missing data handling | Analyst notices manually | **Auto-detected + auto-filled** |
 
 </div>
 
@@ -53,149 +52,154 @@ Point this pipeline at **any legacy codebase** — a GitHub URL or a local folde
 
 ## 🚀 Quick Start
 
-### Step 1 — Install dependencies
+### Prerequisites
 
 ```bash
+# 1. Python 3.9+
 pip install -r requirements.txt
-```
 
-```bash
+# 2. Claude Code CLI
 npm install -g @anthropic-ai/claude-code
-```
 
-```bash
+# 3. Authenticate
 claude login
 ```
 
----
-
-### Step 2 — Run Reverse Engineering (~1.5 hours)
-
-**From a local folder:**
-```bash
-python run.py --source "C:/projects/my-legacy-app" --output ./results
-```
-
-**From a GitHub URL:**
-```bash
-python run.py --source "https://github.com/org/your-legacy-app" --output ./results
-```
-
-Produces 25 documents + Enterprise Knowledge Graph in `./results/`.
-
----
-
-### Step 3 — Run Forward Engineering (~6–10 hours)
+### Run the Pipeline
 
 ```bash
-cd forward-engineering-only
+# Point at your Oracle HRMS source folder
+python run.py --source "C:/your-project/oracle-hrms-source" --output ./results
 ```
 
-**Batch 1** — stack selection, conventions contract, scaffold, sprint planning (~45 min):
+That's it. The pipeline runs all 13 steps automatically (~1.5 hours).
+
+### Run Individual Steps (optional)
+
 ```bash
-python run_forward.py --input ../results --output ./forward_results
+python run.py --source <source> --output ./results --track setup        # Steps 1–3: scan + cache
+python run.py --source <source> --output ./results --track business     # Steps 4–5: BA analysis
+python run.py --source <source> --output ./results --track data         # Steps 6–7: DA analysis
+python run.py --source <source> --output ./results --track technology   # Steps 8–10: TA analysis
+python run.py --source <source> --output ./results --track application  # Steps 11–12: AA analysis
+python run.py --source <source> --output ./results --track foundation   # Step 13: 25 documents
 ```
 
-> Batch 1 automatically chains into Batch 2. To run them separately, use `--no-auto-batch2`.
+### Resume After Interruption
 
-**Batch 2** — per-sprint development loop, 6 sprints (~6–10 hours):
-```bash
-python run_forward_batch2.py --input ../results --output ./forward_results
-```
-
-**Skip the interactive stack menu** (use this exact stack):
-```bash
-python run_forward.py --input ../results --output ./forward_results --target-stack "Backend: Java 17, Spring Boot 3.x | Frontend: React (TypeScript) | Database: PostgreSQL"
-```
-
-Generated application code is written to `forward_results/new_app/`.
-
----
-
-### Step 4 — Resume After Interruption
-
-The pipeline is fully resume-safe. If it stops for any reason, just re-run the same command:
-```bash
-python run_forward_batch2.py --input ../results --output ./forward_results
-```
-It continues from the last completed sprint step — nothing is lost.
-
-**If a sprint is stuck (`FAILED_BLOCKED`)**, edit `forward_results/sprint_ledger.json`, change the status to `PENDING`, then re-run.
+Kill the pipeline at any time — re-run the **same command** and it continues from exactly where it stopped. Every step is checkpointed to disk.
 
 ---
 
 ## 🧠 How It Works
 
-The pipeline runs **13 sequential steps** across two phases.
-
 ```
-┌─────────────────────────────────────────────────────────────────────────┐
-│                     PHASE 1 — REVERSE ENGINEERING                       │
-├─────────────────────────────────────────────────────────────────────────┤
-│                                                                         │
-│  Step 1 ──► Layer 1 Extraction    (regex / AST, zero AI)               │
-│             ├── Auto-detect languages (.NET, Java, Python, JS, PL/SQL) │
-│             ├── Extract classes, methods, properties                    │
-│             ├── Extract DB schema (tables, procs, EF entities)          │
-│             └── Extract config, logs, business events                   │
-│                                                                         │
-│  Step 2 ──► Scan Once             (cache every file, full content)      │
-│  Step 3 ──► Scan Agent            (Claude deep-extracts in 30-file      │
-│                                    chunks → DEEP_SCAN_OUTPUT.md)        │
-│                                                                         │
-│  Steps 4–5  ► Business Analysis   (entities, domains, DDD, ubiquitous  │
-│                                    language, state machines)            │
-│  Steps 6–7  ► Data Analysis       (schema, normalization, PII, flows)  │
-│  Steps 8–10 ► Technology Analysis (stack, NFR, security, tech debt)    │
-│  Steps 11–12► Application Analysis(controllers, services, APIs)        │
-│                                                                         │
-│  Step 13 ──► Foundation Synthesis (KG + 5 views + 20 documents)        │
-│                                                                         │
-└─────────────────────────────────────────────────────────────────────────┘
-                              │
-                              ▼
-┌─────────────────────────────────────────────────────────────────────────┐
-│                     PHASE 2 — FORWARD ENGINEERING                       │
-├─────────────────────────────────────────────────────────────────────────┤
-│                                                                         │
-│  Batch 1 ──► Stack Selection → Stack Mapping Contract → Scaffolding     │
-│              → Sprint Planning (ordered backlog with rationale)         │
-│                                                                         │
-│  Batch 2 ──► Per-Sprint Development Loop (× 6 sprints):                 │
-│              Backend Dev → Security Review → Frontend Dev               │
-│              → Test Writer → Test Executor (real subprocess, no LLM)   │
-│              → 3-Reviewer Code Review → Fix Loop → Learnings write-back │
-│                                                                         │
-│  Sprints: Security/Identity → Employee Management → Leave Management    │
-│           → Payroll → Performance Reviews → Audit Logging (cross-cut)  │
-│                                                                         │
-└─────────────────────────────────────────────────────────────────────────┘
+┌──────────────────────────────────────────────────────────────────────────────┐
+│                          13-STEP PIPELINE                                    │
+├──────────────────────────────────────────────────────────────────────────────┤
+│                                                                              │
+│  Step 1  ─► Layer 1 Extraction   (deterministic, zero AI)                   │
+│              Walks source tree, extracts structure into Source_Code.json     │
+│              Auto-detects: Oracle Forms, PL/SQL, SQL, triggers, schema       │
+│                                                                              │
+│  Step 2  ─► Scan Once            (file_cache.json)                          │
+│              Reads EVERY file in full — raw content, no truncation           │
+│              Validates 100%: re-walks disk and confirms every file cached    │
+│                                                                              │
+│  Step 3  ─► Scan Agent           (DEEP_SCAN_OUTPUT.md)                      │
+│              Splits files into chunks → Claude extracts procedures/rules     │
+│              Self-corrects: detects missing files, re-scans up to 3×         │
+│                                                                              │
+│  ┌── Steps 4–12: ALL 4 TRACKS RUN IN PARALLEL ──────────────────────────┐  │
+│  │                                                                        │  │
+│  │  Steps  4–5  ► Business Analysis    Agent 1 → Agent 2 (+ gap fill)   │  │
+│  │  Steps  6–7  ► Data Analysis        Agent 1 → Agent 2 (+ gap fill)   │  │
+│  │  Steps  8–10 ► Technology Analysis  Agent 1 → Batch1 → Batch2+Synth  │  │
+│  │  Steps 11–12 ► Application Analysis Agent 1 → Agent 2 (+ gap fill)   │  │
+│  │                                                                        │  │
+│  └────────────────────────────────────────────────────────────────────────┘  │
+│                                                                              │
+│  Step 13 ─► Foundation Synthesis                                            │
+│              Call 1: Enterprise KG + 5 foundation docs + docs 01–10         │
+│              Call 2: docs 11–20  (receives gap-filled docs from Call 1)      │
+│              Each of 25 documents independently detects and fills its gaps   │
+│                                                                              │
+└──────────────────────────────────────────────────────────────────────────────┘
 ```
 
 ### The Two-Turn Agent Pattern
 
-Every analysis agent uses a unique two-turn design that maximises efficiency:
+Every analysis agent (Steps 4–12) uses an efficient two-turn design:
 
-- **Turn 1** — Agent sees a one-line-per-file FILE MAP → replies with JSON list of exactly which files it needs
-- **Turn 2** — Agent receives only those sections from the deep scan → produces its analysis
+```
+Turn 1 — File Selection
+  Agent sees:   FILE MAP (one line per file, no content)
+  Agent replies: JSON array of exactly which files it needs
+  Result:        Only relevant files are fetched — zero wasted tokens
 
-**Each file is read once and distributed precisely. Zero redundant reads. Zero wasted tokens.**
+Turn 2 — Deep Analysis
+  Agent receives: only the requested file sections (from DEEP_SCAN + file_cache fallback)
+  Agent produces: BA_Structural_Scout.md / DA_Data_Extractor.md / etc.
+  After output:   Gap detection runs — missing items are fetched and supplemented
+```
 
-### Resume-Safe by Design
+---
 
-Every step writes its output to disk immediately. Kill the process at any time — re-run the same command and it continues exactly where it stopped. Each sprint is checkpointed independently so a crash never loses completed work.
+## 🛡️ Fallback Chain — Nothing Gets Missed
 
-### Generated Tech Stack
+This is the core reliability feature. At **every layer**, if data is missing it automatically falls back to the layer below:
 
-When run against the included Oracle HRMS sample, the pipeline selected:
+```
+source files (42 Oracle HRMS files)
+      │
+      ▼
+file_cache.json          ← raw content of every file, 100% complete, validated
+      │  if DEEP_SCAN missed a file
+      ▼
+DEEP_SCAN_OUTPUT.md      ← Claude's extraction of every file (procedures, rules, logic)
+      │  if chunk was incomplete (self-corrects up to 3×)
+      ▼
+Agent 1 (Scout)          ← broad map: what exists
+      │
+      ▼
+Agent 2 (Analyst)        ← deep meaning: what it means
+      │
+      ├── gap detected in output?
+      │         ▼
+      │   DEEP_SCAN_OUTPUT.md    ← check if scan captured it
+      │         │
+      │         ├── still missing?
+      │                   ▼
+      │             file_cache.json  ← get raw content of that exact file
+      │                   │
+      │                   ▼
+      │             Claude supplements only the missing parts
+      │
+      ▼
+Foundation (25 documents)
+      │
+      └── each document independently:
+                gap detected? → DEEP_SCAN → file_cache → fill only that gap
+                Call 1 docs gap-filled → reloaded from disk → Call 2 gets complete context
+```
 
-| Layer | Technology |
-|-------|-----------|
-| **Backend** | Java 17, Spring Boot 3.x |
-| **Frontend** | React 18, TypeScript |
-| **Database** | PostgreSQL 15 (migrated off Oracle) |
-| **Auth** | JWT with refresh tokens, AES-256 encryption |
-| **Testing** | JUnit 5 + Testcontainers (backend), Jest + React Testing Library (frontend) |
+**This applies identically to all 4 tracks:**
+
+```
+BA Agent 2 ──(gap)──► DEEP_SCAN ──(gap)──► file_cache → source
+DA Agent 2 ──(gap)──► DEEP_SCAN ──(gap)──► file_cache → source
+TA Agent 2 ──(gap)──► DEEP_SCAN ──(gap)──► file_cache → source
+AA Agent 2 ──(gap)──► DEEP_SCAN ──(gap)──► file_cache → source
+```
+
+**Foundation — per-document (each of 25 files independently):**
+
+```
+01_BRD.md              ──(gap)──► DEEP_SCAN ──(gap)──► file_cache
+06_DATA_DICTIONARY.md  ──(gap)──► DEEP_SCAN ──(gap)──► file_cache
+ENTERPRISE_KG.json     ──(gap)──► DEEP_SCAN ──(gap)──► file_cache
+... all 25 documents independently
+```
 
 ---
 
@@ -204,49 +208,46 @@ When run against the included Oracle HRMS sample, the pipeline selected:
 ```
 results/
 │
-├── Source_Extraction/
-│   ├── Source_Code.json              ← all classes, methods, properties
-│   ├── Database.json                 ← tables, procs, views, EF entities
-│   ├── Config.json                   ← parameters, feature flags, connection strings
-│   └── Extraction_Summary.json       ← metadata, counts, ready_for_layer2 flag
+├── file_cache.json                         ← full raw content of every source file
+├── DEEP_SCAN_OUTPUT.md                     ← deep extracted content, self-corrected
 │
 ├── Business_Analysis/
-│   ├── BA_Structural_Scout.md        ← business entities, state machines, domains
-│   └── BA_Deep_Analyst.md            ← DDD, bounded contexts, ubiquitous language
+│   ├── BA_Structural_Scout.md              ← domains, entities, state machines, DDD
+│   └── BA_Deep_Analyst.md                  ← all business rules, validations, processes
 │
 ├── Data_Analysis/
-│   ├── DA_Data_Extractor.md          ← schema, normalization, PII inventory
-│   └── DA_Data_Reviewer.md           ← data flows, quality assessment
+│   ├── DA_Data_Extractor.md                ← all tables, columns, constraints, PII
+│   └── DA_Data_Reviewer.md                 ← verified schema, data flows, quality
 │
 ├── Technology_Analysis/
-│   ├── TA_Stack_Scout.md             ← tech stack, frameworks, patterns
-│   └── TA_Deep_Analyst.md            ← NFR, security posture, technical debt map
+│   ├── TA_Stack_Scout.md                   ← Oracle Forms version, PL/SQL stack, DB
+│   └── TA_Deep_Analyst.md                  ← NFR, security posture, tech debt map
 │
 ├── Application_Analysis/
-│   ├── AA_App_Extractor.md           ← controllers, services, endpoints
-│   └── AA_Quality_Review.md          ← completeness, gap analysis
+│   ├── AA_App_Extractor.md                 ← all packages, procedures, form triggers
+│   └── AA_Quality_Review.md                ← completeness PASS/PARTIAL/FAIL verdicts
 │
 ├── Foundation_KnowledgeGraph/
-│   ├── ENTERPRISE_KNOWLEDGE_GRAPH.json    ← full structured KG, all evidence-cited
-│   ├── CANONICAL_ENTERPRISE_MODEL.md      ← human-readable entity summary
-│   ├── ARCHITECTURE_INVENTORY.md          ← every deployable, DB, API, service
-│   ├── TRACEABILITY_MATRIX.md             ← capability → process → entity → API → DB
-│   └── FORWARD_ENGINEERING_INPUT_MAP.md   ← known / inferred / missing
+│   ├── ENTERPRISE_KNOWLEDGE_GRAPH.json     ← full KG: every node, cross-linked, evidence-cited
+│   ├── CANONICAL_ENTERPRISE_MODEL.md       ← human-readable entity summary
+│   ├── ARCHITECTURE_INVENTORY.md           ← every table, package, form, trigger
+│   ├── TRACEABILITY_MATRIX.md              ← capability → process → entity → API → DB
+│   └── FORWARD_ENGINEERING_INPUT_MAP.md    ← known / inferred / missing
 │
 └── ForwardEngineering_Docs/
-    ├── 01_BRD.md                          ← Business Requirements Document
+    ├── 01_BRD.md                           ← Business Requirements Document
     ├── 02_BUSINESS_CAPABILITY_MODEL.md
     ├── 03_USE_CASE_SPECIFICATION.md
     ├── 04_BUSINESS_PROCESS_MODEL.md
-    ├── 05_DOMAIN_MODEL.md
-    ├── 06_DATA_DICTIONARY.md
-    ├── 07_DATA_MODEL_SPECIFICATION.md
+    ├── 05_DOMAIN_MODEL.md                  ← DDD bounded contexts + Mermaid maps
+    ├── 06_DATA_DICTIONARY.md               ← every table, every column, every constraint
+    ├── 07_DATA_MODEL_SPECIFICATION.md      ← physical schema + SQL DDL
     ├── 08_ERD.md
     ├── 09_DATA_FLOW_DIAGRAM.md
     ├── 10_SERVICE_CATALOG.md
-    ├── 11_API_CONTRACT_SPECIFICATION.md
+    ├── 11_API_CONTRACT_SPECIFICATION.md    ← full REST contracts for all endpoints
     ├── 12_TECHNOLOGY_BLUEPRINT.md
-    ├── 13_SECURITY_ARCHITECTURE.md
+    ├── 13_SECURITY_ARCHITECTURE.md         ← RBAC model + modernisation plan
     ├── 14_NFR_SPECIFICATION.md
     ├── 15_FORWARD_ENGINEERING_SPECIFICATION.md
     ├── 16_GENERATION_MANIFEST.json
@@ -256,39 +257,7 @@ results/
     └── 20_UI_UX_SPECIFICATION.md
 ```
 
-**Total: 25 documents + 1 Enterprise Knowledge Graph + 5 foundation views**
-
-### Forward Engineering Output
-
-After Batch 2 completes, `forward_results/new_app/` contains a fully buildable application:
-
-```
-forward_results/new_app/
-│
-├── backend/                          ← Spring Boot 3 Java application
-│   ├── pom.xml
-│   └── src/main/java/com/example/app/
-│       ├── security/                 ← JWT auth, refresh tokens, AES-256 encryption
-│       ├── employee/                 ← Full employee lifecycle management
-│       ├── leave/                    ← Leave requests, approvals, balance tracking
-│       ├── payroll/                  ← Pay periods and payroll run management
-│       ├── performance/              ← Review cycles and individual assessments
-│       └── audit/                    ← Tamper-evident audit logging (cross-cutting)
-│
-├── frontend/                         ← React 18 + TypeScript application
-│   ├── src/features/                 ← One folder per sprint (auth, employee, leave...)
-│   └── src/shared/                   ← Shared API client, auth context, components
-│
-└── backend/src/main/resources/db/migration/
-    ├── V1.1__create_user_credentials.sql
-    ├── V1.2__create_refresh_tokens.sql
-    ├── V1.3__create_employees.sql
-    ├── V1.5__create_leave_requests.sql
-    ├── V1.6__create_pay_periods_and_payroll_runs.sql
-    └── V1.7__create_review_cycles_and_individual_reviews.sql
-```
-
-> **To regenerate:** delete `forward_results/` and re-run Batch 1 + Batch 2. The pipeline resumes from any interruption automatically.
+**Total: 5 Foundation docs + 20 Forward Engineering docs + 1 Enterprise Knowledge Graph**
 
 ---
 
@@ -299,301 +268,167 @@ forward_results/new_app/
 ```
 automated-reverse-engineering-pipeline/
 │
-├── run.py                              ← Master orchestrator (13 steps, resumable)
+├── run.py                                  ← Master orchestrator (13 steps, parallel tracks)
 ├── requirements.txt
 │
 ├── pipeline/
-│   ├── layer1/                         ← Step 1: Deterministic extraction (no AI)
-│   │   ├── language_detector.py        ← Auto-detects language by file extension counts
-│   │   ├── file_filter.py              ← Excludes tests, build output, vendor dirs
-│   │   ├── database_extractor.py       ← SQL DDL, EF Core, Oracle packages
-│   │   ├── config_extractor.py         ← appsettings.json, .env, web.config, yaml
-│   │   └── extractors/
-│   │       ├── dotnet_extractor.py     ← C# / VB.NET regex parser
-│   │       ├── java_extractor.py
-│   │       ├── python_extractor.py     ← AST-based
-│   │       ├── javascript_extractor.py
-│   │       ├── plsql_extractor.py
-│   │       └── oracle_forms_extractor.py
+│   ├── base_runner.py                      ← Core: call_claude(), fallback chain helpers
+│   │   ├── supplement_from_cache()         ← fills DEEP_SCAN gaps from file_cache
+│   │   └── detect_and_fill_gaps()          ← post-generation gap detection + supplement
 │   │
-│   ├── base_runner.py                  ← Shared: call_claude(), build_file_map()
-│   ├── scan_runner.py                  ← Step 2: Full file content cache
-│   ├── scan_agent_runner.py            ← Step 3: 30-file chunk deep extraction
-│   ├── foundation_runner.py            ← Step 13: KG + 20 documents
+│   ├── scan_runner.py                      ← Step 2: file_cache.json + completeness validation
+│   ├── scan_agent_runner.py                ← Step 3: chunked deep scan + self-correction
+│   ├── foundation_runner.py                ← Step 13: 25 docs + per-doc gap detection
+│   │   ├── _fill_document_gaps()           ← per-document independent gap detection
+│   │   └── _reload_filled_docs()           ← ensures Call 2 gets gap-filled Call 1 context
 │   │
-│   └── runners/                        ← Steps 4–12: 8 specialised agents
-│       ├── ba_agent1_runner.py / ba_agent2_runner.py
+│   ├── layer1/                             ← Step 1: deterministic extraction (no AI)
+│   │   ├── oracle_forms_extractor.py       ← .frmxml parser
+│   │   ├── plsql_extractor.py              ← .pks/.pkb parser
+│   │   ├── database_extractor.py           ← SQL DDL, Oracle packages
+│   │   └── ...
+│   │
+│   └── runners/                            ← Steps 4–12: 8 specialised agents
+│       ├── ba_agent1_runner.py             ← BA Scout (Turn 1 + Turn 2 + cache fallback)
+│       ├── ba_agent2_runner.py             ← BA Analyst (+ detect_and_fill_gaps)
 │       ├── da_agent1_runner.py / da_agent2_runner.py
-│       ├── ta_agent1_runner.py / ta_agent2_batch1_runner.py / ta_agent2_batch2_runner.py
-│       └── aa_agent1_runner.py / aa_agent2_runner.py
+│       ├── ta_agent1_runner.py
+│       ├── ta_agent2_batch1_runner.py      ← TA Analyst Batch 1
+│       ├── ta_agent2_batch2_runner.py      ← TA Analyst Batch 2 + Synthesis (+ gap fill)
+│       ├── aa_agent1_runner.py / aa_agent2_runner.py
 │
-├── Prompts_Ready_To_Use/               ← 8 Claude agent system prompts (plain markdown)
-│
-├── forward-engineering-only/           ← Phase 2: Code generation pipeline
-│   ├── run_forward.py                  ← Batch 1: stack selection → sprint planning
-│   ├── run_forward_batch2.py           ← Batch 2: per-sprint dev loop
-│   └── pipeline_forward/
-│       ├── fwd_base.py                 ← Shared helpers: call_claude, write_file_bundle
-│       ├── stack_selection_runner.py   ← Proposes 2-3 stacks, interactive menu
-│       ├── stack_mapping_runner.py     ← Writes conventions contract
-│       ├── sprint_planner_runner.py    ← Breaks work into ordered sprints
-│       ├── elaboration_runner.py       ← Expands each sprint into tasks
-│       ├── scaffold_runner.py          ← Creates project structure + config files
-│       ├── backend_dev_runner.py       ← Domain entities, business rules, API endpoints
-│       ├── security_review_runner.py   ← Per-sprint security review
-│       ├── frontend_dev_runner.py      ← React screens wired to backend API
-│       ├── test_writer_runner.py       ← Writes unit + integration tests
-│       ├── test_executor_runner.py     ← Real subprocess build + test (no LLM) + fix-loop
-│       ├── data_migration_runner.py    ← Flyway SQL migration scripts
-│       └── review_runner.py            ← 3 independent reviewers, reconciled
-│
-├── .claude/
-│   └── settings.local.json             ← Pre-approved Claude Code permissions (portable JDK/Maven, C:\ access)
-│
-├── PIPELINE_STATE.md                   ← Team & agent handoff doc — current status, run commands, fixes
-│
-└── source/                             ← Sample codebases included for testing
-    ├── eShopOnWeb/                     ← Microsoft .NET e-commerce sample
-    └── ts-plsql-oracle-forms-hrms/     ← Oracle Forms + PL/SQL legacy HRMS
+└── Prompts_Ready_To_Use/                   ← 8 Claude agent system prompts
+    ├── 01_BA_Agent1_StructuralScout.md
+    ├── 02_BA_Agent2_DeepAnalyst.md
+    ├── 03_DA_Agent1_DataExtractor.md
+    ├── 04_DA_Agent2_DataReviewer.md
+    ├── 05_TA_Agent1_StackScout.md
+    ├── 06_TA_Agent2_DeepAnalyst.md
+    ├── 07_AA_Agent1_AppExtractor.md
+    └── 08_AA_Agent2_QualityReview.md
 ```
 
-### Supported Source Languages
+### Supported Source Files (Oracle HRMS)
 
-| Language | File Extensions | Extraction Method |
-|---|---|---|
-| C# / VB.NET | `.cs` `.vb` | Regex — classes, interfaces, methods, attributes, EF entities |
-| Java | `.java` | Regex — classes, annotations, Spring beans |
-| Python | `.py` | AST — functions, classes, decorators |
-| JavaScript / TypeScript | `.js` `.ts` `.jsx` `.tsx` | Regex — functions, classes, exports |
-| PL/SQL | `.sql` `.pks` `.pkb` `.prc` | Regex — packages, procedures, triggers |
-| Oracle Forms | `.frmxml` `.mmxml` `.pllxml` | XML parser — form triggers, buttons, field properties |
+| File Type | Extension | What Gets Extracted |
+|-----------|-----------|---------------------|
+| Oracle Forms | `.frmxml` | Form blocks, items, triggers, buttons, LOVs |
+| PL/SQL Package Specs | `.pks` | Package name, procedure signatures, types |
+| PL/SQL Package Bodies | `.pkb` | Full procedure logic, business rules, validations |
+| SQL Schema | `.sql` | Tables, columns, constraints, indexes, sequences |
+| Triggers | `.trg` | Trigger type, event, business logic |
+| Views | `.vw` | View definition, joins, business purpose |
 
 ---
 
 ## 🔧 Configuration
 
-### All Run Options
-
-```bash
-# Full pipeline (all 13 steps, ~1.5 hours)
-python run.py --source <source> --output ./results
-
-# Run one track at a time (safe to mix and match)
-python run.py --source <source> --output ./results --track setup        # Steps 1–3
-python run.py --source <source> --output ./results --track business     # Steps 4–5
-python run.py --source <source> --output ./results --track data         # Steps 6–7
-python run.py --source <source> --output ./results --track technology   # Steps 8–10
-python run.py --source <source> --output ./results --track application  # Steps 11–12
-python run.py --source <source> --output ./results --track foundation   # Step 13
-
-# Re-run a specific step (e.g. only step 9)
-python run.py --source <source> --output ./results --from-step 9 --to-step 9
-
-# Skip Layer 1 if already done
-python run.py --source <source> --output ./results --skip-layer1
-```
-
-### Forward Engineering
-
-```bash
-cd forward-engineering-only
-
-# Batch 1: stack selection → scaffold → sprint planning
-python run_forward.py --input ../results --output ./forward_results
-
-# Batch 2: per-sprint development loop (6 sprints, ~6-10 hours)
-python run_forward_batch2.py --input ../results --output ./forward_results
-
-# Skip the interactive menu by specifying the stack upfront
-python run_forward.py --input ../results --output ./forward_results \
-  --target-stack "Backend: Java 17, Spring Boot 3.x | Frontend: React (TypeScript) | Database: PostgreSQL"
-```
-
 ### Environment Variables
 
 ```bash
-# Override Claude model (default: claude-sonnet-4-6)
-export PIPELINE_CLAUDE_MODEL="claude-opus-4-8"
+# Override Claude model (default: CLI default)
+set PIPELINE_CLAUDE_MODEL=claude-opus-4-8
 
-# Skip Testcontainers integration tests (default: skip)
-export PIPELINE_SKIP_INTEGRATION_TESTS=1   # skip (default — no Docker needed)
-export PIPELINE_SKIP_INTEGRATION_TESTS=0   # run full integration suite (needs Docker)
-
-# Portable JDK/Maven (no admin rights required — point to extracted zip locations)
-export JAVA_HOME="C:\tools\jdk21\jdk-21.0.11+10"
-export MAVEN_HOME="C:\tools\apache-maven-3.9.6"
+# Windows — set before running
+set PIPELINE_CLAUDE_MODEL=
+python run.py --source ./source --output ./results
 ```
 
-### No Admin Rights Required
-
-The pipeline fully supports locked-down / no-admin environments. Java and Maven do **not** need to be installed via an installer — the test executor automatically falls back to portable zip extractions:
+### Run Options Reference
 
 ```bash
-# Download Temurin JDK 21 portable zip (no installer) from adoptium.net
-# Extract to C:\tools\jdk21\
+# Full pipeline — all 13 steps
+python run.py --source <path> --output ./results
 
-# Download Apache Maven 3.9.6 zip from archive.apache.org/dist/maven/maven-3/3.9.6/
-# Extract to C:\tools\apache-maven-3.9.6\
+# Individual tracks
+python run.py --source <path> --output ./results --track setup
+python run.py --source <path> --output ./results --track business
+python run.py --source <path> --output ./results --track data
+python run.py --source <path> --output ./results --track technology
+python run.py --source <path> --output ./results --track application
+python run.py --source <path> --output ./results --track foundation
 
-# Set env vars and run — no admin prompt, no PATH changes needed
-set JAVA_HOME=C:\tools\jdk21\jdk-21.0.11+10
-set MAVEN_HOME=C:\tools\apache-maven-3.9.6
-python run_forward_batch2.py --input ../results --output ./forward_results
+# Run a specific step range
+python run.py --source <path> --output ./results --from-step 9 --to-step 9
 ```
 
 ---
 
-## 📊 Example Output
+## 👥 Team Setup
 
-This repo includes a **complete example run** against the Oracle Forms + PL/SQL legacy HRMS (`source/ts-plsql-oracle-forms-hrms`), with all 25 output documents and the Enterprise Knowledge Graph in `results/`.
-
-To regenerate the forward engineering output (Java + React application), run Batch 1 + Batch 2 — the pipeline is fully resumable and idempotent.
-
-### Enterprise Knowledge Graph (excerpt)
-
-```json
-{
-  "business_nodes": [
-    {
-      "id": "BN-001",
-      "type": "Aggregate",
-      "name": "Employee",
-      "confidence": "HIGH",
-      "evidence": "EMPLOYEES table, PKG_EMPLOYEE package, EMPLOYEE_FORM Oracle Form",
-      "relationships": [
-        { "target": "BN-002", "type": "has_many", "cardinality": "1:many" }
-      ]
-    }
-  ],
-  "assumptions": [],
-  "open_questions": [
-    { "id": "OQ-001", "question": "Is LEAVE_BALANCE recalculated on approval or on accrual schedule?" }
-  ]
-}
-```
-
-### Forward-Engineered Application (6 Sprints)
-
-The pipeline generates a working **Java 17 + Spring Boot 3 + React 18 + TypeScript + PostgreSQL** HRMS from the legacy Oracle PL/SQL source:
-
-| Sprint | What was built |
-|--------|---------------|
-| **1 — Security/Identity** | JWT auth, refresh tokens, AES-256 SSN encryption, role-based access |
-| **2 — Employee Management** | Full lifecycle: hire, transfer, promote, terminate, rehire |
-| **3 — Leave Management** | Submission, manager approval/rejection, balance tracking |
-| **4 — Payroll** | Pay periods, payroll runs, status tracking |
-| **5 — Performance Reviews** | Review cycles, individual assessments, scoring |
-| **6 — Audit Logging** | Tamper-evident, fail-closed, cross-cutting across all modules |
-
----
-
-## 🎯 Accuracy & Prompt Architecture
-
-### Current Accuracy: ~85–90%
-
-Tested against the Oracle HRMS source (`source/ts-plsql-oracle-forms-hrms`), which contains 30 schema tables, 11 PL/SQL packages (~115 procedures), 6 Oracle Forms, and 24 form triggers.
-
-| Metric | Before (v1) | After (v2) |
-|--------|------------|-----------|
-| Schema coverage | ~60–65% | ~85–90% |
-| PL/SQL packages covered | ~3–4 of 11 | ~10–11 of 11 |
-| Tables documented | ~12–15 of 30 | ~27–30 of 30 |
-| Procedures enumerated | ~30–40% | ~85–90% |
-| Root cause | Turn 1 too vague | Explicit file selection rules |
-
-### What Was Fixed (v2 — July 2026)
-
-**Root cause of v1 low accuracy:** Turn 1 instructions told agents to "request relevant files" without being explicit. For a 30-file schema, Claude would request only 2–3 "representative" files, missing entire domains.
-
-**Fix applied in 4 Python runner files** (`ba_agent1_runner.py`, `da_agent1_runner.py`, `aa_agent1_runner.py`, `ta_agent1_runner.py`) — TURN1_INSTRUCTION now contains explicit rules:
-- "Request ALL .sql, .pks, .pkb, .frmxml files — these are ALL business logic"
-- "Request ALL schema files without exception — if you see 01_*.sql through 04_*.sql, request ALL"
-- "If there are 11 PL/SQL packages, request all 11 .pkb files"
-- "Missing a file is worse than requesting too many"
-
-**Fix applied in 3 prompt files** (`01_BA_Agent1_StructuralScout.md`, `03_DA_Agent1_DataExtractor.md`, `07_AA_Agent1_AppExtractor.md`) — added `# Completeness Rules — MANDATORY` section requiring:
-- Enumerate EVERY entity/table/procedure — never say "and others" or "omitted for brevity"
-- State TOTALS in output header — e.g. "Found: 30 tables, 11 packages, 115 procedures"
-- Extract EXACT threshold values verbatim from source
-- MARK MISSING only when genuinely absent from source
-
-**Fix applied in `foundation_runner.py`** — added 3 rules to synthesis prompt:
-- Mark MISSING only when information genuinely does not appear in layer outputs
-- Enumerate EVERYTHING — every entity with every field, every package with every procedure
-- Extract EXACT business rule values — thresholds, formulas, limits
-
-### The Two-Turn Agent Pattern
-
-Every analysis agent (Steps 4–12) uses a two-turn design that controls accuracy and token cost:
-
-```
-Turn 1 (file selection — controlled by Python runner TURN1_INSTRUCTION)
-  ├── Agent sees: FILE MAP (one line per file) + Layer 1 JSON summary
-  ├── Agent replies: JSON array of files it needs ["schema/01.sql", "plsql/PKG_EMPLOYEE.pkb", ...]
-  └── ACCURACY LEVER: Explicit rules force requesting ALL schema/package/form files
-
-Turn 2 (analysis — controlled by Prompts_Ready_To_Use/*.md)
-  ├── Agent receives: only the deep scan sections for its requested files
-  ├── Agent produces: BA_Structural_Scout.md / DA_Data_Extractor.md / etc.
-  └── QUALITY LEVER: Completeness Rules mandate full enumeration and exact values
-```
-
-**Separation of concerns:**
-- Want more files requested → edit `pipeline/runners/*_runner.py` TURN1_INSTRUCTION
-- Want better output quality → edit `Prompts_Ready_To_Use/*.md` Completeness Rules
-
----
-
-## 🛡️ Design Principles
-
-### Anti-Hallucination
-Every node in the Enterprise Knowledge Graph **must cite source file + line numbers**. Confidence is graded `HIGH` (direct evidence) / `MEDIUM` (inferred) / `LOW` (assumed). Unverifiable claims go into a separate `assumptions[]` list — never silently into the main graph.
-
-### Token Efficiency
-Files are read once (Step 2), deep-extracted once (Step 3). Each agent requests only the sections it needs via the two-turn pattern. A typical 300-file codebase uses ~40% fewer tokens than naive whole-repo prompting.
-
-### Business-Artifact Tagging
-Every extracted method is checked against business keywords (`validate`, `calculate`, `process`, `approve`, `authorize`, `notify`, etc.). Business-critical logic is automatically separated from technical plumbing.
-
-### Fail-Forward Fix Loop
-The forward engineering phase never blocks on a failing sprint. The fix-loop feeds test failures back to developer agents, retries up to `--max-retries` times, logs root causes to `LEARNINGS.json` so later sprints benefit, and marks irrecoverable sprints as `FAILED_BLOCKED` while continuing with independent ones.
-
-### Sprint-Level Checkpointing
-Every sprint writes its generated files, manifests, and ledger status to disk atomically. A crash, power cut, or rate-limit pause loses at most one in-progress agent call — re-running the same command resumes from the exact sprint step that was interrupted.
-
----
-
-## 🤝 Team Handoff & Resuming Work
-
-### For team members picking up this project
-
-Read **[PIPELINE_STATE.md](PIPELINE_STATE.md)** first — it contains:
-- Exact current status of every phase and sprint
-- Run commands to continue from where work left off
-- All critical bugs already fixed (don't re-investigate them)
-- Portable JDK/Maven setup for no-admin machines
-- Key file locations, prompt architecture, and cost estimates
-
-### For AI agents continuing sprint work
-
-1. Read `PIPELINE_STATE.md` for full context
-2. Check `forward-engineering-only/forward_results/sprint_ledger.json` for sprint status
-3. Reset any `FAILED_BLOCKED` sprint to `PENDING` and re-run Batch 2
-4. `.claude/settings.local.json` pre-approves all permissions needed for portable tool setup
-
-### Cloning and continuing on a new machine
+### Clone and Run
 
 ```bash
-git clone https://github.com/jayaprakash2207/automated-reverse-engineering-pipeline.git
-cd automated-reverse-engineering-pipeline
+git clone https://github.com/jayaprakash2207/oracle-reverse-engg-correction-1.git
+cd oracle-reverse-engg-correction-1
+
 pip install -r requirements.txt
-npm install -g @anthropic-ai/claude-code && claude login
+npm install -g @anthropic-ai/claude-code
+claude login
 
-# Reverse engineering already done — results/ is in the repo
-# Run forward engineering (picks up from where it left off):
-cd forward-engineering-only
-python run_forward.py --input ../results --output ./forward_results
+python run.py --source "path/to/your/oracle-hrms-source" --output ./results
 ```
+
+### What Each Team Member Gets
+
+After the pipeline completes, share the `results/` folder. Each team member can open:
+
+| Role | Most Relevant Documents |
+|------|------------------------|
+| **Business Analyst** | `01_BRD.md`, `02_BUSINESS_CAPABILITY_MODEL.md`, `03_USE_CASE_SPECIFICATION.md`, `04_BUSINESS_PROCESS_MODEL.md` |
+| **Data Architect** | `06_DATA_DICTIONARY.md`, `07_DATA_MODEL_SPECIFICATION.md`, `08_ERD.md` |
+| **Solution Architect** | `ENTERPRISE_KNOWLEDGE_GRAPH.json`, `12_TECHNOLOGY_BLUEPRINT.md`, `18_DEPLOYMENT_ARCHITECTURE.md` |
+| **Security Team** | `13_SECURITY_ARCHITECTURE.md`, `14_NFR_SPECIFICATION.md` |
+| **Developer** | `11_API_CONTRACT_SPECIFICATION.md`, `15_FORWARD_ENGINEERING_SPECIFICATION.md` |
+| **Project Manager** | `17_FORWARD_ENGINEERING_READINESS_REPORT.md`, `TRACEABILITY_MATRIX.md` |
+| **UX Designer** | `19_FRONTEND_ARCHITECTURE.md`, `20_UI_UX_SPECIFICATION.md` |
+
+### If the Pipeline Is Interrupted
+
+Just re-run the same command — it picks up exactly where it stopped:
+
+```bash
+python run.py --source "path/to/source" --output ./results
+```
+
+Every step writes its output to disk before moving to the next. Nothing is lost.
+
+---
+
+## 🎯 Key Design Decisions
+
+### Why file_cache.json?
+Every source file is read **once** at Step 2 and stored in full. No file is ever read from disk again. This means:
+- Agents never hit file-not-found errors
+- Every downstream step works from the same consistent snapshot
+- If a source file changes, re-run Step 2 to refresh
+
+### Why chunk self-correction?
+Claude can stop mid-chunk when output is large. `scan_agent_runner.py` detects which files are missing from each chunk's output, re-scans only those files (not the whole chunk), and retries up to 3 times. This prevents one incomplete chunk from creating invisible gaps in all 8 downstream agents.
+
+### Why parallel execution?
+Steps 4–12 (the 4 analysis tracks) are completely independent — BA doesn't need DA's output and vice versa. Running them in parallel threads cuts total wall-clock time by ~4x.
+
+### Why per-document gap detection in Foundation?
+The 25 Foundation documents are each a different document type (BRD vs ERD vs API contracts). A gap in the Data Dictionary is irrelevant to the Deployment Architecture. Running gap detection independently on each document means:
+- A thin ERD doesn't force a re-fetch of data that the BRD already covers
+- Each document fetches only the specific files it is missing
+- No document depends on another document's gap-fill completing first
+
+### Why _reload_filled_docs?
+Call 1 generates docs 1–10, gap-fills them, and saves to disk. But the in-memory `docs1` variable was parsed from the raw output — before gap filling. Without `_reload_filled_docs()`, Call 2 would receive incomplete versions of docs 1–10 as context, undoing all the gap-fill work. The reload step re-reads every Call 1 doc from disk (the enriched versions) before building Call 2's context.
+
+---
+
+## 📊 Anti-Hallucination Rules
+
+Every node in the Enterprise Knowledge Graph must:
+- **Cite** the exact source file and section it was found in
+- **Grade** confidence: `HIGH` (direct code evidence) / `MEDIUM` (inferred) / `LOW` (assumed)
+- **List** unverifiable assumptions separately in `assumptions[]` — never silently in the main graph
+- **Mark** genuinely missing data as `MISSING` — never invent a plausible value
+
+Agents are instructed: **"If you do not know → say unknown, not a guess."**
 
 ---
 
@@ -608,7 +443,7 @@ python run_forward.py --input ../results --output ./forward_results
 
 ## 📜 License
 
-MIT License — see [LICENSE](LICENSE) for details.
+MIT License — free to use, modify, and distribute.
 
 ---
 
@@ -616,8 +451,8 @@ MIT License — see [LICENSE](LICENSE) for details.
 
 <img src="https://capsule-render.vercel.app/api?type=waving&color=gradient&customColorList=6,11,20&height=120&section=footer" width="100%"/>
 
-**Built with ❤️ using [Claude AI](https://anthropic.com) · [Python](https://python.org) · [Spring Boot](https://spring.io) · [React](https://react.dev)**
+**Built with Claude AI · Python · Oracle Forms · PL/SQL**
 
-⭐ **Star this repo if it saved you weeks of work!**
+⭐ **Star this repo if it saved your team weeks of manual analysis work!**
 
 </div>
