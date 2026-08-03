@@ -137,13 +137,7 @@ def run(repo_root: str, output_dir: str) -> dict:
             continue
         actual_files.add("/".join(rel_parts))
 
-    # Strip top-level folder from cache keys to match actual_files
-    cache_relative = set()
-    for k in cache.keys():
-        parts = k.split("/")
-        cache_relative.add("/".join(parts[1:]) if len(parts) > 1 else k)
-
-    missing = actual_files - cache_relative
+    missing = actual_files - set(cache.keys())
     if missing:
         print(f"\n  [Scan Once] WARNING: {len(missing)} file(s) found on disk but NOT in cache:")
         for f in sorted(missing):
