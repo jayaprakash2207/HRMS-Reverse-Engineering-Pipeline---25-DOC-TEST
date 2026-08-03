@@ -1,0 +1,106 @@
+{
+  "extraction_stage": "Stage 5 — Dependency Analysis",
+  "nodes": [
+    {"id": "PKG_EMPLOYEE",    "type": "plsql_package", "module": "MOD-01", "layer": "Business Logic"},
+    {"id": "PKG_PAYROLL",     "type": "plsql_package", "module": "MOD-02", "layer": "Business Logic"},
+    {"id": "PKG_LEAVE",       "type": "plsql_package", "module": "MOD-03", "layer": "Business Logic"},
+    {"id": "PKG_PERFORMANCE", "type": "plsql_package", "module": "MOD-04", "layer": "Business Logic"},
+    {"id": "PKG_SECURITY",    "type": "plsql_package", "module": "MOD-05", "layer": "Security"},
+    {"id": "PKG_INTEGRATION", "type": "plsql_package", "module": "MOD-06", "layer": "Integration"},
+    {"id": "PKG_NOTIFICATION","type": "plsql_package", "module": "MOD-06", "layer": "Infrastructure"},
+    {"id": "PKG_AUDIT",       "type": "plsql_package", "module": "MOD-06", "layer": "Infrastructure"},
+    {"id": "PKG_COMMON",      "type": "plsql_package", "module": "MOD-06", "layer": "Infrastructure"},
+    {"id": "PKG_VALIDATION",  "type": "plsql_package", "module": "MOD-06", "layer": "Infrastructure"},
+    {"id": "PKG_REPORTING",   "type": "plsql_package", "module": "MOD-06", "layer": "Reporting"},
+    {"id": "HRMS_LOGIN",      "type": "oracle_form",   "module": "MOD-05", "layer": "Presentation"},
+    {"id": "HRMS_MENU",       "type": "oracle_form",   "module": "MOD-06", "layer": "Presentation"},
+    {"id": "HRMS_EMPLOYEE",   "type": "oracle_form",   "module": "MOD-01", "layer": "Presentation"},
+    {"id": "HRMS_PAYROLL",    "type": "oracle_form",   "module": "MOD-02", "layer": "Presentation"},
+    {"id": "HRMS_LEAVE",      "type": "oracle_form",   "module": "MOD-03", "layer": "Presentation"},
+    {"id": "HRMS_PERFORMANCE","type": "oracle_form",   "module": "MOD-04", "layer": "Presentation"},
+    {"id": "HRMS_COMMON_LIB", "type": "pll_library",   "module": "MOD-06", "layer": "Presentation"},
+    {"id": "HRMS_VALIDATION_LIB","type": "pll_library","module": "MOD-06", "layer": "Presentation"},
+    {"id": "EXT_ORACLE_FIN",  "type": "external_system","module": null,    "layer": "External"},
+    {"id": "EXT_ADP",         "type": "external_system","module": null,    "layer": "External"},
+    {"id": "EXT_SMTP",        "type": "external_system","module": null,    "layer": "External"},
+    {"id": "EXT_TIME_ATT",    "type": "external_system","module": null,    "layer": "External"}
+  ],
+  "edges": [
+    {"from": "HRMS_LOGIN",       "to": "PKG_SECURITY",     "type": "calls",    "method": "authenticate"},
+    {"from": "HRMS_LOGIN",       "to": "HRMS_MENU",        "type": "opens_form"},
+    {"from": "HRMS_MENU",        "to": "PKG_SECURITY",     "type": "calls",    "method": "has_permission"},
+    {"from": "HRMS_MENU",        "to": "HRMS_EMPLOYEE",    "type": "opens_form"},
+    {"from": "HRMS_MENU",        "to": "HRMS_PAYROLL",     "type": "opens_form"},
+    {"from": "HRMS_MENU",        "to": "HRMS_LEAVE",       "type": "opens_form"},
+    {"from": "HRMS_MENU",        "to": "HRMS_PERFORMANCE", "type": "opens_form"},
+    {"from": "HRMS_EMPLOYEE",    "to": "PKG_EMPLOYEE",     "type": "calls"},
+    {"from": "HRMS_PAYROLL",     "to": "PKG_PAYROLL",      "type": "calls"},
+    {"from": "HRMS_LEAVE",       "to": "PKG_LEAVE",        "type": "calls"},
+    {"from": "HRMS_PERFORMANCE", "to": "PKG_PERFORMANCE",  "type": "calls"},
+    {"from": "HRMS_COMMON_LIB",  "to": "PKG_SECURITY",     "type": "calls",    "method": "is_session_valid"},
+    {"from": "HRMS_COMMON_LIB",  "to": "PKG_COMMON",       "type": "calls",    "method": "log_error"},
+    {"from": "HRMS_VALIDATION_LIB","to": "PKG_COMMON",     "type": "calls",    "method": "validate_*"},
+    {"from": "PKG_EMPLOYEE",     "to": "PKG_PAYROLL",      "type": "calls",    "method": "create_salary_record", "cycle": true},
+    {"from": "PKG_EMPLOYEE",     "to": "PKG_AUDIT",        "type": "calls",    "method": "log_action"},
+    {"from": "PKG_EMPLOYEE",     "to": "PKG_COMMON",       "type": "calls",    "method": "log_error/log_info/get_param"},
+    {"from": "PKG_EMPLOYEE",     "to": "PKG_NOTIFICATION", "type": "calls",    "method": "send_notification"},
+    {"from": "PKG_EMPLOYEE",     "to": "PKG_LEAVE",        "type": "calls",    "method": "cancel pending leave on terminate"},
+    {"from": "PKG_PAYROLL",      "to": "PKG_EMPLOYEE",     "type": "calls",    "method": "is_active", "cycle": true},
+    {"from": "PKG_PAYROLL",      "to": "PKG_AUDIT",        "type": "calls",    "method": "log_action"},
+    {"from": "PKG_PAYROLL",      "to": "PKG_COMMON",       "type": "calls",    "method": "log_error/log_info"},
+    {"from": "PKG_PAYROLL",      "to": "PKG_NOTIFICATION", "type": "calls",    "method": "send_notification"},
+    {"from": "PKG_PAYROLL",      "to": "PKG_INTEGRATION",  "type": "calls",    "method": "generate_gl_journal"},
+    {"from": "PKG_LEAVE",        "to": "PKG_AUDIT",        "type": "calls",    "method": "log_action"},
+    {"from": "PKG_LEAVE",        "to": "PKG_COMMON",       "type": "calls",    "method": "log_error/is_business_day"},
+    {"from": "PKG_LEAVE",        "to": "PKG_NOTIFICATION", "type": "calls",    "method": "send_notification"},
+    {"from": "PKG_PERFORMANCE",  "to": "PKG_AUDIT",        "type": "calls",    "method": "log_action"},
+    {"from": "PKG_PERFORMANCE",  "to": "PKG_COMMON",       "type": "calls",    "method": "log_error"},
+    {"from": "PKG_PERFORMANCE",  "to": "PKG_NOTIFICATION", "type": "calls",    "method": "send_notification"},
+    {"from": "PKG_SECURITY",     "to": "PKG_AUDIT",        "type": "calls",    "method": "log_action"},
+    {"from": "PKG_SECURITY",     "to": "PKG_COMMON",       "type": "calls",    "method": "log_error/get_param"},
+    {"from": "PKG_VALIDATION",   "to": "PKG_COMMON",       "type": "calls",    "method": "validate_email/validate_phone/validate_ssn/is_business_day"},
+    {"from": "PKG_NOTIFICATION", "to": "PKG_COMMON",       "type": "calls",    "method": "log_error/log_info"},
+    {"from": "PKG_NOTIFICATION", "to": "EXT_SMTP",         "type": "connects", "protocol": "UTL_SMTP port 25"},
+    {"from": "PKG_INTEGRATION",  "to": "EXT_ORACLE_FIN",   "type": "writes_file", "protocol": "UTL_FILE flat-file"},
+    {"from": "PKG_INTEGRATION",  "to": "EXT_ADP",          "type": "writes_file", "protocol": "UTL_FILE fixed-width"},
+    {"from": "PKG_INTEGRATION",  "to": "EXT_TIME_ATT",     "type": "reads_file",  "protocol": "UTL_FILE CSV (stub)"},
+    {"from": "PKG_INTEGRATION",  "to": "PKG_COMMON",       "type": "calls",    "method": "get_param"}
+  ],
+  "cycles": [
+    {
+      "cycle_id": "CYCLE-01",
+      "nodes": ["PKG_EMPLOYEE", "PKG_PAYROLL"],
+      "path": "PKG_EMPLOYEE.create_employee → PKG_PAYROLL.create_salary_record → PKG_EMPLOYEE.is_active",
+      "severity": "HIGH",
+      "impact": "Cannot independently test or deploy either package. Circular compile dependency in Oracle. Modernization must break this cycle first.",
+      "evidence_file": "plsql/packages/PKG_EMPLOYEE.pks",
+      "evidence_line": "comment: -- Circular dependency with PKG_PAYROLL (salary validation)"
+    }
+  ],
+  "high_coupling_components": [
+    {
+      "component": "PKG_COMMON",
+      "fanin": 9,
+      "reason": "Called by every package and both PLL libraries. True shared kernel.",
+      "risk": "Any change to PKG_COMMON has system-wide blast radius"
+    },
+    {
+      "component": "PKG_AUDIT",
+      "fanin": 8,
+      "reason": "Called by every domain package and 6 DB triggers",
+      "risk": "PRAGMA AUTONOMOUS_TRANSACTION in every call — deadlock risk if AUDIT_LOG table locked"
+    },
+    {
+      "component": "PKG_NOTIFICATION",
+      "fanin": 5,
+      "reason": "Called by every domain package (Employee, Payroll, Leave, Performance, Security)",
+      "risk": "PRAGMA AUTONOMOUS_TRANSACTION; SMTP failure silently swallowed"
+    },
+    {
+      "component": "PKG_SECURITY",
+      "fanin": 3,
+      "reason": "All forms call is_session_valid on navigation via HRMS_COMMON_LIB",
+      "risk": "Session invalidation causes cascade form closures; brute-force auth vulnerability"
+    }
+  ]
+}

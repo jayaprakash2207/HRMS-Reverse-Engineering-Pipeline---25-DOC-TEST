@@ -1,0 +1,29 @@
+---
+title: HRMS System Context (C4 Level 1)
+---
+C4Context
+    title HRMS v4.2 — System Context
+
+    Person(hr_admin, "HR Administrator", "Manages employees, payroll, leave types, system config")
+    Person(employee, "Employee", "Submits leave requests, views payslip, completes self-assessment")
+    Person(manager, "Manager", "Approves leave, conducts performance reviews")
+    Person(payroll_admin, "Payroll Administrator", "Creates and approves payroll runs")
+
+    System(hrms, "HRMS", "Human Resource Management System v4.2\nOracle Forms 12c + Oracle PL/SQL\nEmployee lifecycle, payroll, leave, performance")
+
+    System_Ext(oracle_fin, "Oracle Financials", "ERP system receiving GL journal flat files after payroll approval")
+    System_Ext(adp, "ADP Benefits Platform", "Receives fixed-width benefits feed for payroll/benefits processing")
+    System_Ext(time_att, "Time & Attendance System", "Provides CSV import of attendance records (integration stub — not implemented)")
+    System_Ext(smtp, "Internal SMTP Relay", "smtp.internal.company.com:25\nDelivers HR notification emails")
+    System_Ext(ldap, "LDAP / Active Directory", "Intended org structure sync target (not implemented)")
+
+    Rel(hr_admin, hrms, "Uses", "Oracle Forms Java applet")
+    Rel(employee, hrms, "Uses", "Oracle Forms Java applet")
+    Rel(manager, hrms, "Uses", "Oracle Forms Java applet")
+    Rel(payroll_admin, hrms, "Uses", "Oracle Forms Java applet")
+
+    Rel(hrms, oracle_fin, "Sends GL journal", "Pipe-delimited flat file via UTL_FILE")
+    Rel(hrms, adp, "Sends benefits feed", "Fixed-width flat file via UTL_FILE")
+    Rel(hrms, smtp, "Sends email notifications", "UTL_SMTP port 25 (unencrypted)")
+    Rel(time_att, hrms, "Provides attendance data", "CSV flat file via UTL_FILE (stub — not implemented)")
+    Rel(hrms, ldap, "Syncs org structure", "Not implemented — placeholder only")

@@ -1,0 +1,51 @@
+---
+title: HRMS Package Dependency Graph
+---
+graph LR
+    classDef domain fill:#dbeafe,stroke:#2563eb,color:#1e3a8a
+    classDef infra fill:#dcfce7,stroke:#16a34a,color:#14532d
+    classDef security fill:#fef9c3,stroke:#ca8a04,color:#713f12
+    classDef form fill:#f3e8ff,stroke:#9333ea,color:#581c87
+    classDef external fill:#fee2e2,stroke:#dc2626,color:#7f1d1d
+
+    EMP["PKG_EMPLOYEE\n⚠ SQL injection\n⚠ Race condition"]:::domain
+    PAY["PKG_PAYROLL\n⚠ Partial commits\n⚠ Hard-coded tax"]:::domain
+    LEAVE["PKG_LEAVE\n⚠ Carryover bug"]:::domain
+    PERF["PKG_PERFORMANCE"]:::domain
+    SEC["PKG_SECURITY\n🔴 Hard-coded key\n🔴 Auth stub"]:::security
+    NOTIF["PKG_NOTIFICATION\n⚠ SMTP hard-coded"]:::infra
+    INTEG["PKG_INTEGRATION\n⚠ Stubs"]:::infra
+    AUDIT["PKG_AUDIT"]:::infra
+    COMMON["PKG_COMMON\n(Shared Kernel)"]:::infra
+    VAL["PKG_VALIDATION"]:::infra
+    RPT["PKG_REPORTING\n⚠ Hard-coded IDs"]:::infra
+
+    EMP <-->|"🔄 CYCLE-01"| PAY
+    EMP --> LEAVE
+    EMP --> AUDIT
+    EMP --> COMMON
+    EMP --> NOTIF
+
+    PAY --> AUDIT
+    PAY --> COMMON
+    PAY --> NOTIF
+    PAY --> INTEG
+
+    LEAVE --> AUDIT
+    LEAVE --> COMMON
+    LEAVE --> NOTIF
+
+    PERF --> AUDIT
+    PERF --> COMMON
+    PERF --> NOTIF
+
+    SEC --> AUDIT
+    SEC --> COMMON
+
+    NOTIF --> COMMON
+    INTEG --> COMMON
+    VAL --> COMMON
+
+    INTEG -->|"UTL_FILE\nflat file"| GLFEED[/"Oracle Financials\n(GL journal)"/]:::external
+    INTEG -->|"UTL_FILE\nfixed-width"| ADPFEED[/"ADP Benefits\n(feed)"/]:::external
+    NOTIF -->|"UTL_SMTP\nport 25"| SMTP[/"Internal SMTP Relay"/]:::external

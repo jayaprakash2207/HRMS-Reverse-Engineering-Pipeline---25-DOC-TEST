@@ -1,0 +1,99 @@
+---
+title: HRMS Component View (C4 Level 3)
+---
+graph TD
+    subgraph "Presentation Layer — Oracle Forms 12c"
+        LOGIN["HRMS_LOGIN.fmb\n(Entry Point)"]
+        MENU["HRMS_MENU.fmb\n(Navigation Hub)"]
+        EMP_FORM["HRMS_EMPLOYEE.fmb"]
+        PAY_FORM["HRMS_PAYROLL.fmb"]
+        LEAVE_FORM["HRMS_LEAVE.fmb"]
+        PERF_FORM["HRMS_PERFORMANCE.fmb"]
+        COMMON_LIB["HRMS_COMMON_LIB.pll\n(session, toolbar, error)"]
+        VAL_LIB["HRMS_VALIDATION_LIB.pll\n(client-side validation)"]
+    end
+
+    subgraph "Business Logic Layer — PL/SQL Packages"
+        direction TB
+        subgraph "Domain: MOD-01 Employee"
+            PKG_EMP["PKG_EMPLOYEE\n18 procs/funcs\n⚠ SQL injection\n⚠ Race condition"]
+        end
+        subgraph "Domain: MOD-02 Payroll"
+            PKG_PAY["PKG_PAYROLL\n15 procs/funcs\n⚠ Partial commits\n⚠ Hard-coded tax"]
+        end
+        subgraph "Domain: MOD-03 Leave"
+            PKG_LEAVE["PKG_LEAVE\n14 procs/funcs\n⚠ Carryover bug\n⚠ Business days bug"]
+        end
+        subgraph "Domain: MOD-04 Performance"
+            PKG_PERF["PKG_PERFORMANCE\n12 procs/funcs"]
+        end
+        subgraph "Domain: MOD-05 Security"
+            PKG_SEC["PKG_SECURITY\n8 procs/funcs\n🔴 Hard-coded key\n🔴 Auth stub\n🔴 MD5 passwords"]
+        end
+        subgraph "Infrastructure: MOD-06"
+            PKG_NOTIF["PKG_NOTIFICATION\n4 procs\n⚠ SMTP hard-coded"]
+            PKG_INTEG["PKG_INTEGRATION\n5 procs\n⚠ Stubs: TA, LDAP"]
+            PKG_AUDIT["PKG_AUDIT\n3 procs\nAUTONOMOUS TXN"]
+            PKG_COMMON["PKG_COMMON\n16 funcs\n(Shared kernel)"]
+            PKG_VAL["PKG_VALIDATION\n8 funcs"]
+            PKG_RPT["PKG_REPORTING\n8 procs\n⚠ Hard-coded IDs"]
+        end
+    end
+
+    subgraph "Data Layer — Oracle Schema"
+        DB[("HRMS Oracle Schema\n26 Tables · 6 Views\n6 Triggers · 29 Sequences")]
+        SCHED[["DBMS_SCHEDULER\n(DDL not in source control)"]];
+    end
+
+    LOGIN --> PKG_SEC
+    LOGIN --> MENU
+    MENU --> PKG_SEC
+    MENU --> EMP_FORM
+    MENU --> PAY_FORM
+    MENU --> LEAVE_FORM
+    MENU --> PERF_FORM
+
+    EMP_FORM --> PKG_EMP
+    PAY_FORM --> PKG_PAY
+    LEAVE_FORM --> PKG_LEAVE
+    PERF_FORM --> PKG_PERF
+    COMMON_LIB --> PKG_SEC
+    COMMON_LIB --> PKG_COMMON
+
+    PKG_EMP <-->|"⚠ CYCLE-01"| PKG_PAY
+    PKG_EMP --> PKG_AUDIT
+    PKG_EMP --> PKG_COMMON
+    PKG_EMP --> PKG_NOTIF
+    PKG_EMP --> PKG_LEAVE
+
+    PKG_PAY --> PKG_AUDIT
+    PKG_PAY --> PKG_COMMON
+    PKG_PAY --> PKG_NOTIF
+    PKG_PAY --> PKG_INTEG
+
+    PKG_LEAVE --> PKG_AUDIT
+    PKG_LEAVE --> PKG_COMMON
+    PKG_LEAVE --> PKG_NOTIF
+
+    PKG_PERF --> PKG_AUDIT
+    PKG_PERF --> PKG_COMMON
+    PKG_PERF --> PKG_NOTIF
+
+    PKG_SEC --> PKG_AUDIT
+    PKG_SEC --> PKG_COMMON
+
+    PKG_NOTIF -->|UTL_SMTP| SMTP(["SMTP Relay"])
+    PKG_INTEG -->|UTL_FILE| GLFILE(["GL_FEED_OUT\nOracle Financials"])
+    PKG_INTEG -->|UTL_FILE| ADPFILE(["BENEFITS_FEED_OUT\nADP"])
+    PKG_INTEG -->|UTL_FILE stub| TAFILE(["TIME_ATTENDANCE_IN\n(not implemented)"])
+
+    PKG_EMP --> DB
+    PKG_PAY --> DB
+    PKG_LEAVE --> DB
+    PKG_PERF --> DB
+    PKG_SEC --> DB
+    PKG_AUDIT --> DB
+    PKG_COMMON --> DB
+
+    SCHED -->|"Every 5 min"| PKG_NOTIF
+    SCHED -->|"1st of month"| PKG_LEAVE

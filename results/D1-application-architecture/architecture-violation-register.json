@@ -1,0 +1,246 @@
+{
+  "extraction_stage": "Stage 8 — Violation Detection",
+  "total_violations": 24,
+  "violations": [
+    {
+      "violation_id": "VIO-SEC-01",
+      "category": "Security",
+      "severity": "CRITICAL",
+      "title": "Encryption key hard-coded in source",
+      "description": "PKG_SECURITY.pkb declares c_encryption_key as a package constant using the plaintext string 'HR$ystem_3ncrypt10n_K3y_2024!!'. Any developer with read access to the source repository has the AES-256 key used to encrypt all employee SSNs.",
+      "file": "plsql/packages/PKG_SECURITY.pkb",
+      "evidence": "c_encryption_key CONSTANT RAW(32) := UTL_RAW.CAST_TO_RAW('HR$ystem_3ncrypt10n_K3y_2024!!')",
+      "remediation": "Move key to Oracle Wallet or DBMS_CRYPTO key store; retrieve via DBMS_CREDENTIAL or Oracle Key Vault; never store plaintext keys in source."
+    },
+    {
+      "violation_id": "VIO-SEC-02",
+      "category": "Security",
+      "severity": "CRITICAL",
+      "title": "SQL injection vulnerability in search_employees",
+      "description": "PKG_EMPLOYEE.search_employees builds a dynamic SQL string via string concatenation (v_sql := '...WHERE ' || p_filter_clause). The p_filter_clause parameter is passed in from the Oracle Forms layer without sanitization.",
+      "file": "plsql/packages/PKG_EMPLOYEE.pkb",
+      "evidence": "Comment in code: '-- VULNERABILITY: String concatenation instead of bind variable'",
+      "remediation": "Replace string concatenation with parameterized queries using bind variables; use DBMS_ASSERT to validate input before dynamic SQL execution."
+    },
+    {
+      "violation_id": "VIO-SEC-03",
+      "category": "Security",
+      "severity": "HIGH",
+      "title": "Weak password hashing (MD5)",
+      "description": "PKG_SECURITY.hash_password uses DBMS_CRYPTO.HASH_MD5. MD5 is cryptographically broken and unsuitable for password storage. Rainbow tables trivially crack MD5 hashes.",
+      "file": "plsql/packages/PKG_SECURITY.pkb",
+      "evidence": "DBMS_CRYPTO.HASH(UTL_RAW.CAST_TO_RAW(p_password), DBMS_CRYPTO.HASH_MD5)",
+      "remediation": "Replace with DBMS_CRYPTO SHA-256 or SHA-512 with per-user salt, or use an application-level bcrypt/Argon2 implementation."
+    },
+    {
+      "violation_id": "VIO-SEC-04",
+      "category": "Security",
+      "severity": "HIGH",
+      "title": "No brute-force protection on authentication",
+      "description": "PKG_SECURITY.authenticate has no failed-attempt counter, no lockout, no rate limiting, and no CAPTCHA. An attacker can attempt unlimited password guesses.",
+      "file": "plsql/packages/PKG_SECURITY.pkb",
+      "evidence": "Procedure body has no failed_attempts counter or lockout logic",
+      "remediation": "Add failed_login_attempts to USER_SESSIONS or EMPLOYEES; lock account after N failures; log each failed attempt."
+    },
+    {
+      "violation_id": "VIO-SEC-05",
+      "category": "Security",
+      "severity": "HIGH",
+      "title": "Password change does not verify old password",
+      "description": "PKG_SECURITY.change_password accepts p_old_password but does NOT compare it against the stored hash. Any authenticated session can change a user's password without knowing the current one.",
+      "file": "plsql/packages/PKG_SECURITY.pkb",
+      "evidence": "procedure body: p_old_password parameter accepted but not validated against stored hash",
+      "remediation": "Call hash_password(p_old_password) and compare against stored value before updating."
+    },
+    {
+      "violation_id": "VIO-SEC-06",
+      "category": "Security",
+      "severity": "HIGH",
+      "title": "Authentication stub — no actual password verification",
+      "description": "PKG_SECURITY.authenticate contains a stub for password validation — the comparison between the submitted password hash and the stored credential is not implemented. Effectively any password authenticates any user.",
+      "file": "plsql/packages/PKG_SECURITY.pkb",
+      "evidence": "Procedure body comment: '-- TODO: compare hashed password against stored credential'",
+      "remediation": "Implement the hash comparison: hash_password(p_password) must equal stored USER_CREDENTIALS.password_hash."
+    },
+    {
+      "violation_id": "VIO-SEC-07",
+      "category": "Security",
+      "severity": "MEDIUM",
+      "title": "TOO_MANY_ROWS in authenticate picks lowest EMP_ID",
+      "description": "If multiple employees share a username, the EXCEPTION WHEN TOO_MANY_ROWS handler silently picks the lowest EMP_ID, potentially authenticating the wrong user.",
+      "file": "plsql/packages/PKG_SECURITY.pkb",
+      "evidence": "EXCEPTION WHEN TOO_MANY_ROWS THEN SELECT MIN(EMP_ID) INTO v_emp_id FROM EMPLOYEES WHERE USERNAME = p_username",
+      "remediation": "Enforce UNIQUE constraint on EMPLOYEES.USERNAME and raise an error on duplicate instead of silently picking one."
+    },
+    {
+      "violation_id": "VIO-SEC-08",
+      "category": "Security",
+      "severity": "MEDIUM",
+      "title": "Session timeout based on login time, not last activity",
+      "description": "PKG_SECURITY.is_session_valid checks SYSDATE - LOGIN_TIME > 30 minutes. A user who is actively working will be logged out after 30 minutes regardless of activity.",
+      "file": "plsql/packages/PKG_SECURITY.pkb",
+      "evidence": "WHERE SYSDATE - LOGIN_TIME > 30/1440",
+      "remediation": "Add LAST_ACTIVITY_TIME to USER_SESSIONS; update on each authenticated action; timeout based on last activity."
+    },
+    {
+      "violation_id": "VIO-SEC-09",
+      "category": "Security",
+      "severity": "MEDIUM",
+      "title": "SMTP on port 25 with no encryption",
+      "description": "PKG_NOTIFICATION.process_queue sends emails via UTL_SMTP on port 25 (plaintext). Email content may include employee PII. No STARTTLS or SSL/TLS configured.",
+      "file": "plsql/packages/PKG_NOTIFICATION.pkb",
+      "evidence": "UTL_SMTP.OPEN_CONNECTION('smtp.internal.company.com', 25)",
+      "remediation": "Configure SMTP over TLS (port 587 with STARTTLS or port 465 with SSL). Avoid sending PII in email bodies."
+    },
+    {
+      "violation_id": "VIO-ARCH-01",
+      "category": "Architecture",
+      "severity": "HIGH",
+      "title": "Circular package dependency (PKG_EMPLOYEE ↔ PKG_PAYROLL)",
+      "description": "PKG_EMPLOYEE.create_employee calls PKG_PAYROLL.create_salary_record. PKG_PAYROLL.calculate_payroll calls PKG_EMPLOYEE.is_active for validation. Oracle requires a package to be compiled before packages that depend on it; this bidirectional dependency requires a workaround (package stubs) and prevents independent testing.",
+      "file": "plsql/packages/PKG_EMPLOYEE.pks",
+      "evidence": "Comment: '-- Circular dependency with PKG_PAYROLL (salary validation)'",
+      "remediation": "Extract salary initialization from create_employee into a separate initialization package, or have the calling form call both packages sequentially."
+    },
+    {
+      "violation_id": "VIO-ARCH-02",
+      "category": "Architecture",
+      "severity": "HIGH",
+      "title": "Partial commits in calculate_payroll",
+      "description": "PKG_PAYROLL.calculate_payroll commits every 50 employees. If the run fails at employee 250 of 1000, 200 employees have committed payroll details and 800 do not. There is no compensating rollback — the payroll run is left in a permanently inconsistent state.",
+      "file": "plsql/packages/PKG_PAYROLL.pkb",
+      "evidence": "IF MOD(v_emp_count, 50) = 0 THEN COMMIT; END IF; inside employee processing loop",
+      "remediation": "Remove intermediate commits; use BULK COLLECT/FORALL for performance; wrap entire run in a single transaction; use SAVEPOINT if partial recovery is needed."
+    },
+    {
+      "violation_id": "VIO-ARCH-03",
+      "category": "Architecture",
+      "severity": "HIGH",
+      "title": "Partial commits in run_monthly_accrual",
+      "description": "PKG_LEAVE.run_monthly_accrual commits every 100 employees, creating the same inconsistency risk as calculate_payroll.",
+      "file": "plsql/packages/PKG_LEAVE.pkb",
+      "evidence": "IF MOD(v_count, 100) = 0 THEN COMMIT; END IF; inside employee loop",
+      "remediation": "Same as VIO-ARCH-02: remove intermediate commits; use BULK COLLECT/FORALL."
+    },
+    {
+      "violation_id": "VIO-ARCH-04",
+      "category": "Architecture",
+      "severity": "MEDIUM",
+      "title": "Business logic encoded in Oracle Forms triggers",
+      "description": "Hire date validation (90-day limit) is encoded in HRMS_EMPLOYEE form's WHEN-VALIDATE-ITEM trigger rather than in PKG_EMPLOYEE or PKG_VALIDATION. This bypasses the rule for any non-Forms data entry path (scripts, SQL*Plus, APIs).",
+      "file": "forms/xml-exports/HRMS_EMPLOYEE.xml",
+      "evidence": "HIRE_DATE.WHEN-VALIDATE-ITEM: IF :EMPLOYEES.HIRE_DATE > SYSDATE + 90 THEN...",
+      "remediation": "Move all validation to PL/SQL packages; keep Oracle Forms triggers as thin delegates only."
+    },
+    {
+      "violation_id": "VIO-ARCH-05",
+      "category": "Architecture",
+      "severity": "MEDIUM",
+      "title": "Hard-coded configuration values in package constants",
+      "description": "Multiple packages use hard-coded values that should be in SYSTEM_PARAMETERS: SMTP host/port/from-address (PKG_NOTIFICATION), tax brackets (PKG_PAYROLL), FICA wage base (PKG_PAYROLL), rating label thresholds (PKG_PERFORMANCE).",
+      "files": ["plsql/packages/PKG_NOTIFICATION.pkb", "plsql/packages/PKG_PAYROLL.pkb", "plsql/packages/PKG_PERFORMANCE.pkb"],
+      "evidence": "c_smtp_host CONSTANT VARCHAR2(100) := 'smtp.internal.company.com'; c_fica_wage_base hard-coded 168600",
+      "remediation": "Move all environment-specific and annually-changing values to SYSTEM_PARAMETERS table; read via PKG_COMMON.get_param."
+    },
+    {
+      "violation_id": "VIO-ARCH-06",
+      "category": "Architecture",
+      "severity": "MEDIUM",
+      "title": "Row-by-row cursor processing in calculate_payroll",
+      "description": "PKG_PAYROLL.calculate_payroll processes employees one by one inside a cursor FOR loop. This is an Oracle anti-pattern for bulk operations ('slow-by-slow') and is documented in a TODO comment.",
+      "file": "plsql/packages/PKG_PAYROLL.pkb",
+      "evidence": "FOR emp_rec IN (SELECT ... FROM EMPLOYEES ...) LOOP — comment: '-- TODO: refactor to BULK COLLECT/FORALL'",
+      "remediation": "Refactor to BULK COLLECT with FORALL INSERT for an order-of-magnitude performance improvement."
+    },
+    {
+      "violation_id": "VIO-ARCH-07",
+      "category": "Architecture",
+      "severity": "MEDIUM",
+      "title": "Hard-coded pay element IDs in PKG_REPORTING",
+      "description": "PKG_REPORTING.payroll_summary_report uses hard-coded ELEMENT_IDs (100=federal tax, 101=state tax, 102=SS, 103=Medicare). If the PAY_ELEMENTS table is repopulated with different IDs, the report breaks silently.",
+      "file": "plsql/packages/PKG_REPORTING.pkb",
+      "evidence": "WHERE ELEMENT_ID IN (100, 101, 102, 103) — comment: 'Hard-coded element IDs'",
+      "remediation": "Join on ELEMENT_CODE or ELEMENT_NAME; never depend on surrogate key values."
+    },
+    {
+      "violation_id": "VIO-ARCH-08",
+      "category": "Architecture",
+      "severity": "MEDIUM",
+      "title": "validate_required_fields only handles EMPLOYEES table",
+      "description": "PKG_VALIDATION.validate_required_fields has a CASE statement for p_table_name = 'EMPLOYEES' only. For all other tables the procedure does nothing, silently passing validation.",
+      "file": "plsql/packages/PKG_VALIDATION.pkb",
+      "evidence": "CASE p_table_name WHEN 'EMPLOYEES' THEN ... ELSE NULL END; — comment: 'TODO: add other tables'",
+      "remediation": "Implement validation for all tables, or use a metadata-driven approach with SYSTEM_PARAMETERS."
+    },
+    {
+      "violation_id": "VIO-ARCH-09",
+      "category": "Architecture",
+      "severity": "LOW",
+      "title": "HRMS_VALIDATION_LIB email regex rejects valid subdomains",
+      "description": "The client-side email validation function in HRMS_VALIDATION_LIB.pll uses a regex that rejects valid email addresses containing subdomain dots (e.g. user@mail.company.com).",
+      "file": "forms/libraries/HRMS_VALIDATION_LIB.pll.sql",
+      "evidence": "Email regex: '^[A-Za-z0-9._%+-]+@[A-Za-z0-9]+\\.[A-Za-z]{2,}$' — does not allow subdomain dots in domain part",
+      "remediation": "Update regex to allow dots in the domain part: '@[A-Za-z0-9.-]+'."
+    },
+    {
+      "violation_id": "VIO-DATA-01",
+      "category": "Data Integrity",
+      "severity": "HIGH",
+      "title": "Hire date validation inconsistency between form and trigger",
+      "description": "HRMS_EMPLOYEE form validates hire date ≤ SYSDATE + 90 days. TRG_EMPLOYEES_VALIDATE allows up to SYSDATE + 180 days. An employee hired with a date 91-180 days in the future passes the DB trigger but is blocked by the form — unless data is inserted directly.",
+      "files": ["forms/xml-exports/HRMS_EMPLOYEE.xml", "schema/triggers/trg_employees.sql"],
+      "evidence": "Form: SYSDATE + 90; Trigger: SYSDATE + 180",
+      "remediation": "Choose one authoritative rule and apply it consistently in both locations, with the DB trigger as the enforcement point."
+    },
+    {
+      "violation_id": "VIO-DATA-02",
+      "category": "Data Integrity",
+      "severity": "MEDIUM",
+      "title": "VW_LEAVE_SUMMARY AVAILABLE formula omits PENDING days",
+      "description": "VW_LEAVE_SUMMARY computes AVAILABLE = BALANCE - USED. The LEAVE_BALANCES table has a virtual column AVAILABLE = BALANCE - PENDING - USED. The view omits PENDING days, making available balance appear higher than it is.",
+      "file": "schema/views/hrms_views.sql",
+      "evidence": "VW_LEAVE_SUMMARY: ACCRUED_DAYS - USED_DAYS AS AVAILABLE_DAYS vs LEAVE_BALANCES virtual column: ACCRUED_DAYS - PENDING_DAYS - USED_DAYS",
+      "remediation": "Update VW_LEAVE_SUMMARY to subtract PENDING_DAYS: ACCRUED_DAYS - PENDING_DAYS - USED_DAYS AS AVAILABLE_DAYS."
+    },
+    {
+      "violation_id": "VIO-DATA-03",
+      "category": "Data Integrity",
+      "severity": "MEDIUM",
+      "title": "Race condition in generate_emp_number",
+      "description": "PKG_EMPLOYEE.generate_emp_number selects MAX(EMP_NUMBER) + 1 without a SELECT FOR UPDATE. Two concurrent inserts can generate the same employee number, causing a unique constraint violation on the second commit.",
+      "file": "plsql/packages/PKG_EMPLOYEE.pkb",
+      "evidence": "SELECT NVL(MAX(TO_NUMBER(EMP_NUMBER)), 0) + 1 INTO v_new_num FROM EMPLOYEES — no FOR UPDATE",
+      "remediation": "Replace with a SEQUENCE (already available as SEQ_EMPLOYEE) to generate employee numbers atomically."
+    },
+    {
+      "violation_id": "VIO-DATA-04",
+      "category": "Data Integrity",
+      "severity": "MEDIUM",
+      "title": "expire_carryover double-subtract bug",
+      "description": "PKG_LEAVE.expire_carryover will double-subtract carryover days if executed twice on the same day (e.g. if the scheduler fires twice due to a retry). No idempotency guard exists.",
+      "file": "plsql/packages/PKG_LEAVE.pkb",
+      "evidence": "Code comment: '-- BUG: if this procedure runs twice on same day, carryover is subtracted twice'",
+      "remediation": "Add an idempotency check: record expiry date in LEAVE_ACCRUAL_LOG; skip if already processed for this year."
+    },
+    {
+      "violation_id": "VIO-DATA-05",
+      "category": "Data Integrity",
+      "severity": "LOW",
+      "title": "calculate_business_days does not handle observed holidays",
+      "description": "PKG_LEAVE.calculate_business_days queries the HOLIDAYS table but does not account for 'observed' holidays (e.g. when a holiday falls on Sunday, Monday is observed). Leave day counts may be off by one for affected date ranges.",
+      "file": "plsql/packages/PKG_LEAVE.pkb",
+      "evidence": "Code comment: '-- BUG: does not handle observed holidays'",
+      "remediation": "Add OBSERVED_DATE column to HOLIDAYS table (or a flag); update calculate_business_days to check both dates."
+    },
+    {
+      "violation_id": "VIO-OPS-01",
+      "category": "Operations",
+      "severity": "MEDIUM",
+      "title": "Unimplemented integration stubs",
+      "description": "PKG_INTEGRATION contains two unimplemented procedures: import_time_attendance (CSV parsing TODO) and sync_org_structure (LDAP/AD sync placeholder). Callers receive no error — procedures return silently.",
+      "file": "plsql/packages/PKG_INTEGRATION.pkb",
+      "evidence": "import_time_attendance body: '-- TODO: implement CSV parsing'; sync_org_structure body: '-- TODO: implement LDAP sync'",
+      "remediation": "Either implement or raise NOT_IMPLEMENTED error; document that these features are not available."
+    }
+  ]
+}

@@ -1,0 +1,232 @@
+{
+  "extraction_stage": "Stage 6 — Call Flow Tracing",
+  "flows": [
+    {
+      "flow_id": "FLOW-01",
+      "name": "User Login",
+      "trigger": "User clicks BTN_LOGIN on HRMS_LOGIN form",
+      "steps": [
+        {"seq": 1,  "actor": "HRMS_LOGIN.fmb",      "action": "BTN_LOGIN.WHEN-BUTTON-PRESSED",                   "file": "forms/xml-exports/HRMS_LOGIN.xml"},
+        {"seq": 2,  "actor": "PKG_SECURITY",         "action": "authenticate(p_username, p_password) → INSERT USER_SESSIONS, returns session_id", "file": "plsql/packages/PKG_SECURITY.pkb"},
+        {"seq": 3,  "actor": "PKG_AUDIT",            "action": "log_action('USER_SESSIONS', session_id, 'LOGIN', user) [AUTONOMOUS_TRANSACTION]", "file": "plsql/packages/PKG_AUDIT.pkb"},
+        {"seq": 4,  "actor": "HRMS_LOGIN.fmb",       "action": "Sets :GLOBAL.session_id, :GLOBAL.current_user, :GLOBAL.current_emp_id"},
+        {"seq": 5,  "actor": "HRMS_LOGIN.fmb",       "action": "OPEN_FORM HRMS_MENU"},
+        {"seq": 6,  "actor": "HRMS_COMMON_LIB",      "action": "check_session → PKG_SECURITY.is_session_valid on every navigation (30-min timeout from LOGIN_TIME)"}
+      ],
+      "known_issues": [
+        "No brute-force protection in PKG_SECURITY.authenticate",
+        "TOO_MANY_ROWS exception handler picks lowest EMP_ID — could authenticate wrong user",
+        "Password validation is a stub — no hash comparison against stored credential",
+        "Session timeout based on LOGIN_TIME not last activity"
+      ],
+      "confidence": 1.0
+    },
+    {
+      "flow_id": "FLOW-02",
+      "name": "Hire New Employee",
+      "trigger": "HR administrator fills employee form and clicks Save (new record)",
+      "steps": [
+        {"seq": 1,  "actor": "HRMS_EMPLOYEE.fmb",    "action": "HIRE_DATE.WHEN-VALIDATE-ITEM — validates ≤ 90 days future", "file": "forms/xml-exports/HRMS_EMPLOYEE.xml"},
+        {"seq": 2,  "actor": "HRMS_EMPLOYEE.fmb",    "action": "BTN_SAVE.WHEN-BUTTON-PRESSED"},
+        {"seq": 3,  "actor": "PKG_EMPLOYEE",         "action": "create_employee(p_first_name, p_last_name, p_dept_id, p_job_id, p_hire_date, p_salary, ...)", "file": "plsql/packages/PKG_EMPLOYEE.pkb"},
+        {"seq": 4,  "actor": "PKG_EMPLOYEE",         "action": "generate_emp_number() — SELECT MAX + 1 (race condition; no SELECT FOR UPDATE)", "file": "plsql/packages/PKG_EMPLOYEE.pkb"},
+        {"seq": 5,  "actor": "DB Trigger",           "action": "TRG_EMPLOYEES_VALIDATE BEFORE INSERT — validates HIRE_DATE ≤ SYSDATE+180, salary ≥ JOB_GRADES.MIN_SALARY", "file": "schema/triggers/trg_employees.sql"},
+        {"seq": 6,  "actor": "PKG_EMPLOYEE",         "action": "INSERT EMPLOYEES (EMPLOYMENT_STATUS='ACTIVE', ACTIVE_FLAG='Y')"},
+        {"seq": 7,  "actor": "DB Trigger",           "action": "TRG_EMPLOYEES_AUDIT AFTER INSERT → PKG_AUDIT.log_action [AUTONOMOUS_TRANSACTION]"},
+        {"seq": 8,  "actor": "PKG_EMPLOYEE",         "action": "log_history('NEW_HIRE', ...) [AUTONOMOUS_TRANSACTION]", "file": "plsql/packages/PKG_EMPLOYEE.pkb"},
+        {"seq": 9,  "actor": "PKG_PAYROLL",          "action": "create_salary_record(emp_id, salary, ...) — end-dates any prior ACTIVE record, inserts new", "file": "plsql/packages/PKG_PAYROLL.pkb"},
+        {"seq": 10, "actor": "PKG_EMPLOYEE",         "action": "initialize leave balances (via PKG_LEAVE or direct INSERT — exact mechanism unknown)", "notes": "inferred from domain model"},
+        {"seq": 11, "actor": "PKG_AUDIT",            "action": "log_action('EMPLOYEES', emp_id, 'INSERT', user) [AUTONOMOUS_TRANSACTION]"},
+        {"seq": 12, "actor": "PKG_EMPLOYEE",         "action": "RETURN v_emp_id"}
+      ],
+      "known_issues": [
+        "Form validates 90-day future limit; DB trigger allows 180 days — inconsistency",
+        "generate_emp_number has race condition under concurrent inserts",
+        "PKG_EMPLOYEE → PKG_PAYROLL call creates circular dependency (CYCLE-01)"
+      ],
+      "confidence": 0.9
+    },
+    {
+      "flow_id": "FLOW-03",
+      "name": "Terminate Employee",
+      "trigger": "HR administrator clicks Terminate on HRMS_EMPLOYEE form",
+      "steps": [
+        {"seq": 1,  "actor": "HRMS_EMPLOYEE.fmb",    "action": "BTN_TERMINATE.WHEN-BUTTON-PRESSED"},
+        {"seq": 2,  "actor": "PKG_EMPLOYEE",         "action": "terminate_employee(p_emp_id, p_termination_date, p_reason)", "file": "plsql/packages/PKG_EMPLOYEE.pkb"},
+        {"seq": 3,  "actor": "PKG_EMPLOYEE",         "action": "UPDATE EMPLOYEES SET EMPLOYMENT_STATUS='TERMINATED', ACTIVE_FLAG='N', TERMINATION_DATE, TERMINATION_REASON"},
+        {"seq": 4,  "actor": "PKG_LEAVE",            "action": "Cancels all PENDING leave requests for emp_id"},
+        {"seq": 5,  "actor": "PKG_PAYROLL",          "action": "End-dates current salary record (END_DATE = termination_date)"},
+        {"seq": 6,  "actor": "PKG_PAYROLL",          "action": "Sets all active EMPLOYEE_PAY_ELEMENTS to inactive"},
+        {"seq": 7,  "actor": "PKG_NOTIFICATION",     "action": "send_notification to manager (AUTONOMOUS_TRANSACTION, async)"},
+        {"seq": 8,  "actor": "PKG_EMPLOYEE",         "action": "log_history('TERMINATION', ...) [AUTONOMOUS_TRANSACTION]"},
+        {"seq": 9,  "actor": "DB Trigger",           "action": "TRG_EMPLOYEES_AUDIT AFTER UPDATE → PKG_AUDIT.log_action"}
+      ],
+      "known_issues": [
+        "TODO comment in code: COBRA benefits notification not implemented",
+        "TODO: system access revocation not implemented",
+        "TODO: final pay calculation not implemented",
+        "TRG_EMPLOYEES_VALIDATE prevents ACTIVE_FLAG changes to terminated employees; rehire_employee is the only valid reactivation path"
+      ],
+      "confidence": 0.9
+    },
+    {
+      "flow_id": "FLOW-04",
+      "name": "Payroll Calculation Run",
+      "trigger": "Payroll administrator clicks Calculate on HRMS_PAYROLL form",
+      "steps": [
+        {"seq": 1,  "actor": "HRMS_PAYROLL.fmb",     "action": "BTN_CALCULATE.WHEN-BUTTON-PRESSED"},
+        {"seq": 2,  "actor": "PKG_PAYROLL",          "action": "calculate_payroll(p_run_id)", "file": "plsql/packages/PKG_PAYROLL.pkb"},
+        {"seq": 3,  "actor": "PKG_PAYROLL",          "action": "UPDATE PAYROLL_RUNS SET STATUS='PROCESSING'"},
+        {"seq": 4,  "actor": "PKG_PAYROLL",          "action": "OPEN cursor FOR all ACTIVE employees in run"},
+        {"seq": 5,  "actor": "PKG_PAYROLL",          "action": "LOOP per employee: calculate_gross_pay(emp_id, pay_elements)"},
+        {"seq": 6,  "actor": "PKG_PAYROLL",          "action": "LOOP per employee: calculate_federal_tax(gross_pay, filing_status) — HARD-CODED 2024 brackets"},
+        {"seq": 7,  "actor": "PKG_PAYROLL",          "action": "LOOP per employee: calculate_state_tax(gross_pay, state_code) — simplified flat rates"},
+        {"seq": 8,  "actor": "PKG_PAYROLL",          "action": "LOOP per employee: calculate_fica(gross_pay, ytd_ss_wages) — $168,600 wage base hard-coded"},
+        {"seq": 9,  "actor": "PKG_PAYROLL",          "action": "INSERT PAYROLL_DETAILS for each employee"},
+        {"seq": 10, "actor": "PKG_PAYROLL",          "action": "COMMIT every 50 employees (partial commit anti-pattern)"},
+        {"seq": 11, "actor": "PKG_PAYROLL",          "action": "UPDATE PAYROLL_RUNS SET STATUS='CALCULATED', total amounts"},
+        {"seq": 12, "actor": "PKG_AUDIT",            "action": "log_action('PAYROLL_RUNS', run_id, 'CALCULATE', user)"}
+      ],
+      "known_issues": [
+        "Partial COMMIT every 50 rows — failure leaves run in half-calculated state with no rollback path",
+        "Row-by-row cursor processing — documented in code as needing refactor to BULK COLLECT",
+        "Tax brackets and FICA wage base are hard-coded 2024 values — must be updated annually",
+        "calculate_state_tax uses simplified flat rates — may not match actual state tax rules"
+      ],
+      "confidence": 0.95
+    },
+    {
+      "flow_id": "FLOW-05",
+      "name": "Payroll Approve and GL Export",
+      "trigger": "Payroll administrator clicks Approve on HRMS_PAYROLL form after calculation",
+      "steps": [
+        {"seq": 1,  "actor": "HRMS_PAYROLL.fmb",     "action": "BTN_APPROVE.WHEN-BUTTON-PRESSED"},
+        {"seq": 2,  "actor": "PKG_PAYROLL",          "action": "approve_payroll(p_run_id, p_user)", "file": "plsql/packages/PKG_PAYROLL.pkb"},
+        {"seq": 3,  "actor": "PKG_PAYROLL",          "action": "UPDATE PAYROLL_RUNS SET STATUS='APPROVED'"},
+        {"seq": 4,  "actor": "PKG_PAYROLL",          "action": "Calls PKG_INTEGRATION.generate_gl_journal(p_run_id)"},
+        {"seq": 5,  "actor": "PKG_INTEGRATION",      "action": "Queries PAYROLL_RUNS and PAYROLL_DETAILS", "file": "plsql/packages/PKG_INTEGRATION.pkb"},
+        {"seq": 6,  "actor": "PKG_INTEGRATION",      "action": "UTL_FILE.FOPEN(GL_FEED_OUT, filename, 'W') — opens pipe-delimited output file"},
+        {"seq": 7,  "actor": "PKG_INTEGRATION",      "action": "Writes pipe-delimited GL journal lines per payroll element"},
+        {"seq": 8,  "actor": "PKG_INTEGRATION",      "action": "UTL_FILE.FCLOSE — closes file"},
+        {"seq": 9,  "actor": "PKG_AUDIT",            "action": "log_action('PAYROLL_RUNS', run_id, 'APPROVE', user)"},
+        {"seq": 10, "actor": "PKG_NOTIFICATION",     "action": "send_notification to payroll manager (async)"}
+      ],
+      "known_issues": [
+        "UTL_FILE failure after STATUS='APPROVED' leaves payroll approved but no GL file — no compensating transaction",
+        "GL file must be manually picked up and imported into Oracle Financials — no automated FTP/SFTP"
+      ],
+      "confidence": 0.85
+    },
+    {
+      "flow_id": "FLOW-06",
+      "name": "Submit Leave Request",
+      "trigger": "Employee fills leave form and clicks Submit",
+      "steps": [
+        {"seq": 1,  "actor": "HRMS_LEAVE.fmb",       "action": "BTN_SUBMIT.WHEN-BUTTON-PRESSED"},
+        {"seq": 2,  "actor": "PKG_LEAVE",            "action": "submit_leave_request(p_emp_id, p_leave_type_id, p_start_date, p_end_date, p_reason)", "file": "plsql/packages/PKG_LEAVE.pkb"},
+        {"seq": 3,  "actor": "PKG_LEAVE",            "action": "Validates: employee ACTIVE, leave type ACTIVE, minimum tenure met"},
+        {"seq": 4,  "actor": "PKG_LEAVE",            "action": "Validates: start_date ≤ SYSDATE + 5 days (no more than 5 days backdating)"},
+        {"seq": 5,  "actor": "PKG_LEAVE",            "action": "calculate_business_days(start_date, end_date) — BUG: observed holidays not handled"},
+        {"seq": 6,  "actor": "PKG_LEAVE",            "action": "check_leave_overlap(emp_id, start_date, end_date) [PRIVATE] — raises if overlap"},
+        {"seq": 7,  "actor": "PKG_LEAVE",            "action": "For ACCRUAL leave types: check balance ≥ requested days"},
+        {"seq": 8,  "actor": "PKG_LEAVE",            "action": "INSERT LEAVE_REQUESTS (STATUS='PENDING')"},
+        {"seq": 9,  "actor": "PKG_LEAVE",            "action": "UPDATE LEAVE_BALANCES SET PENDING_DAYS = PENDING_DAYS + total_days"},
+        {"seq": 10, "actor": "PKG_NOTIFICATION",     "action": "send_notification to manager (async)"},
+        {"seq": 11, "actor": "PKG_AUDIT",            "action": "log_action('LEAVE_REQUESTS', request_id, 'INSERT', user)"},
+        {"seq": 12, "actor": "PKG_LEAVE",            "action": "RETURN v_request_id"}
+      ],
+      "known_issues": [
+        "calculate_business_days does not account for observed holidays (e.g. observed Monday when holiday falls on Sunday)",
+        "VW_LEAVE_SUMMARY AVAILABLE formula omits PENDING days — potential double-booking if employee checks balance via view"
+      ],
+      "confidence": 1.0
+    },
+    {
+      "flow_id": "FLOW-07",
+      "name": "Approve Leave Request",
+      "trigger": "Manager approves leave request (via HRMS_LEAVE form or pending approvals view)",
+      "steps": [
+        {"seq": 1,  "actor": "HRMS_LEAVE.fmb",       "action": "Approve action triggered"},
+        {"seq": 2,  "actor": "PKG_LEAVE",            "action": "approve_leave_request(p_request_id, p_approver_id, p_comments)", "file": "plsql/packages/PKG_LEAVE.pkb"},
+        {"seq": 3,  "actor": "PKG_LEAVE",            "action": "UPDATE LEAVE_REQUESTS SET STATUS='APPROVED', APPROVED_BY, APPROVED_DATE"},
+        {"seq": 4,  "actor": "PKG_LEAVE",            "action": "UPDATE LEAVE_BALANCES SET PENDING_DAYS = PENDING_DAYS - total_days, USED_DAYS = USED_DAYS + total_days"},
+        {"seq": 5,  "actor": "PKG_NOTIFICATION",     "action": "send_notification to employee (async)"},
+        {"seq": 6,  "actor": "PKG_AUDIT",            "action": "log_action('LEAVE_REQUESTS', request_id, 'APPROVE', user)"}
+      ],
+      "confidence": 1.0
+    },
+    {
+      "flow_id": "FLOW-08",
+      "name": "Performance Review Cycle",
+      "trigger": "HR admin creates review cycle, opens it, bulk generates reviews",
+      "steps": [
+        {"seq": 1,  "actor": "HRMS_PERFORMANCE.fmb", "action": "Admin creates cycle via form"},
+        {"seq": 2,  "actor": "PKG_PERFORMANCE",      "action": "create_review_cycle(...) → INSERT REVIEW_CYCLES STATUS='DRAFT'", "file": "plsql/packages/PKG_PERFORMANCE.pkb"},
+        {"seq": 3,  "actor": "PKG_PERFORMANCE",      "action": "open_review_cycle → STATUS='OPEN'"},
+        {"seq": 4,  "actor": "PKG_PERFORMANCE",      "action": "generate_reviews_for_cycle(p_cycle_id) — loops all ACTIVE employees with MANAGER_EMP_ID"},
+        {"seq": 5,  "actor": "PKG_PERFORMANCE",      "action": "For each: create_review(cycle_id, emp_id, manager_emp_id)"},
+        {"seq": 6,  "actor": "PKG_NOTIFICATION",     "action": "send_notification to each employee (async)"},
+        {"seq": 7,  "actor": "PKG_PERFORMANCE",      "action": "COMMIT after all employees processed"},
+        {"seq": 8,  "actor": "PKG_PERFORMANCE",      "action": "Employee submits self-assessment: submit_self_assessment → STATUS='MANAGER_REVIEW', notifies reviewer"},
+        {"seq": 9,  "actor": "PKG_PERFORMANCE",      "action": "Manager submits review: submit_manager_review → applies rating label CASE, STATUS='COMPLETED', notifies employee"},
+        {"seq": 10, "actor": "PKG_PERFORMANCE",      "action": "Employee acknowledges: acknowledge_review → STATUS='ACKNOWLEDGED', records ACK_DATE"}
+      ],
+      "rating_labels": {
+        "source_file": "plsql/packages/PKG_PERFORMANCE.pkb",
+        "source_lines": "148-154",
+        "mapping": {
+          "≥4.5": "Exceptional",
+          "≥3.5": "Exceeds Expectations",
+          "≥2.5": "Meets Expectations",
+          "≥1.5": "Needs Improvement",
+          "<1.5": "Unsatisfactory"
+        }
+      },
+      "known_issues": [
+        "Rating labels are hard-coded in CASE expression — cannot be updated without code change",
+        "generate_reviews_for_cycle swallows DUP_VAL_ON_INDEX silently (idempotent but opaque)"
+      ],
+      "confidence": 1.0
+    },
+    {
+      "flow_id": "FLOW-09",
+      "name": "Notification Queue Dispatch (Background)",
+      "trigger": "DBMS_SCHEDULER fires PKG_NOTIFICATION.process_queue every 5 minutes",
+      "steps": [
+        {"seq": 1,  "actor": "DBMS_SCHEDULER",       "action": "Fires scheduled job → PKG_NOTIFICATION.process_queue(p_batch_size => 50)"},
+        {"seq": 2,  "actor": "PKG_NOTIFICATION",     "action": "SELECT top 50 PENDING EMAIL notifications ordered by priority, created_date", "file": "plsql/packages/PKG_NOTIFICATION.pkb"},
+        {"seq": 3,  "actor": "PKG_NOTIFICATION",     "action": "FOR EACH notification: UTL_SMTP.OPEN_CONNECTION(smtp.internal.company.com, 25) — NEW connection per email"},
+        {"seq": 4,  "actor": "PKG_NOTIFICATION",     "action": "UTL_SMTP.HELO/MAIL/RCPT/OPEN_DATA/WRITE_DATA/CLOSE_DATA/QUIT"},
+        {"seq": 5,  "actor": "PKG_NOTIFICATION",     "action": "UPDATE NOTIFICATION_QUEUE SET STATUS='SENT', SENT_DATE"},
+        {"seq": 6,  "actor": "PKG_NOTIFICATION",     "action": "EXCEPTION: UPDATE STATUS='FAILED', ERROR_MESSAGE, RETRY_COUNT+1"},
+        {"seq": 7,  "actor": "PKG_NOTIFICATION",     "action": "COMMIT at end of batch"},
+        {"seq": 8,  "actor": "PKG_COMMON",           "action": "log_info (if any sent or failed)"}
+      ],
+      "known_issues": [
+        "New TCP/SMTP connection opened per email — no connection pooling — inefficient for large batches",
+        "SMTP on port 25, no TLS/STARTTLS encryption",
+        "SMTP config (host, port, from address) hard-coded as package constants — requires recompile to change"
+      ],
+      "confidence": 1.0
+    },
+    {
+      "flow_id": "FLOW-10",
+      "name": "Monthly Leave Accrual (Background)",
+      "trigger": "DBMS_SCHEDULER fires PKG_LEAVE.run_monthly_accrual on 1st of month",
+      "steps": [
+        {"seq": 1,  "actor": "DBMS_SCHEDULER",       "action": "Fires scheduled job → PKG_LEAVE.run_monthly_accrual"},
+        {"seq": 2,  "actor": "PKG_LEAVE",            "action": "Iterates all ACTIVE employees with accrual-type leave balances", "file": "plsql/packages/PKG_LEAVE.pkb"},
+        {"seq": 3,  "actor": "PKG_LEAVE",            "action": "Calculates accrual amount per leave type accrual rule"},
+        {"seq": 4,  "actor": "PKG_LEAVE",            "action": "UPDATE LEAVE_BALANCES add accrual amount"},
+        {"seq": 5,  "actor": "PKG_LEAVE",            "action": "INSERT LEAVE_ACCRUAL_LOG"},
+        {"seq": 6,  "actor": "PKG_LEAVE",            "action": "COMMIT every 100 employees (partial commit)"},
+        {"seq": 7,  "actor": "PKG_AUDIT",            "action": "log_action('LEAVE_BALANCES', ..., 'ACCRUE', user)"}
+      ],
+      "known_issues": [
+        "Partial COMMIT every 100 rows — failure mid-batch results in partial accrual state",
+        "expire_carryover procedure has documented bug: double-subtracts if run twice on same day"
+      ],
+      "confidence": 0.9
+    }
+  ]
+}

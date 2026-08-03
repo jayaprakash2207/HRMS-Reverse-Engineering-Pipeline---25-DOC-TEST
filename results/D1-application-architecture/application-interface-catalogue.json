@@ -1,0 +1,215 @@
+{
+  "extraction_stage": "Stage 4 — Interface Discovery",
+  "description": "All user-facing and system-to-system interfaces for the HRMS application.",
+  "user_interfaces": [
+    {
+      "interface_id": "UI-01",
+      "name": "HRMS Login",
+      "form": "HRMS_LOGIN.fmb",
+      "type": "Oracle Forms screen",
+      "entry_point": true,
+      "users": "All HRMS users",
+      "actions": [
+        {"label": "Login", "trigger": "BTN_LOGIN.WHEN-BUTTON-PRESSED", "calls": "PKG_SECURITY.authenticate(p_username, p_password)", "side_effects": ["Sets :GLOBAL.session_id, :GLOBAL.current_user, :GLOBAL.current_emp_id", "Opens HRMS_MENU form"]}
+      ],
+      "session_globals_set": [":GLOBAL.session_id", ":GLOBAL.current_user", ":GLOBAL.current_emp_id"],
+      "confidence": 1.0
+    },
+    {
+      "interface_id": "UI-02",
+      "name": "HRMS Main Menu",
+      "form": "HRMS_MENU.fmb",
+      "type": "Oracle Forms navigation hub",
+      "version": "HRMS v4.2 Build 2024.03.15",
+      "users": "All authenticated HRMS users",
+      "actions": [
+        {"label": "Employees", "calls": "OPEN_FORM HRMS_EMPLOYEE", "permission": null},
+        {"label": "Leave", "calls": "OPEN_FORM HRMS_LEAVE", "permission": null},
+        {"label": "Performance", "calls": "OPEN_FORM HRMS_PERFORMANCE", "permission": null},
+        {"label": "Payroll", "calls": "PKG_SECURITY.has_permission('PAYROLL') → OPEN_FORM HRMS_PAYROLL", "permission": "PAYROLL (GRADE_ID ≥ 5)"},
+        {"label": "Reports", "calls": "PKG_SECURITY.has_permission('REPORTS') → OPEN_FORM HRMS_REPORTS", "permission": "REPORTS (GRADE_ID ≥ 5)"},
+        {"label": "Admin", "calls": "PKG_SECURITY.has_permission('ADMIN') → OPEN_FORM HRMS_ADMIN", "permission": "ADMIN (GRADE_ID ≥ 8)"}
+      ],
+      "session_check": "HRMS_COMMON_LIB.check_session → PKG_SECURITY.is_session_valid on each navigation",
+      "confidence": 1.0
+    },
+    {
+      "interface_id": "UI-03",
+      "name": "Employee Management",
+      "form": "HRMS_EMPLOYEE.fmb",
+      "type": "Oracle Forms master-detail screen",
+      "users": "HR administrators, managers",
+      "blocks": [
+        {"name": "EMPLOYEES", "type": "master", "table": "EMPLOYEES"},
+        {"name": "SALARY_RECORDS", "type": "detail", "table": "SALARY_RECORDS"}
+      ],
+      "actions": [
+        {"label": "Save (New Employee)", "calls": "PKG_EMPLOYEE.create_employee"},
+        {"label": "Save (Update Employee)", "calls": "PKG_EMPLOYEE.update_employee"},
+        {"label": "Terminate Employee", "calls": "PKG_EMPLOYEE.terminate_employee"},
+        {"label": "Search", "calls": "PKG_EMPLOYEE.search_employees"}
+      ],
+      "restrictions": [
+        "EMPLOYMENT_STATUS field: UpdateAllowed=No — status must be changed via package procedures",
+        "HIRE_DATE validation: 90-day future limit in form WHEN-VALIDATE-ITEM trigger"
+      ],
+      "inconsistency": "Form validates HIRE_DATE max 90 days future; DB trigger TRG_EMPLOYEES_VALIDATE uses 180 days",
+      "confidence": 1.0
+    },
+    {
+      "interface_id": "UI-04",
+      "name": "Payroll Processing",
+      "form": "HRMS_PAYROLL.fmb",
+      "type": "Oracle Forms screen",
+      "users": "Payroll administrators (GRADE_ID ≥ 5)",
+      "actions": [
+        {"label": "Create Payroll Run", "calls": "PKG_PAYROLL.create_payroll_run"},
+        {"label": "Calculate Payroll", "calls": "PKG_PAYROLL.calculate_payroll", "notes": "Long-running — processes employees one by one; commits every 50"},
+        {"label": "Approve Payroll", "calls": "PKG_PAYROLL.approve_payroll"}
+      ],
+      "confidence": 1.0
+    },
+    {
+      "interface_id": "UI-05",
+      "name": "Leave Management",
+      "form": "HRMS_LEAVE.fmb",
+      "type": "Oracle Forms screen",
+      "users": "All employees, managers",
+      "actions": [
+        {"label": "Submit Leave Request", "calls": "PKG_LEAVE.submit_leave_request"},
+        {"label": "Cancel Request", "calls": "PKG_LEAVE.cancel_leave_request"}
+      ],
+      "confidence": 1.0
+    },
+    {
+      "interface_id": "UI-06",
+      "name": "Performance Reviews",
+      "form": "HRMS_PERFORMANCE.fmb",
+      "type": "Oracle Forms screen",
+      "users": "All employees, managers",
+      "actions": [
+        {"label": "Submit Self-Assessment", "calls": "PKG_PERFORMANCE.submit_self_assessment"},
+        {"label": "Submit Manager Review", "calls": "PKG_PERFORMANCE.submit_manager_review"},
+        {"label": "Add Goal", "calls": "PKG_PERFORMANCE.add_goal"},
+        {"label": "Update Goal Progress", "calls": "PKG_PERFORMANCE.update_goal_progress"},
+        {"label": "Acknowledge Review", "calls": "PKG_PERFORMANCE.acknowledge_review"}
+      ],
+      "restrictions": ["PERFORMANCE_GOALS.DeleteAllowed = No — goals cannot be deleted once created"],
+      "confidence": 1.0
+    },
+    {
+      "interface_id": "UI-07",
+      "name": "Reports",
+      "form": "HRMS_REPORTS.fmb",
+      "type": "Oracle Forms screen",
+      "users": "Managers, HR administrators (GRADE_ID ≥ 5)",
+      "actions": "unknown — form source not scanned",
+      "likely_calls": ["PKG_REPORTING.headcount_report", "PKG_REPORTING.turnover_report", "PKG_REPORTING.payroll_summary_report", "PKG_REPORTING.leave_utilization_report", "PKG_REPORTING.performance_summary_report", "PKG_REPORTING.compensation_analysis", "PKG_REPORTING.department_summary_report"],
+      "confidence": 0.6
+    },
+    {
+      "interface_id": "UI-08",
+      "name": "Admin",
+      "form": "HRMS_ADMIN.fmb",
+      "type": "Oracle Forms screen",
+      "users": "System administrators (GRADE_ID ≥ 8)",
+      "actions": "unknown — form source not scanned",
+      "likely_includes": ["SYSTEM_PARAMETERS maintenance", "User/session management", "Lookup values", "Audit log review"],
+      "confidence": 0.5
+    }
+  ],
+  "system_interfaces": [
+    {
+      "interface_id": "SYS-01",
+      "name": "Oracle Financials GL Journal Feed",
+      "direction": "OUTBOUND",
+      "protocol": "Flat file (pipe-delimited)",
+      "mechanism": "UTL_FILE → Oracle Directory Object GL_FEED_OUT",
+      "triggered_by": "PKG_INTEGRATION.generate_gl_journal — called when payroll run is approved (PKG_PAYROLL)",
+      "format": "Pipe-delimited text file",
+      "target_system": "Oracle Financials (ERP — exact version unknown)",
+      "file_pattern": "unknown — not documented in code",
+      "confidence": 0.9,
+      "evidence": "plsql/packages/PKG_INTEGRATION.pkb"
+    },
+    {
+      "interface_id": "SYS-02",
+      "name": "ADP Benefits Feed",
+      "direction": "OUTBOUND",
+      "protocol": "Flat file (fixed-width)",
+      "mechanism": "UTL_FILE → Oracle Directory Object BENEFITS_FEED_OUT",
+      "triggered_by": "PKG_INTEGRATION.export_benefits_feed — manual trigger (no scheduler evidence found)",
+      "format": "ADP fixed-width format (vendor-specific)",
+      "target_system": "ADP payroll/benefits platform",
+      "notes": "Documented in code as 'legacy', specific to ADP vendor",
+      "confidence": 0.9,
+      "evidence": "plsql/packages/PKG_INTEGRATION.pkb"
+    },
+    {
+      "interface_id": "SYS-03",
+      "name": "Time & Attendance Import",
+      "direction": "INBOUND",
+      "protocol": "Flat file (CSV)",
+      "mechanism": "UTL_FILE ← Oracle Directory Object TIME_ATTENDANCE_IN",
+      "triggered_by": "PKG_INTEGRATION.import_time_attendance",
+      "format": "CSV",
+      "source_system": "unknown — time & attendance vendor not identified",
+      "implementation_status": "STUB — CSV parsing not implemented; TODO comment in code",
+      "confidence": 0.8,
+      "evidence": "plsql/packages/PKG_INTEGRATION.pkb"
+    },
+    {
+      "interface_id": "SYS-04",
+      "name": "LDAP/Active Directory Org Sync",
+      "direction": "OUTBOUND",
+      "protocol": "unknown",
+      "mechanism": "PKG_INTEGRATION.sync_org_structure — placeholder only",
+      "implementation_status": "NOT IMPLEMENTED — procedure body is a stub with TODO",
+      "confidence": 0.6,
+      "evidence": "plsql/packages/PKG_INTEGRATION.pkb"
+    },
+    {
+      "interface_id": "SYS-05",
+      "name": "Email Notifications (SMTP)",
+      "direction": "OUTBOUND",
+      "protocol": "SMTP (port 25, unencrypted)",
+      "mechanism": "UTL_SMTP → c_smtp_host = smtp.internal.company.com",
+      "triggered_by": "PKG_NOTIFICATION.process_queue — called by DBMS_SCHEDULER every 5 minutes",
+      "from_address": "hrms-noreply@company.com",
+      "notes": "SMTP config hard-coded; no TLS/STARTTLS; new TCP connection opened per email",
+      "confidence": 1.0,
+      "evidence": "plsql/packages/PKG_NOTIFICATION.pkb lines 7-10, 90-107"
+    },
+    {
+      "interface_id": "SYS-06",
+      "name": "Pay Register File Export",
+      "direction": "OUTBOUND",
+      "protocol": "Flat file (CSV)",
+      "mechanism": "UTL_FILE → Oracle Directory Object PAYROLL_OUTPUT",
+      "triggered_by": "PKG_PAYROLL.generate_pay_register — manual trigger from HRMS_PAYROLL form or DBA",
+      "format": "CSV",
+      "confidence": 0.9,
+      "evidence": "plsql/packages/PKG_PAYROLL.pkb"
+    }
+  ],
+  "scheduled_interfaces": [
+    {
+      "interface_id": "SCHED-01",
+      "name": "Monthly Leave Accrual",
+      "type": "batch_job",
+      "procedure": "PKG_LEAVE.run_monthly_accrual",
+      "schedule": "1st of each month (DBMS_SCHEDULER)",
+      "scheduler_ddl_found": false,
+      "confidence": 0.8
+    },
+    {
+      "interface_id": "SCHED-02",
+      "name": "Notification Queue Processor",
+      "type": "batch_job",
+      "procedure": "PKG_NOTIFICATION.process_queue",
+      "schedule": "Every 5 minutes (DBMS_SCHEDULER)",
+      "scheduler_ddl_found": false,
+      "confidence": 0.9
+    }
+  ]
+}

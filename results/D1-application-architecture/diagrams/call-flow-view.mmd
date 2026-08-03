@@ -1,0 +1,84 @@
+---
+title: HRMS Key Call Flows
+---
+sequenceDiagram
+    autonumber
+
+    box "Presentation"
+        participant FORM as Oracle Forms
+        participant CLIB as HRMS_COMMON_LIB
+    end
+    box "Business Logic"
+        participant SEC as PKG_SECURITY
+        participant EMP as PKG_EMPLOYEE
+        participant PAY as PKG_PAYROLL
+        participant LEAVE as PKG_LEAVE
+        participant PERF as PKG_PERFORMANCE
+        participant NOTIF as PKG_NOTIFICATION
+        participant INTEG as PKG_INTEGRATION
+        participant AUDIT as PKG_AUDIT
+    end
+    box "Data"
+        participant DB as HRMS Oracle Schema
+    end
+
+    Note over FORM,DB: FLOW-01: User Login
+
+    FORM->>SEC: authenticate(username, password)
+    SEC->>DB: SELECT EMPLOYEES where USERNAME (stub: no hash check)
+    SEC->>DB: INSERT USER_SESSIONS
+    SEC-->>FORM: session_id
+    FORM->>FORM: Set :GLOBAL.session_id / current_user / current_emp_id
+    FORM->>CLIB: check_session on each navigation
+    CLIB->>SEC: is_session_valid(session_id) [30-min timeout from LOGIN_TIME]
+
+    Note over FORM,DB: FLOW-02: Hire New Employee
+
+    FORM->>EMP: create_employee(name, dept, job, hire_date, salary)
+    EMP->>EMP: generate_emp_number() ⚠ race condition — no SELECT FOR UPDATE
+    EMP->>DB: [TRG_EMPLOYEES_VALIDATE] BEFORE INSERT — checks HIRE_DATE ≤ SYSDATE+180
+    EMP->>DB: INSERT EMPLOYEES
+    EMP->>AUDIT: log_action (AUTONOMOUS TXN)
+    EMP->>PAY: create_salary_record(emp_id, salary) ⚠ CYCLE-01
+    PAY->>DB: UPDATE SALARY_RECORDS end_date prior active record
+    PAY->>DB: INSERT SALARY_RECORDS
+    EMP-->>FORM: emp_id
+
+    Note over FORM,DB: FLOW-04 / FLOW-05: Payroll Calculate → Approve → GL Export
+
+    FORM->>PAY: calculate_payroll(run_id)
+    PAY->>DB: UPDATE PAYROLL_RUNS STATUS='PROCESSING'
+    loop Per employee (row-by-row ⚠ no BULK COLLECT)
+        PAY->>PAY: calculate_gross_pay / federal_tax ⚠ hard-coded 2024 / state_tax / FICA
+        PAY->>DB: INSERT PAYROLL_DETAILS
+        PAY->>DB: COMMIT every 50 rows ⚠ partial commit anti-pattern
+    end
+    PAY->>DB: UPDATE PAYROLL_RUNS STATUS='CALCULATED'
+    FORM->>PAY: approve_payroll(run_id)
+    PAY->>DB: UPDATE PAYROLL_RUNS STATUS='APPROVED'
+    PAY->>INTEG: generate_gl_journal(run_id)
+    INTEG->>DB: SELECT PAYROLL_RUNS / PAYROLL_DETAILS
+    INTEG-->>INTEG: UTL_FILE write pipe-delimited GL journal to GL_FEED_OUT
+
+    Note over FORM,DB: FLOW-06: Submit Leave Request
+
+    FORM->>LEAVE: submit_leave_request(emp_id, type, start, end, reason)
+    LEAVE->>LEAVE: Validate: active employee, leave type active, tenure, backdating ≤5 days
+    LEAVE->>LEAVE: calculate_business_days() ⚠ observed holidays not handled
+    LEAVE->>LEAVE: check_leave_overlap() [private]
+    LEAVE->>DB: INSERT LEAVE_REQUESTS STATUS='PENDING'
+    LEAVE->>DB: UPDATE LEAVE_BALANCES PENDING_DAYS+
+    LEAVE->>NOTIF: send_notification to manager (AUTONOMOUS TXN → queue)
+    LEAVE->>AUDIT: log_action
+    LEAVE-->>FORM: request_id
+
+    Note over FORM,DB: FLOW-09: Notification Dispatch (Background — every 5 min)
+
+    DB-->>NOTIF: [DBMS_SCHEDULER fires process_queue]
+    NOTIF->>DB: SELECT top 50 PENDING EMAIL notifications
+    loop Per notification
+        NOTIF-->>NOTIF: UTL_SMTP.OPEN_CONNECTION ⚠ new TCP per email
+        NOTIF-->>NOTIF: HELO / MAIL / RCPT / WRITE_DATA / QUIT
+        NOTIF->>DB: UPDATE STATUS='SENT' or STATUS='FAILED'
+    end
+    NOTIF->>DB: COMMIT batch

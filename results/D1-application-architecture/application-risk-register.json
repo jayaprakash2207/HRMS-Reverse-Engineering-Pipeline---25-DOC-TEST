@@ -1,0 +1,148 @@
+{
+  "extraction_stage": "Stage 9 — Risk Register",
+  "risks": [
+    {
+      "risk_id": "RISK-01",
+      "category": "Security",
+      "severity": "CRITICAL",
+      "title": "SSN encryption key exposed in source code",
+      "description": "The AES-256 key for encrypting/decrypting Social Security Numbers is a plaintext constant in PKG_SECURITY.pkb. Anyone with source code access can decrypt all stored SSNs.",
+      "impact": "Full exposure of all employee PII (SSNs); GDPR/HIPAA/state data privacy law violations; regulatory penalties.",
+      "likelihood": "HIGH — any developer or DBA with repo access",
+      "migration_impact": "During modernization the key must be rotated; all encrypted SSN values must be re-encrypted with a new key managed through a proper key management service. This is a blocking pre-migration security task.",
+      "evidence": "VIO-SEC-01 — plsql/packages/PKG_SECURITY.pkb"
+    },
+    {
+      "risk_id": "RISK-02",
+      "category": "Security",
+      "severity": "CRITICAL",
+      "title": "Authentication is effectively unenforced",
+      "description": "PKG_SECURITY.authenticate is a stub: password comparison against stored credentials is not implemented (TODO comment). Combined with no brute-force protection, the system has no actual authentication barrier.",
+      "impact": "Any user knowing a valid username can log in without the correct password.",
+      "likelihood": "HIGH — in current state this affects all users",
+      "migration_impact": "Authentication must be rebuilt from scratch in any modernized system. User credentials must be migrated to a proper identity provider.",
+      "evidence": "VIO-SEC-06 — plsql/packages/PKG_SECURITY.pkb"
+    },
+    {
+      "risk_id": "RISK-03",
+      "category": "Security",
+      "severity": "HIGH",
+      "title": "SQL injection in employee search",
+      "description": "PKG_EMPLOYEE.search_employees is vulnerable to SQL injection via the p_filter_clause parameter. A malicious user could exfiltrate the entire database, modify data, or execute OS commands via UTL_FILE.",
+      "impact": "Full database compromise; data exfiltration; ransomware injection point.",
+      "likelihood": "MEDIUM — requires authenticated access to HRMS",
+      "migration_impact": "Any REST API or service that wraps this procedure inherits the vulnerability. Must be fixed before or during migration.",
+      "evidence": "VIO-SEC-02 — plsql/packages/PKG_EMPLOYEE.pkb"
+    },
+    {
+      "risk_id": "RISK-04",
+      "category": "Data Integrity",
+      "severity": "HIGH",
+      "title": "Payroll run data corruption on failure",
+      "description": "calculate_payroll commits every 50 employees. A failure mid-run leaves a partially calculated payroll run with no rollback path. Employees may receive incorrect pay or no pay.",
+      "impact": "Payroll errors leading to under/overpayment; compliance violations; employee relations impact.",
+      "likelihood": "MEDIUM — any DB error or timeout mid-run triggers this",
+      "migration_impact": "The partial-commit pattern must not be replicated in any modernized payroll service. The new system needs transactional payroll calculation.",
+      "evidence": "VIO-ARCH-02 — plsql/packages/PKG_PAYROLL.pkb"
+    },
+    {
+      "risk_id": "RISK-05",
+      "category": "Data Integrity",
+      "severity": "HIGH",
+      "title": "Annual tax/compliance value rot",
+      "description": "Federal tax brackets (2024), FICA wage base ($168,600), and state tax rates are hard-coded. They will silently calculate incorrectly for any tax year after 2024 unless a developer manually updates and redeploys the package.",
+      "impact": "Incorrect payroll tax withholding; IRS/state penalties; potential class-action liability.",
+      "likelihood": "HIGH — guaranteed to occur each new tax year",
+      "migration_impact": "Migration must treat these as configuration, not code. Design a TAX_CONFIG table with effective dates.",
+      "evidence": "VIO-ARCH-05 — plsql/packages/PKG_PAYROLL.pkb"
+    },
+    {
+      "risk_id": "RISK-06",
+      "category": "Architecture",
+      "severity": "HIGH",
+      "title": "Circular dependency blocks independent deployment",
+      "description": "PKG_EMPLOYEE and PKG_PAYROLL have a compile-time circular dependency. Neither can be independently deployed, tested, or modernized. Any change to one risks breaking the other.",
+      "impact": "Tight coupling blocks modular migration; any refactor to either package requires coordinated change to both.",
+      "likelihood": "HIGH — affects every deployment",
+      "migration_impact": "Must be broken before independent microservice extraction. A shared domain event or orchestration layer pattern is needed.",
+      "evidence": "CYCLE-01 — plsql/packages/PKG_EMPLOYEE.pks"
+    },
+    {
+      "risk_id": "RISK-07",
+      "category": "Operations",
+      "severity": "HIGH",
+      "title": "DBMS_SCHEDULER jobs not in source control",
+      "description": "The scheduled jobs for PKG_NOTIFICATION.process_queue and PKG_LEAVE.run_monthly_accrual are inferred from code comments but their DDL was not found in the repository. They exist only in the live database.",
+      "impact": "Scheduler jobs lost on environment rebuild; silent failure of notifications and leave accruals.",
+      "likelihood": "HIGH — any environment refresh from source would lose these jobs",
+      "migration_impact": "Before migration, DBA must extract scheduler job DDL and add to version control.",
+      "evidence": "COMP-SCHEDULER-JOBS — inferred from PKG_NOTIFICATION.pkb and PKG_LEAVE.pkb comments"
+    },
+    {
+      "risk_id": "RISK-08",
+      "category": "Operations",
+      "severity": "MEDIUM",
+      "title": "Oracle Forms Java applet — browser support end-of-life",
+      "description": "Oracle Forms 12c serves its client via a Java applet or Java Web Start. Major browsers dropped Java plugin support (Chrome 2015, Firefox 2017). Users require a specific JRE version and potentially Internet Explorer or a dedicated terminal.",
+      "impact": "Expanding set of users unable to access HRMS; increasing support burden for legacy browser/JRE combinations.",
+      "likelihood": "HIGH — already an issue for most modern browsers",
+      "migration_impact": "The Oracle Forms layer is a primary modernization driver. Any web-based replacement eliminates this risk.",
+      "evidence": "HRMS_LOGIN.xml: Oracle Forms 12c (12.2.1.4)"
+    },
+    {
+      "risk_id": "RISK-09",
+      "category": "Operations",
+      "severity": "MEDIUM",
+      "title": "Unimplemented integration stubs",
+      "description": "Time & Attendance import (import_time_attendance) and LDAP/AD org sync (sync_org_structure) are stubs. Any process relying on them receives no data and no error.",
+      "impact": "Time & attendance data not imported; org structure not synchronized with directory.",
+      "likelihood": "HIGH — stubs are permanently non-functional unless developed",
+      "migration_impact": "Any migration plan that depends on these integrations being functional must implement them first.",
+      "evidence": "VIO-OPS-01 — plsql/packages/PKG_INTEGRATION.pkb"
+    },
+    {
+      "risk_id": "RISK-10",
+      "category": "Data Integrity",
+      "severity": "MEDIUM",
+      "title": "Leave balance view shows incorrect available days",
+      "description": "VW_LEAVE_SUMMARY omits PENDING_DAYS from the AVAILABLE calculation. Employees viewing their balance via the view see more available leave than they actually have, potentially leading to double-booking.",
+      "impact": "Over-allocation of leave; HR/manager confusion; payroll impact for unpaid leave.",
+      "likelihood": "MEDIUM — affects anyone using the VW_LEAVE_SUMMARY view",
+      "migration_impact": "The correct formula must be used in any replacement system. Migration data validation must check for existing over-allocated leave.",
+      "evidence": "VIO-DATA-02 — schema/views/hrms_views.sql"
+    },
+    {
+      "risk_id": "RISK-11",
+      "category": "Operations",
+      "severity": "MEDIUM",
+      "title": "Vendor lock-in: ADP benefits feed is hardcoded format",
+      "description": "PKG_INTEGRATION.export_benefits_feed generates a fixed-width file in a format specific to ADP. Changing benefits vendors requires code changes to PKG_INTEGRATION.",
+      "impact": "Inability to switch benefits vendors without code changes; ADP dependency baked into core payroll package.",
+      "likelihood": "LOW — only triggered by vendor change",
+      "migration_impact": "Modernized integration layer should abstract format from vendor; use a configurable export format.",
+      "evidence": "plsql/packages/PKG_INTEGRATION.pkb — '-- Legacy ADP fixed-width format'"
+    },
+    {
+      "risk_id": "RISK-12",
+      "category": "Operations",
+      "severity": "MEDIUM",
+      "title": "Missing COBRA/access revocation/final pay in termination flow",
+      "description": "PKG_EMPLOYEE.terminate_employee has TODO comments for COBRA notification, system access revocation, and final pay calculation. These are compliance-critical steps missing from the implemented flow.",
+      "impact": "COBRA compliance failure; security risk from unrevoked access; incorrect final paychecks.",
+      "likelihood": "HIGH — every termination goes through this incomplete flow",
+      "migration_impact": "These features must be implemented before or during migration.",
+      "evidence": "plsql/packages/PKG_EMPLOYEE.pkb — TODO comments in terminate_employee"
+    },
+    {
+      "risk_id": "RISK-13",
+      "category": "Data Integrity",
+      "severity": "LOW",
+      "title": "Employee number race condition",
+      "description": "generate_emp_number uses SELECT MAX+1 without locking. Concurrent employee creation can generate duplicate numbers.",
+      "impact": "Unique constraint violation on concurrent hire; one transaction fails; HR must retry.",
+      "likelihood": "LOW — requires simultaneous hire transactions",
+      "migration_impact": "Replace with sequence-based ID generation in new system (already available as SEQ_EMPLOYEE).",
+      "evidence": "VIO-DATA-03 — plsql/packages/PKG_EMPLOYEE.pkb"
+    }
+  ]
+}

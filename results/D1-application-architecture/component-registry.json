@@ -1,0 +1,443 @@
+{
+  "extraction_stage": "Stage 3 — Component Discovery",
+  "architecture_layers": ["Presentation (Oracle Forms)", "Business Logic (PL/SQL Packages)", "Data Access (SQL / PL/SQL)", "Data Store (Oracle Schema)"],
+  "components": [
+    {
+      "component_id": "COMP-PKG-01",
+      "name": "PKG_EMPLOYEE",
+      "type": "plsql_package",
+      "layer": "Business Logic",
+      "module": "MOD-01",
+      "files": ["plsql/packages/PKG_EMPLOYEE.pks", "plsql/packages/PKG_EMPLOYEE.pkb"],
+      "procedures_and_functions": [
+        {"name": "create_employee", "type": "FUNCTION", "returns": "NUMBER (emp_id)"},
+        {"name": "update_employee", "type": "PROCEDURE"},
+        {"name": "terminate_employee", "type": "PROCEDURE"},
+        {"name": "rehire_employee", "type": "PROCEDURE"},
+        {"name": "get_employee", "type": "PROCEDURE", "out_params": ["p_cursor OUT t_emp_cursor"]},
+        {"name": "search_employees", "type": "PROCEDURE", "out_params": ["p_cursor OUT t_emp_cursor"], "notes": "SQL injection vulnerability — dynamic SQL with string concatenation"},
+        {"name": "get_org_chart", "type": "FUNCTION", "returns": "SYS_REFCURSOR"},
+        {"name": "get_direct_reports", "type": "FUNCTION", "returns": "SYS_REFCURSOR"},
+        {"name": "is_active", "type": "FUNCTION", "returns": "BOOLEAN"},
+        {"name": "validate_hire_date", "type": "FUNCTION", "returns": "BOOLEAN", "notes": "180-day future limit; inconsistent with HRMS_EMPLOYEE form (90 days)"},
+        {"name": "generate_emp_number", "type": "FUNCTION", "returns": "VARCHAR2", "notes": "Race condition — no SELECT FOR UPDATE"},
+        {"name": "calculate_years_of_service", "type": "FUNCTION", "returns": "NUMBER"},
+        {"name": "get_employee_history", "type": "PROCEDURE", "out_params": ["p_cursor OUT t_emp_cursor"]},
+        {"name": "transfer_employee", "type": "PROCEDURE"},
+        {"name": "promote_employee", "type": "PROCEDURE"},
+        {"name": "add_dependent", "type": "FUNCTION", "returns": "NUMBER"},
+        {"name": "get_dependents", "type": "PROCEDURE"},
+        {"name": "log_history", "type": "PROCEDURE", "visibility": "PRIVATE", "notes": "PRAGMA AUTONOMOUS_TRANSACTION"}
+      ],
+      "package_globals": ["g_current_user", "g_current_emp_id", "g_current_dept_id", "g_debug_mode"],
+      "custom_exceptions": [
+        {"code": -20001, "name": "e_emp_not_found"},
+        {"code": -20002, "name": "e_emp_already_active"},
+        {"code": -20003, "name": "e_emp_already_terminated"},
+        {"code": -20004, "name": "e_invalid_hire_date"},
+        {"code": -20005, "name": "e_invalid_emp_number"}
+      ],
+      "custom_types": ["t_emp_rec", "t_emp_cursor", "t_emp_id_table (TABLE OF NUMBER)", "t_emp_rec_table (TABLE OF t_emp_rec)"],
+      "confidence": 1.0
+    },
+    {
+      "component_id": "COMP-PKG-02",
+      "name": "PKG_PAYROLL",
+      "type": "plsql_package",
+      "layer": "Business Logic",
+      "module": "MOD-02",
+      "files": ["plsql/packages/PKG_PAYROLL.pks", "plsql/packages/PKG_PAYROLL.pkb"],
+      "procedures_and_functions": [
+        {"name": "create_payroll_run", "type": "FUNCTION", "returns": "NUMBER (run_id)"},
+        {"name": "calculate_payroll", "type": "PROCEDURE", "notes": "Partial commits every 50 rows; row-by-row cursor (no bulk); hard-coded 2024 tax brackets"},
+        {"name": "approve_payroll", "type": "PROCEDURE"},
+        {"name": "reverse_payroll", "type": "PROCEDURE"},
+        {"name": "calculate_gross_pay", "type": "FUNCTION", "returns": "NUMBER", "visibility": "PRIVATE"},
+        {"name": "calculate_federal_tax", "type": "FUNCTION", "returns": "NUMBER", "notes": "Hard-coded 2024 tax brackets"},
+        {"name": "calculate_state_tax", "type": "FUNCTION", "returns": "NUMBER", "notes": "Simplified flat rates by state"},
+        {"name": "calculate_fica", "type": "FUNCTION", "returns": "NUMBER", "notes": "FICA wage base $168,600 (2024) hard-coded"},
+        {"name": "create_salary_record", "type": "PROCEDURE", "notes": "End-dates prior ACTIVE record before inserting new one"},
+        {"name": "update_salary_record", "type": "PROCEDURE"},
+        {"name": "get_current_salary", "type": "FUNCTION", "returns": "NUMBER"},
+        {"name": "get_payroll_history", "type": "PROCEDURE", "out_params": ["p_cursor OUT SYS_REFCURSOR"]},
+        {"name": "add_pay_element", "type": "PROCEDURE"},
+        {"name": "remove_pay_element", "type": "PROCEDURE"},
+        {"name": "generate_pay_register", "type": "PROCEDURE", "notes": "UTL_FILE write to Oracle directory PAYROLL_OUTPUT — legacy flat file pattern"}
+      ],
+      "constants": [
+        {"name": "c_ss_rate", "value": "0.062"},
+        {"name": "c_medicare_rate", "value": "0.0145"},
+        {"name": "c_medicare_addl_rate", "value": "0.009"},
+        {"name": "c_medicare_addl_threshold", "value": "200000"},
+        {"name": "c_fica_wage_base", "value": "168600 (hard-coded 2024 value)"}
+      ],
+      "confidence": 1.0
+    },
+    {
+      "component_id": "COMP-PKG-03",
+      "name": "PKG_LEAVE",
+      "type": "plsql_package",
+      "layer": "Business Logic",
+      "module": "MOD-03",
+      "files": ["plsql/packages/PKG_LEAVE.pks", "plsql/packages/PKG_LEAVE.pkb"],
+      "procedures_and_functions": [
+        {"name": "submit_leave_request", "type": "FUNCTION", "returns": "NUMBER (request_id)"},
+        {"name": "approve_leave_request", "type": "PROCEDURE"},
+        {"name": "reject_leave_request", "type": "PROCEDURE"},
+        {"name": "cancel_leave_request", "type": "PROCEDURE"},
+        {"name": "get_leave_requests", "type": "PROCEDURE", "out_params": ["p_cursor OUT SYS_REFCURSOR"]},
+        {"name": "get_leave_balance", "type": "FUNCTION", "returns": "NUMBER"},
+        {"name": "check_leave_overlap", "type": "FUNCTION", "returns": "BOOLEAN", "visibility": "PRIVATE"},
+        {"name": "calculate_business_days", "type": "FUNCTION", "returns": "NUMBER", "notes": "Bug: does not handle observed holidays"},
+        {"name": "run_monthly_accrual", "type": "PROCEDURE", "notes": "Batch; DBMS_SCHEDULER job; commits every 100 employees"},
+        {"name": "process_carryover", "type": "PROCEDURE", "notes": "Year-end; caps at CARRYOVER_MAX"},
+        {"name": "expire_carryover", "type": "PROCEDURE", "notes": "Bug: double-subtract if run twice on same day"},
+        {"name": "create_leave_type", "type": "FUNCTION", "returns": "NUMBER"},
+        {"name": "update_leave_type", "type": "PROCEDURE"},
+        {"name": "initialize_leave_balance", "type": "PROCEDURE"}
+      ],
+      "confidence": 1.0
+    },
+    {
+      "component_id": "COMP-PKG-04",
+      "name": "PKG_NOTIFICATION",
+      "type": "plsql_package",
+      "layer": "Business Logic / Infrastructure",
+      "module": "MOD-06",
+      "files": ["plsql/packages/PKG_NOTIFICATION.pks", "plsql/packages/PKG_NOTIFICATION.pkb"],
+      "procedures_and_functions": [
+        {"name": "send_notification", "type": "PROCEDURE", "notes": "PRAGMA AUTONOMOUS_TRANSACTION; queues to NOTIFICATION_QUEUE; resolves email from EMP_ID"},
+        {"name": "process_queue", "type": "PROCEDURE", "notes": "UTL_SMTP; opens new connection per email; batch 50; called by DBMS_SCHEDULER every 5 min"},
+        {"name": "retry_failed", "type": "PROCEDURE"},
+        {"name": "cancel_notification", "type": "PROCEDURE"}
+      ],
+      "constants": [
+        {"name": "c_smtp_host", "value": "smtp.internal.company.com (hard-coded)"},
+        {"name": "c_smtp_port", "value": "25 (hard-coded)"},
+        {"name": "c_from_address", "value": "hrms-noreply@company.com (hard-coded)"}
+      ],
+      "confidence": 1.0
+    },
+    {
+      "component_id": "COMP-PKG-05",
+      "name": "PKG_INTEGRATION",
+      "type": "plsql_package",
+      "layer": "Integration",
+      "module": "MOD-06",
+      "files": ["plsql/packages/PKG_INTEGRATION.pks", "plsql/packages/PKG_INTEGRATION.pkb"],
+      "procedures_and_functions": [
+        {"name": "generate_gl_journal", "type": "PROCEDURE", "notes": "UTL_FILE; pipe-delimited flat file to Oracle dir GL_FEED_OUT; Oracle Financials batch import"},
+        {"name": "export_benefits_feed", "type": "PROCEDURE", "notes": "UTL_FILE; ADP fixed-width format to BENEFITS_FEED_OUT; documented as legacy/ADP-specific"},
+        {"name": "import_time_attendance", "type": "PROCEDURE", "notes": "UTL_FILE read from TIME_ATTENDANCE_IN; stub — CSV parsing not implemented"},
+        {"name": "sync_org_structure", "type": "PROCEDURE", "notes": "Placeholder — LDAP/AD sync not implemented"},
+        {"name": "get_integration_status", "type": "FUNCTION", "returns": "VARCHAR2", "notes": "Delegates to PKG_COMMON.get_param"}
+      ],
+      "confidence": 1.0
+    },
+    {
+      "component_id": "COMP-PKG-06",
+      "name": "PKG_PERFORMANCE",
+      "type": "plsql_package",
+      "layer": "Business Logic",
+      "module": "MOD-04",
+      "files": ["plsql/packages/PKG_PERFORMANCE.pks", "plsql/packages/PKG_PERFORMANCE.pkb"],
+      "procedures_and_functions": [
+        {"name": "create_review_cycle", "type": "FUNCTION", "returns": "NUMBER (cycle_id)"},
+        {"name": "open_review_cycle", "type": "PROCEDURE"},
+        {"name": "close_review_cycle", "type": "PROCEDURE"},
+        {"name": "create_review", "type": "FUNCTION", "returns": "NUMBER (review_id)"},
+        {"name": "submit_self_assessment", "type": "PROCEDURE"},
+        {"name": "submit_manager_review", "type": "PROCEDURE", "notes": "Hard-coded rating labels: ≥4.5=Exceptional, ≥3.5=Exceeds, ≥2.5=Meets, ≥1.5=Needs Improvement, else Unsatisfactory"},
+        {"name": "acknowledge_review", "type": "PROCEDURE"},
+        {"name": "add_goal", "type": "FUNCTION", "returns": "NUMBER (goal_id)"},
+        {"name": "update_goal_progress", "type": "PROCEDURE"},
+        {"name": "get_team_reviews", "type": "PROCEDURE", "out_params": ["p_cursor OUT t_review_cursor"]},
+        {"name": "get_rating_distribution", "type": "FUNCTION", "returns": "SYS_REFCURSOR"},
+        {"name": "generate_reviews_for_cycle", "type": "PROCEDURE", "notes": "Batch; loops all ACTIVE employees with MANAGER_EMP_ID; skips DUP_VAL_ON_INDEX; COMMITs"}
+      ],
+      "confidence": 1.0
+    },
+    {
+      "component_id": "COMP-PKG-07",
+      "name": "PKG_SECURITY",
+      "type": "plsql_package",
+      "layer": "Business Logic / Security",
+      "module": "MOD-05",
+      "files": ["plsql/packages/PKG_SECURITY.pks", "plsql/packages/PKG_SECURITY.pkb"],
+      "procedures_and_functions": [
+        {"name": "authenticate", "type": "FUNCTION", "returns": "VARCHAR2 (session_id)", "notes": "No brute-force protection; TOO_MANY_ROWS picks lowest EMP_ID; password check is stub"},
+        {"name": "logout", "type": "PROCEDURE"},
+        {"name": "is_session_valid", "type": "FUNCTION", "returns": "BOOLEAN", "notes": "Session timeout 30 min from LOGIN_TIME, not last activity"},
+        {"name": "has_permission", "type": "FUNCTION", "returns": "BOOLEAN", "notes": "Grade-based: GRADE_ID≥8=full, ≥5=VIEW all, <5=LEAVE+EMPLOYEE VIEW only"},
+        {"name": "encrypt_ssn", "type": "FUNCTION", "returns": "RAW", "notes": "AES-256-CBC; uses hard-coded key c_encryption_key"},
+        {"name": "decrypt_ssn", "type": "FUNCTION", "returns": "VARCHAR2"},
+        {"name": "hash_password", "type": "FUNCTION", "returns": "VARCHAR2", "notes": "MD5 (DBMS_CRYPTO.HASH_MD5) — weak algorithm"},
+        {"name": "change_password", "type": "PROCEDURE", "notes": "Does NOT validate old password against stored hash before changing"}
+      ],
+      "critical_constant": "c_encryption_key = RAW(32) := UTL_RAW.CAST_TO_RAW('HR$ystem_3ncrypt10n_K3y_2024!!') — plaintext hard-coded in PKG_SECURITY.pkb",
+      "confidence": 1.0
+    },
+    {
+      "component_id": "COMP-PKG-08",
+      "name": "PKG_AUDIT",
+      "type": "plsql_package",
+      "layer": "Infrastructure",
+      "module": "MOD-06",
+      "files": ["plsql/packages/PKG_AUDIT.pks", "plsql/packages/PKG_AUDIT.pkb"],
+      "procedures_and_functions": [
+        {"name": "log_action", "type": "PROCEDURE", "notes": "PRAGMA AUTONOMOUS_TRANSACTION; captures SYS_CONTEXT IP and session"},
+        {"name": "get_audit_trail", "type": "FUNCTION", "returns": "SYS_REFCURSOR"},
+        {"name": "purge_old_records", "type": "PROCEDURE"}
+      ],
+      "dependencies": "None (base package)",
+      "confidence": 1.0
+    },
+    {
+      "component_id": "COMP-PKG-09",
+      "name": "PKG_COMMON",
+      "type": "plsql_package",
+      "layer": "Infrastructure",
+      "module": "MOD-06",
+      "files": ["plsql/packages/PKG_COMMON.pks", "plsql/packages/PKG_COMMON.pkb"],
+      "procedures_and_functions": [
+        {"name": "log_error", "type": "PROCEDURE", "notes": "PRAGMA AUTONOMOUS_TRANSACTION; writes to AUDIT_LOG with TABLE_NAME='ERROR_LOG'"},
+        {"name": "log_info", "type": "PROCEDURE", "notes": "PRAGMA AUTONOMOUS_TRANSACTION; writes to AUDIT_LOG with TABLE_NAME='INFO_LOG'"},
+        {"name": "get_param", "type": "FUNCTION", "returns": "VARCHAR2", "notes": "Reads SYSTEM_PARAMETERS by category+name"},
+        {"name": "set_param", "type": "PROCEDURE"},
+        {"name": "get_fiscal_year", "type": "FUNCTION", "returns": "NUMBER", "notes": "Fiscal year starts October (month 10)"},
+        {"name": "get_fiscal_quarter", "type": "FUNCTION", "returns": "NUMBER"},
+        {"name": "add_business_days", "type": "FUNCTION", "returns": "DATE"},
+        {"name": "format_phone", "type": "FUNCTION", "returns": "VARCHAR2"},
+        {"name": "format_currency", "type": "FUNCTION", "returns": "VARCHAR2"},
+        {"name": "validate_email", "type": "FUNCTION", "returns": "BOOLEAN"},
+        {"name": "validate_phone", "type": "FUNCTION", "returns": "BOOLEAN"},
+        {"name": "validate_ssn", "type": "FUNCTION", "returns": "BOOLEAN"},
+        {"name": "get_lookup_values", "type": "FUNCTION", "returns": "SYS_REFCURSOR"},
+        {"name": "get_next_sequence", "type": "FUNCTION", "returns": "NUMBER"},
+        {"name": "is_business_day", "type": "FUNCTION", "returns": "BOOLEAN"},
+        {"name": "get_active_employees_count", "type": "FUNCTION", "returns": "NUMBER"}
+      ],
+      "confidence": 1.0
+    },
+    {
+      "component_id": "COMP-PKG-10",
+      "name": "PKG_VALIDATION",
+      "type": "plsql_package",
+      "layer": "Business Logic",
+      "module": "MOD-06",
+      "files": ["plsql/packages/PKG_VALIDATION.pks", "plsql/packages/PKG_VALIDATION.pkb"],
+      "procedures_and_functions": [
+        {"name": "validate_required_fields", "type": "PROCEDURE", "notes": "Only handles table='EMPLOYEES'; other tables silently pass"},
+        {"name": "validate_date_range", "type": "FUNCTION", "returns": "BOOLEAN"},
+        {"name": "validate_positive_number", "type": "FUNCTION", "returns": "BOOLEAN"},
+        {"name": "validate_percentage", "type": "FUNCTION", "returns": "BOOLEAN"},
+        {"name": "validate_phone_number", "type": "FUNCTION", "returns": "BOOLEAN", "notes": "Delegates to PKG_COMMON.validate_phone"},
+        {"name": "validate_email_address", "type": "FUNCTION", "returns": "BOOLEAN", "notes": "Delegates to PKG_COMMON.validate_email"},
+        {"name": "validate_ssn", "type": "FUNCTION", "returns": "BOOLEAN", "notes": "Delegates to PKG_COMMON.validate_ssn"},
+        {"name": "is_business_day", "type": "FUNCTION", "returns": "BOOLEAN", "notes": "Queries HOLIDAYS table; delegates to PKG_COMMON.is_business_day"}
+      ],
+      "confidence": 1.0
+    },
+    {
+      "component_id": "COMP-PKG-11",
+      "name": "PKG_REPORTING",
+      "type": "plsql_package",
+      "layer": "Business Logic / Reporting",
+      "module": "MOD-06",
+      "files": ["plsql/packages/PKG_REPORTING.pks", "plsql/packages/PKG_REPORTING.pkb"],
+      "procedures_and_functions": [
+        {"name": "headcount_report", "type": "PROCEDURE", "out_params": ["p_cursor OUT SYS_REFCURSOR"]},
+        {"name": "turnover_report", "type": "PROCEDURE", "out_params": ["p_cursor OUT SYS_REFCURSOR"]},
+        {"name": "payroll_summary_report", "type": "PROCEDURE", "out_params": ["p_cursor OUT SYS_REFCURSOR"], "notes": "Hard-coded ELEMENT_IDs: 100=federal tax, 101=state tax, 102=SS, 103=Medicare"},
+        {"name": "leave_utilization_report", "type": "PROCEDURE", "out_params": ["p_cursor OUT SYS_REFCURSOR"]},
+        {"name": "performance_summary_report", "type": "PROCEDURE", "out_params": ["p_cursor OUT SYS_REFCURSOR"]},
+        {"name": "compensation_analysis", "type": "PROCEDURE", "out_params": ["p_cursor OUT SYS_REFCURSOR"]},
+        {"name": "department_summary_report", "type": "PROCEDURE", "out_params": ["p_cursor OUT SYS_REFCURSOR"]},
+        {"name": "refresh_reporting_tables", "type": "PROCEDURE", "notes": "Stub — not implemented"}
+      ],
+      "confidence": 1.0
+    },
+    {
+      "component_id": "COMP-FORM-01",
+      "name": "HRMS_LOGIN.fmb",
+      "type": "oracle_form",
+      "layer": "Presentation",
+      "module": "MOD-05",
+      "file": "forms/xml-exports/HRMS_LOGIN.xml",
+      "key_blocks": ["LOGON_BLOCK"],
+      "key_triggers": ["BTN_LOGIN.WHEN-BUTTON-PRESSED → PKG_SECURITY.authenticate → :GLOBAL.session_id / current_user / current_emp_id → OPEN_FORM HRMS_MENU"],
+      "confidence": 1.0
+    },
+    {
+      "component_id": "COMP-FORM-02",
+      "name": "HRMS_MENU.fmb",
+      "type": "oracle_form",
+      "layer": "Presentation",
+      "module": "MOD-06",
+      "file": "forms/xml-exports/HRMS_MENU.xml",
+      "key_blocks": ["MENU_BLOCK"],
+      "key_triggers": [
+        "BTN_EMPLOYEES → OPEN_FORM HRMS_EMPLOYEE",
+        "BTN_LEAVE → OPEN_FORM HRMS_LEAVE",
+        "BTN_PAYROLL → (PKG_SECURITY.has_permission('PAYROLL')) OPEN_FORM HRMS_PAYROLL",
+        "BTN_REPORTS → (PKG_SECURITY.has_permission('REPORTS')) OPEN_FORM HRMS_REPORTS",
+        "BTN_ADMIN → (PKG_SECURITY.has_permission('ADMIN')) OPEN_FORM HRMS_ADMIN",
+        "BTN_PERFORMANCE → OPEN_FORM HRMS_PERFORMANCE"
+      ],
+      "version": "HRMS v4.2 Build 2024.03.15",
+      "confidence": 1.0
+    },
+    {
+      "component_id": "COMP-FORM-03",
+      "name": "HRMS_EMPLOYEE.fmb",
+      "type": "oracle_form",
+      "layer": "Presentation",
+      "module": "MOD-01",
+      "file": "forms/xml-exports/HRMS_EMPLOYEE.xml",
+      "key_blocks": ["EMPLOYEES (master)", "SALARY_RECORDS (detail)"],
+      "key_triggers": [
+        "BTN_SAVE → PKG_EMPLOYEE.create_employee / update_employee",
+        "BTN_TERMINATE → PKG_EMPLOYEE.terminate_employee",
+        "HIRE_DATE.WHEN-VALIDATE-ITEM → 90-day future limit (INCONSISTENCY: trigger uses 180 days)",
+        "EMPLOYMENT_STATUS: UpdateAllowed=No (status only changed via PKG_EMPLOYEE procedures)"
+      ],
+      "confidence": 1.0
+    },
+    {
+      "component_id": "COMP-FORM-04",
+      "name": "HRMS_PAYROLL.fmb",
+      "type": "oracle_form",
+      "layer": "Presentation",
+      "module": "MOD-02",
+      "file": "forms/xml-exports/HRMS_PAYROLL.xml",
+      "key_triggers": [
+        "BTN_CREATE_RUN → PKG_PAYROLL.create_payroll_run",
+        "BTN_CALCULATE → PKG_PAYROLL.calculate_payroll",
+        "BTN_APPROVE → PKG_PAYROLL.approve_payroll"
+      ],
+      "confidence": 1.0
+    },
+    {
+      "component_id": "COMP-FORM-05",
+      "name": "HRMS_LEAVE.fmb",
+      "type": "oracle_form",
+      "layer": "Presentation",
+      "module": "MOD-03",
+      "file": "forms/xml-exports/HRMS_LEAVE.xml",
+      "key_triggers": [
+        "BTN_SUBMIT → PKG_LEAVE.submit_leave_request",
+        "BTN_CANCEL_REQUEST → PKG_LEAVE.cancel_leave_request"
+      ],
+      "confidence": 1.0
+    },
+    {
+      "component_id": "COMP-FORM-06",
+      "name": "HRMS_PERFORMANCE.fmb",
+      "type": "oracle_form",
+      "layer": "Presentation",
+      "module": "MOD-04",
+      "file": "forms/xml-exports/HRMS_PERFORMANCE.xml",
+      "key_blocks": ["PERFORMANCE_REVIEWS", "PERFORMANCE_GOALS (InsertAllowed=Yes, DeleteAllowed=No)"],
+      "confidence": 1.0
+    },
+    {
+      "component_id": "COMP-FORM-07",
+      "name": "HRMS_REPORTS.fmb",
+      "type": "oracle_form",
+      "layer": "Presentation",
+      "module": "MOD-06",
+      "file": "NOT PROVIDED — referenced via OPEN_FORM in HRMS_MENU.fmb",
+      "confidence": 0.7,
+      "notes": "Existence confirmed; source not scanned"
+    },
+    {
+      "component_id": "COMP-FORM-08",
+      "name": "HRMS_ADMIN.fmb",
+      "type": "oracle_form",
+      "layer": "Presentation",
+      "module": "MOD-06",
+      "file": "NOT PROVIDED — referenced via OPEN_FORM in HRMS_MENU.fmb",
+      "confidence": 0.7,
+      "notes": "Existence confirmed; source not scanned; requires GRADE_ID≥8 or ADMIN permission"
+    },
+    {
+      "component_id": "COMP-LIB-01",
+      "name": "HRMS_COMMON_LIB.pll",
+      "type": "oracle_forms_library",
+      "layer": "Presentation",
+      "module": "MOD-06",
+      "file": "forms/libraries/HRMS_COMMON_LIB.pll.sql",
+      "key_procedures": [
+        "handle_error → PKG_COMMON.log_error",
+        "toolbar_new / toolbar_save / toolbar_delete / toolbar_query / toolbar_print",
+        "check_session → PKG_SECURITY.is_session_valid (called on navigation)",
+        "refresh_lov"
+      ],
+      "attached_to": "All 6 scanned forms",
+      "confidence": 1.0
+    },
+    {
+      "component_id": "COMP-LIB-02",
+      "name": "HRMS_VALIDATION_LIB.pll",
+      "type": "oracle_forms_library",
+      "layer": "Presentation",
+      "module": "MOD-06",
+      "file": "forms/libraries/HRMS_VALIDATION_LIB.pll.sql",
+      "key_functions": [
+        "validate_field_required → returns BOOLEAN",
+        "validate_date_format → returns BOOLEAN",
+        "validate_number_range → returns BOOLEAN",
+        "validate_email_format → returns BOOLEAN (BUG: rejects valid subdomains)"
+      ],
+      "confidence": 1.0
+    },
+    {
+      "component_id": "COMP-DB-TRIGGERS",
+      "name": "Database Triggers",
+      "type": "db_trigger",
+      "layer": "Data Access",
+      "module": "MOD-06 (cross-cutting)",
+      "file": "schema/triggers/trg_audit.sql, schema/triggers/trg_employees.sql",
+      "triggers": [
+        {"name": "TRG_EMPLOYEES_AUDIT", "table": "EMPLOYEES", "event": "AFTER INSERT OR UPDATE OR DELETE", "action": "Calls PKG_AUDIT.log_action"},
+        {"name": "TRG_SALARY_AUDIT", "table": "SALARY_RECORDS", "event": "AFTER INSERT OR UPDATE OR DELETE", "action": "Calls PKG_AUDIT.log_action"},
+        {"name": "TRG_LEAVE_AUDIT", "table": "LEAVE_REQUESTS", "event": "AFTER INSERT OR UPDATE OR DELETE", "action": "Calls PKG_AUDIT.log_action"},
+        {"name": "TRG_EMPLOYEES_VALIDATE", "table": "EMPLOYEES", "event": "BEFORE INSERT OR UPDATE", "action": "Validates HIRE_DATE ≤ SYSDATE + 180 days; validates SALARY ≥ JOB_GRADES.MIN_SALARY"},
+        {"name": "TRG_AUDIT_LOG_INSERT", "table": "AUDIT_LOG", "event": "BEFORE INSERT", "action": "Sets SEQ_AUDIT.NEXTVAL if AUDIT_ID is null"},
+        {"name": "TRG_NOTIFICATION_INSERT", "table": "NOTIFICATION_QUEUE", "event": "BEFORE INSERT", "action": "Sets SEQ_NOTIFICATION.NEXTVAL if null; sets default priority"}
+      ],
+      "confidence": 1.0
+    },
+    {
+      "component_id": "COMP-DB-VIEWS",
+      "name": "Database Views",
+      "type": "db_view",
+      "layer": "Data Access",
+      "module": "MOD-06 (cross-cutting)",
+      "file": "schema/views/hrms_views.sql",
+      "views": [
+        {"name": "VW_ACTIVE_EMPLOYEES", "description": "EMPLOYEES WHERE EMPLOYMENT_STATUS='ACTIVE' JOIN JOB_TITLES, DEPARTMENTS, JOB_GRADES, MANAGERS"},
+        {"name": "VW_ORG_HIERARCHY", "description": "CONNECT BY START WITH MANAGER_EMP_ID IS NULL — org tree"},
+        {"name": "VW_EMPLOYEE_COMPENSATION", "description": "EMPLOYEES JOIN SALARY_RECORDS (END_DATE IS NULL) JOIN PAY_ELEMENTS summation"},
+        {"name": "VW_LEAVE_SUMMARY", "description": "EMPLOYEES JOIN LEAVE_BALANCES JOIN LEAVE_TYPES — AVAILABLE formula omits PENDING (inconsistency vs LEAVE_BALANCES virtual column)"},
+        {"name": "VW_PAYROLL_LATEST", "description": "Latest PAYROLL_RUNS per pay period with totals"},
+        {"name": "VW_PENDING_APPROVALS", "description": "UNION of pending leave requests and CREATED payroll runs needing approval"}
+      ],
+      "confidence": 1.0
+    },
+    {
+      "component_id": "COMP-SCHEDULER-JOBS",
+      "name": "DBMS_SCHEDULER Jobs",
+      "type": "scheduled_job",
+      "layer": "Infrastructure",
+      "module": "MOD-06",
+      "file": "NOT FOUND in repo — inferred from package body comments",
+      "jobs": [
+        {"name": "HRMS_NOTIFICATION_JOB", "procedure": "PKG_NOTIFICATION.process_queue", "schedule": "Every 5 minutes", "evidence": "PKG_NOTIFICATION.pkb line 70 comment"},
+        {"name": "HRMS_LEAVE_ACCRUAL_JOB", "procedure": "PKG_LEAVE.run_monthly_accrual", "schedule": "1st of each month", "evidence": "PKG_LEAVE.pkb comment and PKG_LEAVE.pks header"}
+      ],
+      "confidence": 0.7,
+      "notes": "DDL for DBMS_SCHEDULER jobs not found in repo. Existence inferred from procedure comments."
+    }
+  ]
+}

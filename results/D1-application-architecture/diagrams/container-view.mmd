@@ -1,0 +1,29 @@
+---
+title: HRMS Container View (C4 Level 2)
+---
+C4Container
+    title HRMS v4.2 — Container View
+
+    Person(user, "HRMS User", "HR admin, employee, manager, payroll admin")
+
+    System_Boundary(hrms_system, "HRMS System") {
+        Container(forms_client, "Oracle Forms Client", "Oracle Forms 12c (12.2.1.4)\nJava applet / JNLP", "Presentation layer. 6 forms + 2 PLL libraries. Thin UI delegates — business logic in PL/SQL.")
+        Container(plsql_backend, "PL/SQL Business Logic", "Oracle PL/SQL\n11 packages, ~130 procedures", "All business rules, validations, workflow, scheduling, integrations.")
+        ContainerDb(oracle_db, "HRMS Oracle Schema", "Oracle Database\n26 tables, 6 views, 6 triggers, 29 sequences", "Single schema. All application data and audit trail.")
+    }
+
+    System_Ext(oracle_fin, "Oracle Financials", "ERP — receives GL journal flat file")
+    System_Ext(adp, "ADP Benefits", "Receives fixed-width benefits feed")
+    System_Ext(smtp_relay, "SMTP Relay", "smtp.internal.company.com:25")
+    System_Ext(time_att, "Time & Attendance", "CSV file source (stub)")
+    System_Ext(oracle_forms_server, "Oracle WebLogic / Forms Services", "Serves the Java applet to browser clients")
+
+    Rel(user, forms_client, "Uses", "Browser + Java applet / Java Web Start")
+    Rel(forms_client, oracle_forms_server, "Served by", "HTTP / Forms protocol")
+    Rel(forms_client, plsql_backend, "Calls procedures", "Oracle Net / JDBC (via Forms runtime)")
+    Rel(plsql_backend, oracle_db, "Reads/Writes", "SQL DML + DDL")
+    Rel(oracle_db, plsql_backend, "Triggers call", "DB triggers → PKG_AUDIT, PKG_COMMON")
+    Rel(plsql_backend, smtp_relay, "Sends email", "UTL_SMTP port 25")
+    Rel(plsql_backend, oracle_fin, "Writes GL journal file", "UTL_FILE flat file")
+    Rel(plsql_backend, adp, "Writes benefits feed", "UTL_FILE fixed-width")
+    Rel(time_att, plsql_backend, "Provides attendance CSV", "UTL_FILE (stub — not implemented)")

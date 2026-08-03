@@ -1,0 +1,143 @@
+{
+  "system_name": "HRMS",
+  "repo_root": "ts-plsql-oracle-forms-hrms-main",
+  "description": "Human Resource Management System v4.2 (Build 2024.03.15) — Oracle Forms 12c client-server monolith on a single Oracle Database HRMS schema. Covers employee lifecycle, payroll, leave, performance management, reporting, and external integrations.",
+  "applications": [
+    {
+      "name": "HRMS Oracle Forms Client",
+      "type": "web_app",
+      "framework": "Oracle Forms 12c (12.2.1.4) — Java applet served via Oracle WebLogic/Forms Services",
+      "deployable": true,
+      "evidence": [
+        {
+          "file": "forms/xml-exports/HRMS_LOGIN.xml",
+          "reason": "Oracle Forms Builder 12c (12.2.1.4) header; form binary HRMS_LOGIN.fmb"
+        },
+        {
+          "file": "forms/xml-exports/HRMS_MENU.xml",
+          "reason": "HRMS v4.2, Build 2024.03.15 identified in ABOUT menu item"
+        },
+        {
+          "file": "forms/xml-exports/HRMS_EMPLOYEE.xml",
+          "reason": "Employee maintenance form; Oracle Forms 12c"
+        },
+        {
+          "file": "forms/xml-exports/HRMS_PAYROLL.xml",
+          "reason": "Payroll processing form"
+        },
+        {
+          "file": "forms/xml-exports/HRMS_LEAVE.xml",
+          "reason": "Leave management form"
+        },
+        {
+          "file": "forms/xml-exports/HRMS_PERFORMANCE.xml",
+          "reason": "Performance review management form"
+        }
+      ],
+      "notes": "Forms HRMS_REPORTS and HRMS_ADMIN are referenced in HRMS_MENU and menus but their XML exports were not provided in the scan. Their existence is confirmed via OPEN_FORM calls.",
+      "confidence": 1.0
+    },
+    {
+      "name": "HRMS Oracle Database (PL/SQL Backend)",
+      "type": "backend_api",
+      "framework": "Oracle Database PL/SQL packages — acts as the sole business logic and data access layer",
+      "deployable": true,
+      "evidence": [
+        {
+          "file": "plsql/packages/PKG_EMPLOYEE.pks",
+          "reason": "11 PL/SQL packages providing all business logic; schema HRMS"
+        },
+        {
+          "file": "schema/tables/01_core_tables.sql",
+          "reason": "26 tables in HRMS schema; schema is the deployable database unit"
+        }
+      ],
+      "confidence": 1.0
+    }
+  ],
+  "supporting_projects": [
+    {
+      "name": "HRMS_COMMON_LIB",
+      "type": "library",
+      "framework": "Oracle Forms PL/SQL Library (.pll)",
+      "deployable": false,
+      "evidence": [
+        {
+          "file": "forms/libraries/HRMS_COMMON_LIB.pll.sql",
+          "reason": "Attached to all forms; provides toolbar, session, error handling utilities"
+        }
+      ],
+      "confidence": 1.0
+    },
+    {
+      "name": "HRMS_VALIDATION_LIB",
+      "type": "library",
+      "framework": "Oracle Forms PL/SQL Library (.pll)",
+      "deployable": false,
+      "evidence": [
+        {
+          "file": "forms/libraries/HRMS_VALIDATION_LIB.pll.sql",
+          "reason": "Attached to forms; provides client-side field validation functions"
+        }
+      ],
+      "confidence": 1.0
+    },
+    {
+      "name": "HRMS Database Schema DDL",
+      "type": "database_scripts",
+      "framework": "Oracle SQL DDL",
+      "deployable": true,
+      "evidence": [
+        {
+          "file": "schema/tables/01_core_tables.sql",
+          "reason": "Core tables: DEPARTMENTS, LOCATIONS, JOB_GRADES, JOB_TITLES, EMPLOYEES, EMPLOYEE_HISTORY, EMPLOYEE_DEPENDENTS, EMERGENCY_CONTACTS"
+        },
+        {
+          "file": "schema/tables/02_payroll_tables.sql",
+          "reason": "Payroll tables: SALARY_RECORDS, PAY_ELEMENTS, EMPLOYEE_PAY_ELEMENTS, PAY_PERIODS, PAYROLL_RUNS, PAYROLL_DETAILS, TAX_BRACKETS, EMPLOYEE_TAX_INFO, EMPLOYEE_BANK_ACCOUNTS"
+        },
+        {
+          "file": "schema/tables/03_leave_tables.sql",
+          "reason": "Leave tables: LEAVE_TYPES, LEAVE_BALANCES, LEAVE_REQUESTS, LEAVE_ACCRUAL_LOG, HOLIDAYS"
+        },
+        {
+          "file": "schema/tables/04_performance_tables.sql",
+          "reason": "Performance, audit, system tables: REVIEW_CYCLES, PERFORMANCE_REVIEWS, PERFORMANCE_GOALS, AUDIT_LOG, SYSTEM_PARAMETERS, NOTIFICATION_QUEUE, USER_SESSIONS, LOOKUP_VALUES"
+        },
+        {
+          "file": "schema/views/hrms_views.sql",
+          "reason": "6 views: VW_ACTIVE_EMPLOYEES, VW_ORG_HIERARCHY, VW_EMPLOYEE_COMPENSATION, VW_LEAVE_SUMMARY, VW_PAYROLL_LATEST, VW_PENDING_APPROVALS"
+        },
+        {
+          "file": "schema/sequences/hrms_sequences.sql",
+          "reason": "29 sequences for all primary key generation"
+        }
+      ],
+      "confidence": 1.0
+    }
+  ],
+  "open_questions": [
+    "HRMS_REPORTS and HRMS_ADMIN form source files were not provided — their full feature inventory is unknown.",
+    "Oracle WebLogic/Forms Services deployment configuration (forms.conf, default.env) was not found in the repo.",
+    "DBMS_SCHEDULER job definitions for PKG_NOTIFICATION.process_queue (every 5 min) and PKG_LEAVE.run_monthly_accrual (monthly) were not found in the repo.",
+    "USER_CREDENTIALS table is referenced in PKG_SECURITY but no DDL was found.",
+    "Oracle Directory objects (GL_FEED_OUT, BENEFITS_FEED_OUT, TIME_ATTENDANCE_IN) filesystem paths are unknown.",
+    "PAYROLL_OUTPUT Oracle directory object used by UTL_FILE in generate_pay_register — filesystem path unknown.",
+    "Target Oracle Financials/ERP system receiving GL journal files is unknown.",
+    "ADP vendor integration version/format beyond fixed-width file is unknown."
+  ],
+  "totals": {
+    "plsql_packages": 11,
+    "plsql_package_files": 22,
+    "plsql_procedures_and_functions": 130,
+    "oracle_forms": 8,
+    "forms_provided": 6,
+    "forms_referenced_only": 2,
+    "pll_libraries": 2,
+    "db_tables": 26,
+    "db_views": 6,
+    "db_triggers": 6,
+    "db_sequences": 29,
+    "external_integrations": 3
+  }
+}

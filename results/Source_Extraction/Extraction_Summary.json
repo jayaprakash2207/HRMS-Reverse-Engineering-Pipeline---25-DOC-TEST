@@ -1,0 +1,37 @@
+{
+  "extraction_date": "2026-08-03T05:30:38.808437+00:00",
+  "source": "C:\\rev-eng1 test oracle new\\automated-reverse-engineering-pipeline-main\\automated-reverse-engineering-pipeline-main\\source\\ts-plsql-oracle-forms-hrms",
+  "source_type": "local",
+  "language": "plsql",
+  "total_methods": 0,
+  "total_classes": 0,
+  "total_interfaces": 0,
+  "total_enums": 0,
+  "total_business_artifacts": 177,
+  "total_db_objects": 37,
+  "total_config_params": 0,
+  "total_business_params": 0,
+  "total_feature_flags": 0,
+  "log_events_found": 0,
+  "process_sequences": 0,
+  "business_categories": {
+    "process": 18,
+    "data_operation": 27,
+    "validation": 21,
+    "general": 38,
+    "contract_definition": 11,
+    "calculation": 10,
+    "integration": 2,
+    "approval": 13,
+    "notification": 1,
+    "authentication": 3,
+    "trigger_logic": 33
+  },
+  "output_files": {
+    "source_code": "C:\\rev-eng1 test oracle new\\automated-reverse-engineering-pipeline-main\\automated-reverse-engineering-pipeline-main\\results\\Source_Extraction\\Source_Code.json",
+    "database": "C:\\rev-eng1 test oracle new\\automated-reverse-engineering-pipeline-main\\automated-reverse-engineering-pipeline-main\\results\\Source_Extraction\\Database.json",
+    "config": "C:\\rev-eng1 test oracle new\\automated-reverse-engineering-pipeline-main\\automated-reverse-engineering-pipeline-main\\results\\Source_Extraction\\Config.json",
+    "logs": "C:\\rev-eng1 test oracle new\\automated-reverse-engineering-pipeline-main\\automated-reverse-engineering-pipeline-main\\results\\Source_Extraction\\Logs.json"
+  },
+  "ready_for_layer2": true
+}
