@@ -97,6 +97,40 @@ def run(input_dir: str, output_dir: str, scan_dir: str) -> str:
 
     print("  [DA Agent 2] Turn 2 — running review...")
     output = call_claude(turn2_prompt, label="DA Agent 2 Turn 2", timeout=1800)
+
+    # Edge-case pass (resume-safe)
+    if output_already_exists(output_dir, "DA_Data_Reviewer_Edge.md"):
+        print("  [DA Agent 2] Edge-case pass already done — loading saved output...")
+        edge_output = load_prior_output(output_dir, "DA_Data_Reviewer_Edge.md")
+    else:
+        print("  [DA Agent 2] Running edge-case pass...")
+        edge_prompt = (
+            f"{prompt_text}\n\n---\n\n"
+            f"IMPORTANT: This is a SECOND independent analysis pass. Focus SPECIFICALLY on:\n"
+            f"- Tables and columns that appear in PL/SQL but may not have explicit DDL\n"
+            f"- Implicit foreign key relationships (joins without FK constraints)\n"
+            f"- Columns used in business logic but not in the schema DDL\n"
+            f"- Data quality rules implied by CHECK constraints or PL/SQL validation\n\n"
+            f"# DA Agent 1 Output\n\n{agent1_output}\n\n"
+            + (f"# Requested File Contents\n\n{sections}\n\n" if sections else "")
+            + "Produce your second-pass analysis now, focusing on what the first pass may have missed."
+        )
+        edge_output = call_claude(edge_prompt, label="DA Agent 2 edge-case pass", timeout=1800)
+        save_output(output_dir, "DA_Data_Reviewer_Edge.md", edge_output)
+
+    merge_prompt = (
+        "You have two independent Data Analysis outputs for the same codebase.\n"
+        "Merge them into one complete document:\n"
+        "- Keep ALL content from Pass 1 (the primary analysis)\n"
+        "- Add any NEW tables, columns, relationships, or data rules from Pass 2\n"
+        "- Mark newly added content with [EDGE-CASE-FOUND]\n"
+        "- Do not duplicate content\n\n"
+        f"# Pass 1 (Primary Analysis)\n\n{output}\n\n"
+        f"# Pass 2 (Edge Case Focus)\n\n{edge_output}\n\n"
+        "Produce the merged document now."
+    )
+    output = call_claude(merge_prompt, label="DA Agent 2 merge", timeout=1800)
+
     print("  [DA Agent 2] Checking for gaps in output...")
     output = detect_and_fill_gaps(output, scan_dir, "DA Agent 2")
     save_output(output_dir, OUTPUT_FILE, output)

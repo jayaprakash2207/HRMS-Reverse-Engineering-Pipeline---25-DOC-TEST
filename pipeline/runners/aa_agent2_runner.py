@@ -96,6 +96,40 @@ def run(input_dir: str, output_dir: str, scan_dir: str = None) -> str:
     )
 
     output = call_claude(prompt, label="AA Agent 2", timeout=1800)
+
+    # Edge-case pass (resume-safe)
+    if output_already_exists(output_dir, "AA_Quality_Review_Edge.md"):
+        print("  [AA Agent 2] Edge-case pass already done — loading saved output...")
+        edge_output = load_prior_output(output_dir, "AA_Quality_Review_Edge.md")
+    else:
+        print("  [AA Agent 2] Running edge-case pass...")
+        edge_prompt = (
+            f"{prompt_text}\n\n---\n\n"
+            f"IMPORTANT: This is a SECOND independent analysis pass. Focus SPECIFICALLY on:\n"
+            f"- Procedures that are defined but never called from forms (orphaned logic)\n"
+            f"- Form triggers that call packages not mentioned in the primary analysis\n"
+            f"- Package procedures with no corresponding form trigger\n"
+            f"- Any PASS/PARTIAL/FAIL verdicts that should be revisited\n\n"
+            f"# AA Agent 1 Output\n\n{agent1_output}"
+            f"{source_section}\n\n"
+            "Produce your second-pass quality review now, focusing on what the first pass may have missed."
+        )
+        edge_output = call_claude(edge_prompt, label="AA Agent 2 edge-case pass", timeout=1800)
+        save_output(output_dir, "AA_Quality_Review_Edge.md", edge_output)
+
+    merge_prompt = (
+        "You have two independent Application Analysis quality review outputs.\n"
+        "Merge them into one complete document:\n"
+        "- Keep ALL verdicts and findings from Pass 1\n"
+        "- Add any NEW procedures, triggers, or PARTIAL/FAIL findings from Pass 2\n"
+        "- Mark newly added content with [EDGE-CASE-FOUND]\n"
+        "- Do not duplicate content\n\n"
+        f"# Pass 1 (Primary Review)\n\n{output}\n\n"
+        f"# Pass 2 (Edge Case Focus)\n\n{edge_output}\n\n"
+        "Produce the merged document now."
+    )
+    output = call_claude(merge_prompt, label="AA Agent 2 merge", timeout=1800)
+
     if scan_dir:
         print("  [AA Agent 2] Checking for gaps in output...")
         output = detect_and_fill_gaps(output, scan_dir, "AA Agent 2")

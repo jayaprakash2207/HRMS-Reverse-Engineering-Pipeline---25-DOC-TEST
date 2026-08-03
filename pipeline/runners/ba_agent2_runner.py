@@ -100,6 +100,42 @@ def run(input_dir: str, output_dir: str, scan_dir: str) -> str:
 
     print("  [BA Agent 2] Turn 2 — running analysis...")
     output = call_claude(turn2_prompt, label="BA Agent 2 Turn 2", timeout=3600)
+
+    # Edge-case pass (resume-safe)
+    if output_already_exists(output_dir, "BA_Deep_Analyst_Edge.md"):
+        print("  [BA Agent 2] Edge-case pass already done — loading saved output...")
+        edge_output = load_prior_output(output_dir, "BA_Deep_Analyst_Edge.md")
+    else:
+        print("  [BA Agent 2] Running edge-case pass...")
+        edge_prompt = (
+            f"{prompt_text}\n\n---\n\n"
+            f"IMPORTANT: This is a SECOND independent analysis pass. Focus SPECIFICALLY on:\n"
+            f"- Business rules that are implied but never explicitly stated\n"
+            f"- Edge cases and exception paths in the business logic\n"
+            f"- Any procedures, validations, or rules that a first pass might overlook\n"
+            f"- Rarely-triggered business conditions (e.g. termination flows, error recovery)\n\n"
+            f"# BA Agent 1 Output\n\n{agent1_output}\n\n"
+            + (f"# Requested File Contents\n\n{sections}\n\n" if sections else "")
+            + "Produce your second-pass analysis now, focusing on what the first pass may have missed."
+        )
+        edge_output = call_claude(edge_prompt, label="BA Agent 2 edge-case pass", timeout=1800)
+        save_output(output_dir, "BA_Deep_Analyst_Edge.md", edge_output)
+
+    # Merge: ask Claude to combine both passes
+    merge_prompt = (
+        "You have two independent analysis outputs for the same Business Analysis task.\n"
+        "Merge them into one complete document:\n"
+        "- Keep ALL content from Pass 1 (the primary analysis)\n"
+        "- Add anything NEW from Pass 2 that is not already in Pass 1\n"
+        "- Mark newly added content with [EDGE-CASE-FOUND]\n"
+        "- Do not duplicate content\n"
+        "- Do not change or rewrite Pass 1 content\n\n"
+        f"# Pass 1 (Primary Analysis)\n\n{output}\n\n"
+        f"# Pass 2 (Edge Case Focus)\n\n{edge_output}\n\n"
+        "Produce the merged document now."
+    )
+    output = call_claude(merge_prompt, label="BA Agent 2 merge", timeout=1800)
+
     print("  [BA Agent 2] Checking for gaps in output...")
     output = detect_and_fill_gaps(output, scan_dir, "BA Agent 2")
     save_output(output_dir, OUTPUT_FILE, output)

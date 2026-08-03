@@ -6,20 +6,23 @@ Step numbers below are what actually prints as "[STEP N]" at runtime —
 keep this list in sync with the _banner() calls in orchestrate() below.
 
 Steps:
+  Step  0  — Rule Annotator    (Claude — auto-inject -- RULE: comments into source copies)
   Step  1  — Layer 1           (Python, no AI — extract names/signatures)
   Step  2  — Scan Once         (Python, no AI — cache every file in full)
   Step  3  — Scan Agent        (Claude, chunk by chunk — deep extract all files)
+  Step  3.5— Implicit Rules    (Claude — extract seed/forms/comment/schema rules)
   Step  4  — BA Agent 1        (Claude T1+T2 — produce BA_Structural_Scout.md)
-  Step  5  — BA Agent 2        (Claude T1+T2 — produce BA_Deep_Analyst.md)
+  Step  5  — BA Agent 2        (Claude T1+T2+edge — produce BA_Deep_Analyst.md)
   Step  6  — DA Agent 1        (Claude T1+T2 — produce DA_Data_Extractor.md)
-  Step  7  — DA Agent 2        (Claude T1+T2 — produce DA_Data_Reviewer.md)
+  Step  7  — DA Agent 2        (Claude T1+T2+edge — produce DA_Data_Reviewer.md)
   Step  8  — TA Agent 1        (Claude T1+T2 — produce TA_Stack_Scout.md)
   Step  9  — TA Agent 2 Batch 1 (Claude — file list + first-half deep analysis)
-  Step 10  — TA Agent 2 Batch 2 (Claude — second-half analysis + synthesis → TA_Deep_Analyst.md)
+  Step 10  — TA Agent 2 Batch 2 (Claude — second-half + synthesis + edge → TA_Deep_Analyst.md)
   Step 11  — AA Agent 1        (Claude T1+T2 — produce AA_App_Extractor.md)
-  Step 12  — AA Agent 2        (Claude — produce AA_Quality_Review.md)
-  Step 12.5— Cross Validator   (Claude — cross-track consistency check, fills gaps)
-  Step 13  — Foundation        (Claude, 3 calls — KG + all 25 docs + verification)
+  Step 12  — AA Agent 2        (Claude T1+T2+edge — produce AA_Quality_Review.md)
+  Step 13  — Cross Validator   (Claude — cross-track consistency check, fills gaps)
+  Step 14  — Foundation        (Claude, 3 calls — KG + all 25 docs + verification)
+  Step 15  — Gap Hunter        (Claude — self-healing loop, fills remaining weaknesses)
 
 TA Agent 2 is split into two processes (steps 9-10) instead of one giant
 Turn-2 call: step 9 gets the file list and deep-analyses the first half of
@@ -77,7 +80,7 @@ def bold(t):   return _c("1",  t)
 def cyan(t):   return _c("36", t)
 def dim(t):    return _c("2",  t)
 
-_TOTAL_STEPS = 14
+_TOTAL_STEPS = 15
 
 def _banner(step, label):
     print(f"\n{'─' * 64}")
@@ -218,6 +221,32 @@ def _agent_step(runner: str, label: str, input_dir: Path, output_dir: Path,
     )
 
 
+def step_rule_annotator(output_dir: Path) -> dict:
+    index_path = output_dir / "annotated_index.json"
+    if index_path.exists() and index_path.stat().st_size > 0:
+        print(f"\n[STEP 0] Rule Annotator — already done (annotated_index.json exists), skipping.")
+        return {"label": "[STEP 0] Rule Annotator", "returncode": 0,
+                "stdout": "skipped", "stderr": "", "duration_s": 0.0}
+    return _run_or_exit(
+        [py, str(PIPELINE_DIR / "rule_annotator_runner.py"), "--output", str(output_dir)],
+        label="[STEP 0] Rule Annotator — Auto-Inject Business Rule Comments",
+        timeout=3600,
+    )
+
+
+def step_gap_hunter(output_dir: Path) -> dict:
+    report_path = output_dir / "gap_hunter_report.json"
+    if report_path.exists() and report_path.stat().st_size > 0:
+        print(f"\n[STEP 15] Gap Hunter — already done (gap_hunter_report.json exists), skipping.")
+        return {"label": "[STEP 15] Gap Hunter", "returncode": 0,
+                "stdout": "skipped", "stderr": "", "duration_s": 0.0}
+    return _run_or_exit(
+        [py, str(PIPELINE_DIR / "gap_hunter_runner.py"), "--output", str(output_dir)],
+        label="[STEP 15] Gap Hunter — Self-Healing Gap Detection Loop",
+        timeout=5400,
+    )
+
+
 def step_implicit_rules(output_dir: Path) -> dict:
     implicit_path = output_dir / "implicit_rules.json"
     if implicit_path.exists() and implicit_path.stat().st_size > 0:
@@ -347,6 +376,19 @@ def orchestrate(source: str, output_dir: Path, skip_layer1: bool,
     aa_out = output_dir / "Application_Analysis"
     for d in (ba_out, da_out, ta_out, aa_out):
         d.mkdir(parents=True, exist_ok=True)
+
+    # ── Step 0: Rule Annotator ────────────────────────────────────────────────
+    # Runs after file_cache.json exists (Step 2), but we wire it here so
+    # --track setup covers it. It skips cleanly if cache not yet ready.
+    print(f"\n{'─' * 64}")
+    print(bold(cyan(f"[STEP 0/{_TOTAL_STEPS}]  Rule Annotator — Auto-Inject Business Rule Comments")))
+    print(f"{'─' * 64}")
+    if not _should_run(1):
+        print(yellow(f"\n  [STEP 0] Rule Annotator — skipped (outside batch range)"))
+        all_results.append({"label": "[STEP 0] Rule Annotator", "returncode": 0,
+                             "stdout": "skipped (batch)", "stderr": "", "duration_s": 0.0})
+    else:
+        all_results.append(step_rule_annotator(output_dir))
 
     # ── Step 1: Layer 1 ───────────────────────────────────────────────────────
     _banner(1, "Layer 1 — Deterministic Source Extraction")
@@ -527,6 +569,13 @@ def orchestrate(source: str, output_dir: Path, skip_layer1: bool,
     else:
         all_results.append(step_foundation(output_dir))
 
+    # ── Step 15: Gap Hunter ───────────────────────────────────────────────────
+    _banner(15, "Gap Hunter — Self-Healing Gap Detection Loop")
+    if not _should_run(15):
+        all_results.append(_skip(15, "Gap Hunter"))
+    else:
+        all_results.append(step_gap_hunter(output_dir))
+
     # ── Summary ───────────────────────────────────────────────────────────────
     print_summary(output_dir, all_results, time.monotonic() - t0)
 
@@ -538,12 +587,12 @@ def orchestrate(source: str, output_dir: Path, skip_layer1: bool,
 
 _TRACKS = {
     "setup":       (1,  3),   # Layer 1 + Scan Once + Scan Agent + Implicit Rules
-    "business":    (4,  5),   # BA Agent 1 + BA Agent 2
-    "data":        (6,  7),   # DA Agent 1 + DA Agent 2
-    "technology":  (8,  10),  # TA Agent 1 + TA Agent 2 Batch 1 + Batch 2
-    "application": (11, 12),  # AA Agent 1 + AA Agent 2
+    "business":    (4,  5),   # BA Agent 1 + BA Agent 2 (+ edge-case pass)
+    "data":        (6,  7),   # DA Agent 1 + DA Agent 2 (+ edge-case pass)
+    "technology":  (8,  10),  # TA Agent 1 + TA Agent 2 Batch 1 + Batch 2 (+ edge-case pass)
+    "application": (11, 12),  # AA Agent 1 + AA Agent 2 (+ edge-case pass)
     "validate":    (13, 13),  # Cross-track validator (Step 13)
-    "foundation":  (14, 14),  # Foundation KG + all 25 documents + verification
+    "foundation":  (14, 15),  # Foundation KG + 25 docs + verification + Gap Hunter
 }
 
 

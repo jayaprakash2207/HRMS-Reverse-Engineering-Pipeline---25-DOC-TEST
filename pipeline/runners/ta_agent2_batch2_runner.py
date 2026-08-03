@@ -121,6 +121,41 @@ def run(output_dir: str, scan_dir: str) -> str:
         + "Run the Synthesis Pass and Final Response Assembly now."
     )
     output = call_claude(synthesis_prompt, label="TA Agent 2 Synthesis", timeout=1800)
+
+    # Edge-case pass (resume-safe)
+    if output_already_exists(output_dir, "TA_Deep_Analyst_Edge.md"):
+        print("  [TA Agent 2 Batch 2] Edge-case pass already done — loading saved output...")
+        edge_output = load_prior_output(output_dir, "TA_Deep_Analyst_Edge.md")
+    else:
+        print("  [TA Agent 2] Running edge-case pass...")
+        edge_prompt = (
+            f"{prompt_text}\n\n---\n\n"
+            f"IMPORTANT: This is a SECOND independent synthesis pass. Focus SPECIFICALLY on:\n"
+            f"- Non-functional requirements that are implied but not stated (performance, security)\n"
+            f"- Technical debt items that may have been underreported\n"
+            f"- Oracle Forms version-specific constraints not in the primary analysis\n"
+            f"- Integration points and external dependencies that may have been missed\n\n"
+            f"# TA Agent 1 Output\n\n{agent1_output}\n\n"
+            f"# Batch 1 Analysis\n\n{batch1_output}\n\n"
+            + (f"# Batch 2 Analysis\n\n{batch2_output}\n\n" if batch2_output else "")
+            + "Produce your second-pass synthesis now, focusing on what the first pass may have missed."
+        )
+        edge_output = call_claude(edge_prompt, label="TA Agent 2 edge-case pass", timeout=1800)
+        save_output(output_dir, "TA_Deep_Analyst_Edge.md", edge_output)
+
+    merge_prompt = (
+        "You have two independent Technology Analysis synthesis outputs.\n"
+        "Merge them into one complete document:\n"
+        "- Keep ALL content from Pass 1 (the primary synthesis)\n"
+        "- Add any NEW NFRs, tech debt items, or findings from Pass 2\n"
+        "- Mark newly added content with [EDGE-CASE-FOUND]\n"
+        "- Do not duplicate content\n\n"
+        f"# Pass 1 (Primary Synthesis)\n\n{output}\n\n"
+        f"# Pass 2 (Edge Case Focus)\n\n{edge_output}\n\n"
+        "Produce the merged document now."
+    )
+    output = call_claude(merge_prompt, label="TA Agent 2 merge", timeout=1800)
+
     print("  [TA Agent 2 Batch 2] Checking for gaps in synthesis output...")
     output = detect_and_fill_gaps(output, scan_dir, "TA Agent 2")
     save_output(output_dir, FINAL_OUTPUT_FILE, output)
