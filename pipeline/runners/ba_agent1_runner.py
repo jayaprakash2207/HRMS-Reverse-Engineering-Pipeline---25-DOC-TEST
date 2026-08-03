@@ -1,0 +1,131 @@
+"""
+BA Agent 1 Runner — Structural Scout
+Two-turn approach:
+  Turn 1: send FILE MAP → Claude replies with JSON list of files it needs
+  Turn 2: send requested DEEP_SCAN sections → Claude produces BA_Structural_Scout.md
+"""
+
+import json
+import sys
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).parent.parent))
+from base_runner import (call_claude, load_layer1, load_file_cache,
+                         build_file_map, extract_deep_scan_sections,
+                         save_output, load_prior_output, output_already_exists,
+                         supplement_from_cache)
+
+PROMPT_FILE = Path(__file__).parent.parent.parent / "Prompts_Ready_To_Use" / "01_BA_Agent1_StructuralScout.md"
+OUTPUT_FILE = "BA_Structural_Scout.md"
+
+TURN1_INSTRUCTION = """\
+You are BA Agent 1 — Business Structure Scout.
+
+Your job: identify ALL business entities, aggregate roots, value objects,
+state machines, domain events, business roles, and the ubiquitous language
+of this codebase.
+
+CRITICAL RULES FOR FILE SELECTION:
+- For PL/SQL / Oracle Forms codebases: request EVERY .sql, .pks, .pkb, .prc,
+  .fnc, .trg, .vw, .frmxml, .pllxml, .mmxml file — these are ALL business logic.
+  Do NOT skip any package spec (.pks) or package body (.pkb) file.
+- For schema/DDL files: request ALL table definition files (schema/*.sql,
+  ddl/*.sql, db/*.sql) — every table file contains business entities.
+- For Java/Spring: request ALL entity classes, service classes, repository interfaces.
+- For .NET: request ALL domain models, services, controllers.
+- When in doubt, include the file — missing a file is worse than requesting too many.
+- You MUST request at minimum: all schema files, all package files, all form files,
+  all trigger files. These are never optional.
+
+Below is the complete FILE MAP of the codebase — one line per file.
+Study the file names, then request EVERY file relevant to business logic.
+
+Reply with ONLY a valid JSON array of file paths. No explanation. No markdown.
+Example: ["schema/01_core_tables.sql", "plsql/PKG_EMPLOYEE.pkb", "forms/HRMS_EMPLOYEE.frmxml"]
+
+FILE MAP:
+"""
+
+TURN2_INSTRUCTION = """\
+You are BA Agent 1 — Business Structure Scout.
+
+The file contents you requested are provided below (extracted from the deep scan).
+Now perform your full analysis and produce BA_Structural_Scout.md.
+
+"""
+
+
+def run(input_dir: str, output_dir: str, scan_dir: str) -> str:
+    if output_already_exists(output_dir, OUTPUT_FILE):
+        print(f"\n[BA Agent 1] Already done — skipping (found {OUTPUT_FILE})")
+        return load_prior_output(output_dir, OUTPUT_FILE)
+
+    print("\n[BA Agent 1] Structural Scout — starting...")
+
+    layer1      = load_layer1(input_dir)
+    file_cache  = load_file_cache(scan_dir)
+    file_map    = build_file_map(layer1.get("source_code", []), file_cache)
+    prompt_text = PROMPT_FILE.read_text(encoding="utf-8")
+
+    # Turn 1 — ask Claude which files it needs
+    turn1_prompt = TURN1_INSTRUCTION + file_map
+    print("  [BA Agent 1] Turn 1 — requesting file list...")
+    turn1_output = call_claude(turn1_prompt, label="BA Agent 1 Turn 1", timeout=300)
+
+    try:
+        requested_files = json.loads(turn1_output.strip())
+        if not isinstance(requested_files, list):
+            raise ValueError("not a list")
+    except Exception:
+        # Fallback: extract ALL JSON arrays from output and pick the largest one
+        import re
+        matches = re.findall(r'\[[\s\S]*?\]', turn1_output)
+        requested_files = []
+        for candidate in matches:
+            try:
+                parsed = json.loads(candidate)
+                if isinstance(parsed, list) and len(parsed) > len(requested_files):
+                    requested_files = parsed
+            except Exception:
+                pass
+
+    if not requested_files:
+        print("  [BA Agent 1] WARNING: Turn 1 returned empty file list — requesting ALL files from cache")
+        requested_files = list(load_file_cache(scan_dir).keys())
+
+    print(f"  [BA Agent 1] Requested {len(requested_files)} files: {requested_files[:5]}{'...' if len(requested_files) > 5 else ''}")
+
+    # Turn 2 — send deep scan sections + prompt, get analysis
+    sections = extract_deep_scan_sections(scan_dir, requested_files)
+    sections = supplement_from_cache(scan_dir, requested_files, sections)
+    # No truncation — pass complete layer1 context
+    layer1_context = json.dumps({
+        "extraction_summary": layer1.get("summary", {}),
+        "database": layer1.get("database", {}),
+        "config": layer1.get("config", {}),
+    }, indent=2, ensure_ascii=False)
+
+    turn2_prompt = (
+        f"{prompt_text}\n\n"
+        f"---\n\n"
+        f"{TURN2_INSTRUCTION}"
+        f"# Layer 1 Summary\n\n```json\n{layer1_context}\n```\n\n"
+        f"# Requested File Contents (from deep scan)\n\n{sections}\n\n"
+        f"Begin producing BA_Structural_Scout.md now."
+    )
+
+    print("  [BA Agent 1] Turn 2 — running analysis...")
+    output = call_claude(turn2_prompt, label="BA Agent 1 Turn 2", timeout=1800)
+    save_output(output_dir, OUTPUT_FILE, output)
+    print("[BA Agent 1] Complete.")
+    return output
+
+
+if __name__ == "__main__":
+    import argparse
+    p = argparse.ArgumentParser()
+    p.add_argument("--input",  required=True)
+    p.add_argument("--output", required=True)
+    p.add_argument("--scan-dir", required=True)
+    args = p.parse_args()
+    run(args.input, args.output, args.scan_dir)
