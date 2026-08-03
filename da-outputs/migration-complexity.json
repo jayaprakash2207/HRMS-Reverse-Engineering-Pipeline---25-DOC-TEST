@@ -1,0 +1,75 @@
+{
+  "context": "This repo has no versioned migration framework (Flyway/Liquibase/EF migrations) — schema/tables/*.sql is a single monolithic DDL set, not incremental migrations. 'Migration complexity' here is scored as effort-to-modernize (per README.md's own stated purpose: 'designed for modernization analysis and migration workshops'), not migration-script chronology.",
+  "db_connection": "CODE-ONLY — see schema-catalogue.json",
+  "overall_complexity": "HIGH",
+  "overall_rationale": "Business logic is split three ways with no clean boundary (Forms client triggers, PL/SQL packages, DB triggers) — README self-documents this as known technical debt. Several cross-file defects (broken EMPLOYEE_HISTORY insert, seed/DDL drift, audit check-constraint mismatch) mean the current codebase does not even run cleanly as-is, which must be resolved before any migration, not during it.",
+  "domain_scores": [
+    {
+      "domain": "Core HR (EMPLOYEES + org structure)",
+      "complexity": "HIGH",
+      "reasons": [
+        "EMPLOYEES is the central table with 4+ FKs, a self-referencing manager hierarchy, BLOB/CLOB columns (PHOTO_BLOB, NOTES), and encrypted PII (SSN_ENCRYPTED) whose decryption logic lives in an unread PL/SQL package body — migrating this table means re-implementing PKG_SECURITY.decrypt_ssn's algorithm faithfully or re-encrypting all data",
+        "TRG_EMP_BEFORE_UPDATE's broken EMPLOYEE_HISTORY insert must be fixed/understood before the audit trail can be trusted as a migration source",
+        "VW_ORG_HIERARCHY has a self-documented performance warning ('degrades significantly with >500 employees') via CONNECT BY — a modernized platform needs a different hierarchy strategy (closure table, recursive CTE, or materialized path)"
+      ]
+    },
+    {
+      "domain": "Payroll",
+      "complexity": "HIGH",
+      "reasons": [
+        "Federal/state tax brackets, FICA rates, and Medicare thresholds are ALL hard-coded as 2024 calendar-year values in PKG_PAYROLL.pkb (TAX_BRACKETS table exists but is never read). Any modernization must either port these constants or implement table-driven bracket lookup — the TODO comment confirms the latter is the stated intent.",
+        "HEAD_OF_HOUSEHOLD filing status produces $0 federal tax withholding — a payroll compliance defect that must be assessed and may require retroactive payroll correction before migration.",
+        "Pretax deductions (401k, HSA, medical) are NOT subtracted before bracket calculation ('simplified' per code comment) — taxes are overcalculated for employees with pretax elections.",
+        "PAYROLL_RUNS.TOTAL_NET and TOTAL_DEDUCTIONS exclude BENEFIT element type — header-level summary totals are wrong for most employees. Payslip detail is correct.",
+        "calculate_payroll commits every 50 employees — on failure, the run is in a partially-committed state. No clean retry path exists.",
+        "get_payslip returns YTD_GROSS=0 and YTD_NET=0 (hardcoded placeholder) despite a working get_ytd_earnings function.",
+        "Circular package dependency PKG_EMPLOYEE ↔ PKG_PAYROLL complicates any incremental/strangler-fig migration.",
+        "VW_PAYROLL_LATEST's single-global-latest-run assumption is a design bug requiring a product decision before porting.",
+        "Bank account encryption mechanism for ACCOUNT_NUMBER_ENC is unconfirmed (no matching PKG_SECURITY function found)."
+      ]
+    },
+    {
+      "domain": "Leave Management",
+      "complexity": "MEDIUM-HIGH",
+      "reasons": [
+        "AVAILABLE balance formula is divergent in THREE places — virtual column and get_leave_balance (correct: 5-term with -PENDING); VW_LEAVE_SUMMARY and process_carryover (4-term, no -PENDING). Product owner must designate the canonical formula before migration; carryover amounts may already be inflated.",
+        "run_monthly_accrual only processes ACCRUAL_FREQUENCY='MONTHLY' — any leave type with a different frequency is permanently excluded. This is an undocumented functional gap.",
+        "expire_carryover has a self-documented double-subtract bug if run twice on the same day — no idempotency guard.",
+        "Employees with NULL manager get leave requests stuck permanently in PENDING (no approver in queue) — must be resolved before migration.",
+        "LEAVE_ACCRUAL_LOG.RUN_ID is never populated by the batch procedure — column contains only NULLs.",
+        "Accrual and carryover batch jobs confirmed as DBMS_SCHEDULER (monthly and as-needed), but the scheduler job CREATE scripts are not in the source repo — they must be located in DBA maintenance scripts."
+      ]
+    },
+    {
+      "domain": "Performance Reviews",
+      "complexity": "LOW-MEDIUM",
+      "reasons": [
+        "Straightforward parent-child structure (REVIEW_CYCLES → PERFORMANCE_REVIEWS → PERFORMANCE_GOALS)",
+        "Heavy CLOB usage (SELF_ASSESSMENT, MANAGER_ASSESSMENT, STRENGTHS, etc.) — free-text fields port cleanly to any modern text/JSON column",
+        "UI/DB mismatch on GOAL_CATEGORY poplist (Forms only offers 3 of 5 valid values) needs a product decision, not just a technical port"
+      ]
+    },
+    {
+      "domain": "Cross-cutting (Audit, Security, Notifications, Sessions, Lookups)",
+      "complexity": "MEDIUM-HIGH",
+      "reasons": [
+        "PKG_SECURITY's MD5 password hashing and hard-coded DBMS_CRYPTO key are security defects that should be fixed during migration, not carried forward — but doing so requires a password-reset/re-encryption migration step for all existing users, which is itself operationally complex",
+        "AUDIT_LOG's ACTION_TYPE check-constraint mismatch with the STATUS_CHANGE audit call must be resolved (constraint or caller) before the audit trail is trustworthy",
+        "No ROLE/PERMISSION table exists in the schema — access control appears to be hard-coded inside PKG_SECURITY.has_permission's body (unscanned), which is a migration blind spot: the actual authorization rules are not visible in any table, DDL, or Forms XML scanned so far"
+      ]
+    }
+  ],
+  "pre-migration_blockers": [
+    "Fix or explain the EMPLOYEE_HISTORY column/constraint mismatch — TRG_EMP_BEFORE_UPDATE uses wrong column names; PKG_EMPLOYEE.log_history is the correct implementation and should replace/fix the trigger",
+    "Fix or explain the seed-vs-DDL column mismatches (LOCATIONS.PHONE, JOB_GRADES.GRADE_LEVEL/GRADE_CODE, SYSTEM_PARAMETERS.DESCRIPTION)",
+    "Resolve the AUDIT_LOG.ACTION_TYPE vs. 'STATUS_CHANGE' compliance gap — leave status changes produce no audit record (silently swallowed, not a crash)",
+    "PKG_SECURITY.authenticate has no password verification — confirm whether this is intentional (demo system) or a production security defect before any migration proceeds",
+    "Fix SQL injection vulnerability in PKG_EMPLOYEE.search_employees (dynamic SQL string concatenation, self-documented) before any production migration",
+    "Assess HEAD_OF_HOUSEHOLD payroll compliance gap — employees with this filing status have $0 federal tax withheld",
+    "Resolve AVAILABLE balance formula fork (3 divergent implementations: virtual column/get_leave_balance vs VW_LEAVE_SUMMARY vs process_carryover) — carryover amounts may be currently inflated",
+    "Read PKG_REPORTING.pkb — only remaining unscanned package body",
+    "Fix VW_EMPLOYEE_COMPENSATION salary date-scope predicate — view can return duplicate rows and incorrect COMPA_RATIO for employees with overlapping active salary records (RC-009)",
+    "Resolve USER_CREDENTIALS table status — referenced in PKG_SECURITY but absent from all DDL files; confirm existence and obtain DDL before migration security assessment is complete (A-022/G1-Q9)"
+  ],
+  "_agent2_note": "Pass 1 (2026-08-03): Read PKG_EMPLOYEE.pkb, PKG_PAYROLL.pkb, PKG_LEAVE.pkb, PKG_INTEGRATION.pkb, PKG_NOTIFICATION.pkb, PKG_SECURITY.pkb. Pass 2 (2026-08-03): Full DDL validation — all 30 tables, 6 views, 6 triggers, 29 sequences, PKG_SECURITY.pkb full body, PKG_AUDIT.pkb full body. Still unread: PKG_REPORTING.pkb, PKG_COMMON.pkb, PKG_VALIDATION.pkb, PKG_PERFORMANCE.pkb."
+}

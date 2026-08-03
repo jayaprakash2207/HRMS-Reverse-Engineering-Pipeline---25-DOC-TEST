@@ -1,0 +1,76 @@
+{
+  "data_sources": [
+    {
+      "type": "RDBMS",
+      "engine": "Oracle Database 19c",
+      "schema": "HRMS",
+      "role": "System of record — sole data store for the application (no evidence of any secondary datastore, cache, or external DB in this codebase)",
+      "connection": "CODE-ONLY — no connection string found anywhere in Layer 1 config.json (connection_strings: []); no tnsnames.ora/docker-compose.yml in repo. Oracle Forms apps of this era typically resolve TNS aliases from an Oracle client install (tnsnames.ora) outside the source repo — not something a source-code scan can recover. UNKNOWN — reason: connection details live outside the scanned codebase (client-side TNS config, not app config).",
+      "access_pattern": "Oracle Forms 12c client (.fmb/.fmx) + PL/SQL packages, all direct SQL/PLSQL — no ORM, no repository layer, no data access abstraction",
+      "confidence": 0.9
+    },
+    {
+      "type": "Caching",
+      "finding": "NONE FOUND — no caching class, no Oracle Advanced Queuing, no in-memory cache, no Coherence/TimesTen references anywhere in the scanned source. PKG_EMPLOYEE does hold global package-level state variables (g_current_user, g_current_emp_id, g_current_dept_id) which act as a per-session cache of the logged-in user's identity, scoped to the Forms session's PL/SQL engine lifetime.",
+      "documented_in": "storage-pattern-analysis.md",
+      "confidence": 0.8
+    },
+    {
+      "type": "Queue / Async dispatch",
+      "table": "HRMS.NOTIFICATION_QUEUE",
+      "role": "Application-level queue table (STATUS: PENDING/SENT/FAILED/CANCELLED, RETRY_COUNT) — polled by PKG_NOTIFICATION.process_queue every 5 minutes via DBMS_SCHEDULER. Dispatched via UTL_SMTP (NOT UTL_MAIL) to hard-coded smtp.internal.company.com:25. Batch size: 50 per run. Max retries: 3.",
+      "smtp_config": "HARD-CODED in PKG_NOTIFICATION.pkb constants (not read from SYSTEM_PARAMETERS at runtime — RC-004)",
+      "confidence": 0.9,
+      "change_records": ["RC-003", "RC-004", "A-019"]
+    },
+    {
+      "type": "External integration (outbound — GL)",
+      "package": "PKG_INTEGRATION.generate_gl_journal",
+      "protocol": "UTL_FILE flat file write",
+      "oracle_directory": "GL_FEED_OUT",
+      "format": "Pipe-delimited (H/D/T header-detail-trailer records)",
+      "filename_pattern": "GL_JOURNAL_{run_id}_{YYYYMMDD}.dat",
+      "consumer": "Oracle Financials batch import",
+      "kill_switch": "SYSTEM_PARAMETERS GL_FEED_STATUS — consulted via PKG_COMMON.get_param before generating",
+      "confidence": 0.9,
+      "change_records": ["E-003", "A-011"]
+    },
+    {
+      "type": "External integration (outbound — Benefits)",
+      "package": "PKG_INTEGRATION.export_benefits_feed",
+      "protocol": "UTL_FILE flat file write",
+      "oracle_directory": "BENEFITS_FEED_OUT",
+      "format": "Fixed-width ADP format (fields: EmpNum=10, FName=30, LName=30, DOB=10, HireDate=10, Status=12, MaritalStatus=10, Gender=1, DepFName=30, DepLName=30, Relationship=20, DepDOB=10)",
+      "filename_pattern": "BENEFITS_{YYYYMMDD}.txt",
+      "consumer": "ADP benefits enrollment system",
+      "kill_switch": "SYSTEM_PARAMETERS BENEFITS_FEED_STATUS — NOT consulted by export_benefits_feed (A-010 security/compliance gap)",
+      "pii_risk": "Exports EMPLOYEES + EMPLOYEE_DEPENDENTS PII in plaintext without has_permission check (A-009)",
+      "confidence": 0.9,
+      "change_records": ["E-003", "A-012", "A-009"]
+    },
+    {
+      "type": "External integration (inbound — Time/Attendance, STUB)",
+      "package": "PKG_INTEGRATION.import_time_attendance",
+      "protocol": "UTL_FILE flat file read",
+      "oracle_directory": "TIME_ATTENDANCE_IN",
+      "format": "CSV: emp_number,date,hours_regular,hours_overtime",
+      "status": "TODO STUB — procedure reads file lines but makes no database writes. Parsing is not implemented.",
+      "confidence": 1.0,
+      "change_records": ["A-013"]
+    },
+    {
+      "type": "External integration (outbound — LDAP/AD, STUB)",
+      "package": "PKG_INTEGRATION.sync_org_structure",
+      "status": "STUB placeholder — single log_info call only, no LDAP/AD connectivity",
+      "confidence": 1.0,
+      "change_records": ["A-014"]
+    },
+    {
+      "type": "Session store",
+      "table": "HRMS.USER_SESSIONS",
+      "role": "DB-table-backed session tracking for Oracle Forms client sessions (LOGIN_TIME/LOGOUT_TIME/IP_ADDRESS/FORMS_MODULE/SESSION_STATUS), read/written by PKG_SECURITY (is_session_valid, authenticate, logout)",
+      "confidence": 0.9
+    }
+  ],
+  "note_on_caching_cross_reference": "Per skill error-handling rule ('Caching class found in */Services* → document in BOTH data-source-inventory.json AND storage-pattern-analysis.md'): no Services-layer caching class exists in this codebase at all (it is Oracle Forms + PL/SQL, not a service-oriented app), so this rule does not apply structurally. The only 'caching' behavior is PKG_EMPLOYEE's session-scoped global variables, documented in both this file and storage-pattern-analysis.md."
+}
