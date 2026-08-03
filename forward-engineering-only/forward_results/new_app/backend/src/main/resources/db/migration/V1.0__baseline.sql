@@ -1,0 +1,2 @@
+-- Baseline migration. Confirmed domain tables are introduced via subsequent
+-- versioned migrations as business-rule modules are validated.

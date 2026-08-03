@@ -1,0 +1,45 @@
+```yaml
+spring:
+  application:
+    name: hrms-backend
+  datasource:
+    url: ${DB_URL:jdbc:postgresql://localhost:5432/hrms}
+    username: ${DB_USERNAME:hrms}
+    password: ${DB_PASSWORD:hrms}
+  jpa:
+    open-in-view: false
+    hibernate:
+      ddl-auto: validate
+    properties:
+      hibernate:
+        physical_naming_strategy: org.hibernate.boot.model.naming.CamelCaseToUnderscoresNamingStrategy
+  flyway:
+    enabled: true
+    locations: classpath:db/migration
+  jackson:
+    property-naming-strategy: SNAKE_CASE
+
+server:
+  port: 8080
+  error:
+    # Explicit, not relying on framework defaults: never leak stack traces,
+    # exception class names, or binding-validation internals to API clients.
+    include-stacktrace: never
+    include-exception: false
+    include-message: never
+    include-binding-errors: never
+
+app:
+  security:
+    jwt:
+      # No default: startup must fail if a secret has not been externally provisioned.
+      secret: ${JWT_SECRET}
+      access-token-ttl-seconds: ${JWT_ACCESS_TOKEN_TTL_SECONDS:900}
+      refresh-token-ttl-seconds: ${JWT_REFRESH_TOKEN_TTL_SECONDS:604800}
+    encryption:
+      # Logical secret name resolved at runtime via SecretResolver (env var today,
+      # swap for a KMS/Vault-backed resolver in production) - never a literal key.
+      key-secret-name: ${PII_ENCRYPTION_KEY_SECRET_NAME:hrms/pii-encryption-key}
+```
+
+No other files in this batch require changes.
