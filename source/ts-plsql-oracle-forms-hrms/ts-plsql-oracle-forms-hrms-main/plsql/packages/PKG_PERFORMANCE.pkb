@@ -35,6 +35,7 @@ CREATE OR REPLACE PACKAGE BODY HRMS.PKG_PERFORMANCE AS
         p_user     IN VARCHAR2 DEFAULT USER
     ) IS
     BEGIN
+        -- RULE: A review cycle can only be transitioned to OPEN status if it is currently in DRAFT status
         UPDATE REVIEW_CYCLES SET
             STATUS = 'OPEN',
             MODIFIED_BY = p_user,
@@ -42,7 +43,9 @@ CREATE OR REPLACE PACKAGE BODY HRMS.PKG_PERFORMANCE AS
         WHERE CYCLE_ID = p_cycle_id
         AND STATUS = 'DRAFT';
 
+        -- RULE: Zero rows updated indicates the cycle was not in DRAFT status; the open transition is rejected
         IF SQL%ROWCOUNT = 0 THEN
+            -- RULE: Attempting to open a review cycle that is not in DRAFT status raises application error -20401
             RAISE_APPLICATION_ERROR(-20401, 'Cannot open cycle - must be in DRAFT status');
         END IF;
     END open_review_cycle;
@@ -98,6 +101,7 @@ CREATE OR REPLACE PACKAGE BODY HRMS.PKG_PERFORMANCE AS
         p_user            IN VARCHAR2 DEFAULT USER
     ) IS
     BEGIN
+        -- RULE: A self-assessment can only be submitted when the review is in NOT_STARTED or SELF_REVIEW status; submission advances the review to MANAGER_REVIEW
         UPDATE PERFORMANCE_REVIEWS SET
             SELF_ASSESSMENT = p_self_assessment,
             STATUS = 'MANAGER_REVIEW',
@@ -106,7 +110,9 @@ CREATE OR REPLACE PACKAGE BODY HRMS.PKG_PERFORMANCE AS
         WHERE REVIEW_ID = p_review_id
         AND STATUS IN ('NOT_STARTED', 'SELF_REVIEW');
 
+        -- RULE: Zero rows updated indicates the review does not exist or is not in an eligible status for self-assessment submission
         IF SQL%ROWCOUNT = 0 THEN
+            -- RULE: Submitting a self-assessment for a review not in NOT_STARTED or SELF_REVIEW status raises application error -20402
             RAISE_APPLICATION_ERROR(-20402, 'Review not found or not in correct status');
         END IF;
 
@@ -139,16 +145,23 @@ CREATE OR REPLACE PACKAGE BODY HRMS.PKG_PERFORMANCE AS
         p_user               IN VARCHAR2 DEFAULT USER
     ) IS
     BEGIN
+        -- RULE: The overall performance rating must fall within the valid scoring range of 1.0 (lowest) to 5.0 (highest)
         IF p_overall_rating < 1.0 OR p_overall_rating > 5.0 THEN
+            -- RULE: Submitting a rating outside the 1.0 to 5.0 range raises application error -20403 and the review record is not updated
             RAISE_APPLICATION_ERROR(-20403, 'Rating must be between 1.0 and 5.0');
         END IF;
 
         UPDATE PERFORMANCE_REVIEWS SET
             OVERALL_RATING = p_overall_rating,
+            -- VALIDATION: Maps the numeric overall rating to a descriptive performance label using fixed score band thresholds
             RATING_LABEL = CASE
+                -- CONSTRAINT: A score of 4.5 or above qualifies as 'Exceptional', the highest performance band
                 WHEN p_overall_rating >= 4.5 THEN 'Exceptional'
+                -- CONSTRAINT: A score of 3.5 or above (but below 4.5) qualifies as 'Exceeds Expectations'
                 WHEN p_overall_rating >= 3.5 THEN 'Exceeds Expectations'
+                -- CONSTRAINT: A score of 2.5 or above (but below 3.5) qualifies as 'Meets Expectations'
                 WHEN p_overall_rating >= 2.5 THEN 'Meets Expectations'
+                -- CONSTRAINT: A score of 1.5 or above (but below 2.5) qualifies as 'Needs Improvement'
                 WHEN p_overall_rating >= 1.5 THEN 'Needs Improvement'
                 ELSE 'Unsatisfactory'
             END,
@@ -186,6 +199,7 @@ CREATE OR REPLACE PACKAGE BODY HRMS.PKG_PERFORMANCE AS
         p_user         IN VARCHAR2 DEFAULT USER
     ) IS
     BEGIN
+        -- RULE: An employee can only acknowledge a review that has been marked COMPLETED by the manager; reviews in any other status are silently unaffected
         UPDATE PERFORMANCE_REVIEWS SET
             EMPLOYEE_COMMENTS = p_emp_comments,
             EMPLOYEE_ACK_DATE = SYSDATE,
@@ -235,11 +249,15 @@ CREATE OR REPLACE PACKAGE BODY HRMS.PKG_PERFORMANCE AS
     BEGIN
         UPDATE PERFORMANCE_GOALS SET
             PROGRESS_PCT = p_progress_pct,
+            -- VALIDATION: If the caller does not supply an explicit status, the goal status is derived automatically from the reported progress percentage
             STATUS = NVL(p_status, CASE
+                -- CONSTRAINT: A progress percentage of 100 or above automatically advances the goal status to COMPLETED
                 WHEN p_progress_pct >= 100 THEN 'COMPLETED'
+                -- CONSTRAINT: Any non-zero progress percentage below 100 automatically sets the goal status to IN_PROGRESS
                 WHEN p_progress_pct > 0 THEN 'IN_PROGRESS'
                 ELSE STATUS
             END),
+            -- VALIDATION: Existing goal comments are preserved unchanged when the caller provides no new comment value
             COMMENTS = NVL(p_comments, COMMENTS),
             MODIFIED_BY = p_user,
             MODIFIED_DATE = SYSDATE
@@ -261,6 +279,7 @@ CREATE OR REPLACE PACKAGE BODY HRMS.PKG_PERFORMANCE AS
             JOIN EMPLOYEES e ON pr.EMP_ID = e.EMP_ID
             JOIN JOB_TITLES j ON e.JOB_ID = j.JOB_ID
             JOIN DEPARTMENTS d ON e.DEPT_ID = d.DEPT_ID
+            -- BUSINESS: Returns only the reviews where the given employee is the designated reviewer, scoped to a single review cycle
             WHERE pr.REVIEWER_EMP_ID = p_manager_id
             AND pr.CYCLE_ID = p_cycle_id
             ORDER BY e.LAST_NAME;
@@ -277,6 +296,7 @@ CREATE OR REPLACE PACKAGE BODY HRMS.PKG_PERFORMANCE AS
                    ROUND(COUNT(*) * 100.0 / SUM(COUNT(*)) OVER (), 1) AS PERCENTAGE
             FROM PERFORMANCE_REVIEWS pr
             JOIN EMPLOYEES e ON pr.EMP_ID = e.EMP_ID
+            -- BUSINESS: Includes only reviews that have received a final rating (completed reviews); optionally scoped to employees in a single department
             WHERE pr.CYCLE_ID = p_cycle_id
             AND pr.OVERALL_RATING IS NOT NULL
             AND (p_dept_id IS NULL OR e.DEPT_ID = p_dept_id)
@@ -295,7 +315,9 @@ CREATE OR REPLACE PACKAGE BODY HRMS.PKG_PERFORMANCE AS
         FOR emp_rec IN (
             SELECT EMP_ID, MANAGER_EMP_ID
             FROM EMPLOYEES
+            -- BUSINESS: Only employees with ACTIVE employment status are eligible for bulk performance review generation
             WHERE EMPLOYMENT_STATUS = 'ACTIVE'
+            -- RULE: Employees without a designated manager are excluded from bulk review generation; a manager assignment is required to create a review
             AND MANAGER_EMP_ID IS NOT NULL
         ) LOOP
             BEGIN

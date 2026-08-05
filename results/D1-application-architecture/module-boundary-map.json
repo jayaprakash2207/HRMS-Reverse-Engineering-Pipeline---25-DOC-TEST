@@ -1,154 +1,425 @@
 {
-  "extraction_stage": "Stage 2 — Module Detection",
-  "strategy": "Domain-driven decomposition by HR subdomain; module boundaries drawn at PL/SQL package + Oracle Forms form pairs. Coupling scored 0-10 (10 = tightest).",
   "modules": [
     {
-      "module_id": "MOD-01",
+      "module_id": "MOD-001",
       "name": "Employee",
-      "description": "Employee lifecycle management: create, update, terminate, rehire, search, org-chart, history.",
-      "owned_packages": ["PKG_EMPLOYEE"],
-      "owned_forms": ["HRMS_EMPLOYEE.fmb"],
-      "primary_tables": [
-        "EMPLOYEES",
-        "EMPLOYEE_HISTORY",
-        "EMPLOYEE_DEPENDENTS",
-        "EMERGENCY_CONTACTS",
-        "JOB_TITLES",
-        "JOB_GRADES",
-        "DEPARTMENTS",
-        "LOCATIONS"
+      "responsibility": "Core employee lifecycle management: hire, update, transfer, promote, terminate, rehire. Manages employee master data, personal information, org chart, and headcount.",
+      "source_folders": [
+        "plsql/packages/PKG_EMPLOYEE.pks",
+        "plsql/packages/PKG_EMPLOYEE.pkb",
+        "plsql/triggers/trg_employees.sql",
+        "forms/xml-exports/HRMS_EMPLOYEE.xml",
+        "schema/tables/01_core_tables.sql (EMPLOYEES, DEPARTMENTS, JOB_TITLES, JOB_GRADES, LOCATIONS, EMPLOYEE_HISTORY, EMPLOYEE_DEPENDENTS, EMERGENCY_CONTACTS)"
       ],
-      "shared_tables": ["AUDIT_LOG", "NOTIFICATION_QUEUE", "SYSTEM_PARAMETERS"],
-      "inbound_calls_from": ["PKG_PAYROLL", "PKG_LEAVE", "PKG_PERFORMANCE", "PKG_SECURITY", "PKG_REPORTING", "PKG_VALIDATION", "HRMS_EMPLOYEE.fmb"],
-      "outbound_calls_to": ["PKG_PAYROLL", "PKG_AUDIT", "PKG_COMMON", "PKG_NOTIFICATION"],
-      "coupling_score": 8,
-      "coupling_notes": "Circular dependency with MOD-02 (Payroll). PKG_EMPLOYEE.create_employee calls PKG_PAYROLL.create_salary_record; PKG_PAYROLL validates employee active status via PKG_EMPLOYEE.is_active. Evidence: PKG_EMPLOYEE.pkb, PKG_PAYROLL.pkb, PKG_EMPLOYEE.pks comment.",
-      "confidence": 1.0
+      "main_components": [
+        "PKG_EMPLOYEE (17 public procedures/functions)",
+        "TRG_EMP_BEFORE_INSERT", "TRG_EMP_BEFORE_UPDATE", "TRG_EMP_INSTEAD_OF_DELETE",
+        "HRMS_EMPLOYEE form",
+        "VW_ACTIVE_EMPLOYEES", "VW_ORG_HIERARCHY"
+      ],
+      "entry_points": [
+        "HRMS_EMPLOYEE form (OPEN_FORM from HRMS_MENU)",
+        "PKG_EMPLOYEE.create_employee (called from forms PRE-INSERT)",
+        "PKG_EMPLOYEE.update_employee",
+        "PKG_EMPLOYEE.transfer_employee",
+        "PKG_EMPLOYEE.promote_employee",
+        "PKG_EMPLOYEE.terminate_employee",
+        "PKG_EMPLOYEE.rehire_employee"
+      ],
+      "depends_on_modules": ["MOD-007 (Payroll — create_salary_record)", "MOD-008 (Notification)", "MOD-010 (Audit)", "MOD-011 (Common)"],
+      "used_by_modules": ["MOD-002 (Leave)", "MOD-003 (Payroll)", "MOD-004 (Performance)", "MOD-005 (Reporting)", "MOD-009 (Security)", "MOD-006 (Integration)"],
+      "afferent_coupling": 6,
+      "efferent_coupling": 4,
+      "boundary_quality": "Strong",
+      "confidence": 0.97,
+      "evidence": [
+        { "file": "plsql/packages/PKG_EMPLOYEE.pks", "reason": "Dedicated package with clear public API for all employee lifecycle operations" },
+        { "file": "plsql/triggers/trg_employees.sql", "reason": "3 DB triggers enforce employee invariants at DB level" },
+        { "file": "schema/tables/01_core_tables.sql", "reason": "EMPLOYEES table is the central entity; all employee data grouped in this schema file" },
+        { "file": "forms/xml-exports/HRMS_EMPLOYEE.xml", "reason": "Dedicated Oracle Form for employee management" }
+      ],
+      "open_questions": [
+        "Are there any stored procedures for batch employee imports that are not captured in the package?",
+        "EMPLOYEE_DEPENDENTS and EMERGENCY_CONTACTS have no corresponding PL/SQL package — who manages their DML?"
+      ]
     },
     {
-      "module_id": "MOD-02",
-      "name": "Payroll",
-      "description": "Payroll processing: salary records, pay elements, payroll run calculation, tax calculation, pay register report generation, GL journal export.",
-      "owned_packages": ["PKG_PAYROLL"],
-      "owned_forms": ["HRMS_PAYROLL.fmb"],
-      "primary_tables": [
-        "SALARY_RECORDS",
-        "PAY_ELEMENTS",
-        "EMPLOYEE_PAY_ELEMENTS",
-        "PAY_PERIODS",
-        "PAYROLL_RUNS",
-        "PAYROLL_DETAILS",
-        "TAX_BRACKETS",
-        "EMPLOYEE_TAX_INFO",
-        "EMPLOYEE_BANK_ACCOUNTS"
-      ],
-      "shared_tables": ["EMPLOYEES", "AUDIT_LOG", "NOTIFICATION_QUEUE"],
-      "inbound_calls_from": ["PKG_EMPLOYEE", "HRMS_PAYROLL.fmb"],
-      "outbound_calls_to": ["PKG_EMPLOYEE", "PKG_AUDIT", "PKG_COMMON", "PKG_NOTIFICATION", "PKG_INTEGRATION"],
-      "coupling_score": 8,
-      "coupling_notes": "Circular dependency with MOD-01. PKG_PAYROLL.calculate_payroll triggers PKG_INTEGRATION.generate_gl_journal for approved runs.",
-      "confidence": 1.0
-    },
-    {
-      "module_id": "MOD-03",
+      "module_id": "MOD-002",
       "name": "Leave",
-      "description": "Leave management: request submission/approval/rejection/cancellation, leave type management, monthly accruals, year-end carryover, holiday calendar.",
-      "owned_packages": ["PKG_LEAVE"],
-      "owned_forms": ["HRMS_LEAVE.fmb"],
-      "primary_tables": [
-        "LEAVE_TYPES",
-        "LEAVE_BALANCES",
-        "LEAVE_REQUESTS",
-        "LEAVE_ACCRUAL_LOG",
-        "HOLIDAYS"
+      "responsibility": "Leave request lifecycle: submission, approval, rejection, cancellation. Leave balance accrual, carryover, expiry. Team calendar and pending approvals view. Monthly accrual batch job.",
+      "source_folders": [
+        "plsql/packages/PKG_LEAVE.pks",
+        "plsql/packages/PKG_LEAVE.pkb",
+        "plsql/triggers/trg_audit.sql (TRG_LEAVE_REQUEST_AUDIT)",
+        "forms/xml-exports/HRMS_LEAVE.xml",
+        "schema/tables/03_leave_tables.sql (LEAVE_TYPES, LEAVE_BALANCES, LEAVE_REQUESTS, LEAVE_ACCRUAL_LOG, HOLIDAYS)"
       ],
-      "shared_tables": ["EMPLOYEES", "AUDIT_LOG", "NOTIFICATION_QUEUE"],
-      "inbound_calls_from": ["PKG_EMPLOYEE", "HRMS_LEAVE.fmb"],
-      "outbound_calls_to": ["PKG_AUDIT", "PKG_COMMON", "PKG_NOTIFICATION"],
-      "coupling_score": 4,
-      "coupling_notes": "PKG_EMPLOYEE.terminate_employee cancels pending leave requests directly — tight but unidirectional. PKG_LEAVE is otherwise a well-isolated module.",
-      "confidence": 1.0
+      "main_components": [
+        "PKG_LEAVE (14 public procedures/functions)",
+        "TRG_LEAVE_REQUEST_AUDIT",
+        "HRMS_LEAVE form",
+        "VW_LEAVE_SUMMARY",
+        "VW_PENDING_APPROVALS (leave portion)"
+      ],
+      "entry_points": [
+        "HRMS_LEAVE form (OPEN_FORM from HRMS_MENU)",
+        "PKG_LEAVE.submit_leave_request",
+        "PKG_LEAVE.approve_leave_request",
+        "PKG_LEAVE.reject_leave_request",
+        "PKG_LEAVE.cancel_leave_request",
+        "PKG_LEAVE.run_monthly_accrual (DBMS_SCHEDULER batch)",
+        "PKG_LEAVE.process_carryover (year-end batch)",
+        "PKG_LEAVE.expire_carryover (batch)"
+      ],
+      "depends_on_modules": ["MOD-001 (Employee)", "MOD-008 (Notification)", "MOD-010 (Audit)", "MOD-011 (Common)"],
+      "used_by_modules": ["MOD-001 (Employee — terminate cancels leave)", "MOD-005 (Reporting)"],
+      "afferent_coupling": 2,
+      "efferent_coupling": 4,
+      "boundary_quality": "Strong",
+      "confidence": 0.96,
+      "evidence": [
+        { "file": "plsql/packages/PKG_LEAVE.pks", "reason": "Dedicated package with complete leave lifecycle API" },
+        { "file": "schema/tables/03_leave_tables.sql", "reason": "Dedicated schema file for all leave-related tables" },
+        { "file": "forms/xml-exports/HRMS_LEAVE.xml", "reason": "Dedicated Oracle Form for leave management" }
+      ],
+      "open_questions": [
+        "Is there a self-service web portal (mentioned in PKG_LEAVE.pks header) that is separate from the Forms application?",
+        "Is DBMS_SCHEDULER job for run_monthly_accrual defined somewhere not in the source set?"
+      ]
     },
     {
-      "module_id": "MOD-04",
+      "module_id": "MOD-003",
+      "name": "Payroll",
+      "responsibility": "Salary record management, pay period creation, payroll run lifecycle (create/calculate/approve/reverse), per-employee pay calculation, tax calculations (federal/state/FICA/Medicare), pay slip generation, pay register CSV output.",
+      "source_folders": [
+        "plsql/packages/PKG_PAYROLL.pks",
+        "plsql/packages/PKG_PAYROLL.pkb",
+        "plsql/triggers/trg_audit.sql (TRG_SALARY_AUDIT)",
+        "forms/xml-exports/HRMS_PAYROLL.xml",
+        "schema/tables/02_payroll_tables.sql (SALARY_RECORDS, PAY_ELEMENTS, EMPLOYEE_PAY_ELEMENTS, PAY_PERIODS, PAYROLL_RUNS, PAYROLL_DETAILS, TAX_BRACKETS, EMPLOYEE_TAX_INFO, EMPLOYEE_BANK_ACCOUNTS)"
+      ],
+      "main_components": [
+        "PKG_PAYROLL (17 public procedures/functions)",
+        "TRG_SALARY_AUDIT",
+        "HRMS_PAYROLL form",
+        "VW_PAYROLL_LATEST"
+      ],
+      "entry_points": [
+        "HRMS_PAYROLL form (OPEN_FORM from HRMS_MENU, requires PAYROLL VIEW permission)",
+        "PKG_PAYROLL.create_payroll_run",
+        "PKG_PAYROLL.calculate_payroll (batch-style, processes all active employees)",
+        "PKG_PAYROLL.approve_payroll (requires PAYROLL APPROVE permission)",
+        "PKG_PAYROLL.reverse_payroll",
+        "PKG_PAYROLL.generate_pay_register (UTL_FILE output)"
+      ],
+      "depends_on_modules": ["MOD-001 (Employee — is_active)", "MOD-010 (Audit)", "MOD-011 (Common)"],
+      "used_by_modules": ["MOD-001 (Employee — create_salary_record)", "MOD-006 (Integration — GL journal, benefits feed)", "MOD-005 (Reporting)"],
+      "afferent_coupling": 3,
+      "efferent_coupling": 3,
+      "boundary_quality": "Moderate",
+      "confidence": 0.93,
+      "evidence": [
+        { "file": "plsql/packages/PKG_PAYROLL.pks", "reason": "Dedicated package with complete payroll lifecycle API" },
+        { "file": "schema/tables/02_payroll_tables.sql", "reason": "Dedicated schema file for all payroll tables" },
+        { "file": "forms/xml-exports/HRMS_PAYROLL.xml", "reason": "Dedicated Oracle Form for payroll processing" }
+      ],
+      "open_questions": [
+        "Circular dependency: PKG_EMPLOYEE calls PKG_PAYROLL.create_salary_record; PKG_PAYROLL calls PKG_EMPLOYEE.is_active. Who resolves?",
+        "TAX_BRACKETS table is defined but PKG_PAYROLL hard-codes 2024 brackets — is TAX_BRACKETS ever populated and used?",
+        "EMPLOYEE_BANK_ACCOUNTS table exists (for direct deposit) but no PKG_PAYROLL procedure reads or uses it — is bank account managed by a separate package outside the source set, or is direct deposit handled by an external batch/vendor process entirely?",
+        "ACH disbursement: what produces the NACHA file or bank API call after payroll approval? No code in the source performs this step.",
+        "PRENOTE_SENT / PRENOTE_DATE columns on EMPLOYEE_BANK_ACCOUNTS exist but are never set by any package — who owns the prenote workflow?",
+        "ACCOUNT_NUMBER_ENC: what routine encrypts/decrypts bank account numbers? No such function appears in PKG_SECURITY or PKG_PAYROLL.",
+        "Are DBMS_SCHEDULER jobs for payroll runs defined in a file not in scope?"
+      ]
+    },
+    {
+      "module_id": "MOD-004",
       "name": "Performance",
-      "description": "Annual performance review cycles: review creation, self-assessment, manager review, goal tracking, acknowledgement, rating distribution.",
-      "owned_packages": ["PKG_PERFORMANCE"],
-      "owned_forms": ["HRMS_PERFORMANCE.fmb"],
-      "primary_tables": [
-        "REVIEW_CYCLES",
-        "PERFORMANCE_REVIEWS",
-        "PERFORMANCE_GOALS"
+      "responsibility": "Performance review cycle management, review creation and lifecycle (self-assessment, manager review, acknowledgment), goal tracking, rating distribution, calibration support.",
+      "source_folders": [
+        "plsql/packages/PKG_PERFORMANCE.pks",
+        "plsql/packages/PKG_PERFORMANCE.pkb",
+        "forms/xml-exports/HRMS_PERFORMANCE.xml",
+        "schema/tables/04_performance_tables.sql (REVIEW_CYCLES, PERFORMANCE_REVIEWS, PERFORMANCE_GOALS)"
       ],
-      "shared_tables": ["EMPLOYEES", "AUDIT_LOG", "NOTIFICATION_QUEUE"],
-      "inbound_calls_from": ["HRMS_PERFORMANCE.fmb"],
-      "outbound_calls_to": ["PKG_AUDIT", "PKG_COMMON", "PKG_NOTIFICATION"],
-      "coupling_score": 3,
-      "coupling_notes": "Least coupled domain module. Only reads EMPLOYEES (JOIN) and uses shared infrastructure packages.",
-      "confidence": 1.0
+      "main_components": [
+        "PKG_PERFORMANCE (11 public procedures/functions)",
+        "HRMS_PERFORMANCE form",
+        "VW_PENDING_APPROVALS (performance portion)"
+      ],
+      "entry_points": [
+        "HRMS_PERFORMANCE form (OPEN_FORM from HRMS_MENU, no permission check)",
+        "PKG_PERFORMANCE.create_review_cycle",
+        "PKG_PERFORMANCE.generate_reviews_for_cycle (batch — creates reviews for all active employees)",
+        "PKG_PERFORMANCE.submit_self_assessment",
+        "PKG_PERFORMANCE.submit_manager_review",
+        "PKG_PERFORMANCE.acknowledge_review"
+      ],
+      "depends_on_modules": ["MOD-008 (Notification)", "MOD-010 (Audit)", "MOD-011 (Common)"],
+      "used_by_modules": ["MOD-005 (Reporting)"],
+      "afferent_coupling": 1,
+      "efferent_coupling": 3,
+      "boundary_quality": "Strong",
+      "confidence": 0.92,
+      "evidence": [
+        { "file": "plsql/packages/PKG_PERFORMANCE.pks", "reason": "Dedicated package with complete performance review API" },
+        { "file": "schema/tables/04_performance_tables.sql", "reason": "Dedicated performance tables in schema" },
+        { "file": "forms/xml-exports/HRMS_PERFORMANCE.xml", "reason": "Dedicated Oracle Form" }
+      ],
+      "open_questions": [
+        "PKG_PERFORMANCE.pks header mentions 'batch calibration job' — where is this defined?",
+        "Rating calibration fields (CALIBRATED_RATING, CALIBRATION_NOTES) exist in table but no PKG_PERFORMANCE procedure handles calibration — is there a separate calibration package?"
+      ]
     },
     {
-      "module_id": "MOD-05",
-      "name": "Security / Auth",
-      "description": "Authentication (login/logout/session management), authorisation (grade-based RBAC), SSN encryption/decryption, password management.",
-      "owned_packages": ["PKG_SECURITY"],
-      "owned_forms": ["HRMS_LOGIN.fmb"],
-      "primary_tables": ["USER_SESSIONS"],
-      "shared_tables": ["EMPLOYEES", "JOB_GRADES"],
-      "inbound_calls_from": ["ALL_FORMS via HRMS_COMMON_LIB.check_session", "HRMS_LOGIN.fmb", "HRMS_MENU.fmb"],
-      "outbound_calls_to": ["PKG_AUDIT", "PKG_COMMON"],
-      "coupling_score": 9,
-      "coupling_notes": "All 6 forms attach HRMS_COMMON_LIB which calls PKG_SECURITY.is_session_valid on every form navigation. HRMS_MENU enforces PKG_SECURITY.has_permission for PAYROLL, ADMIN, REPORTS. This package is a cross-cutting concern. Hard-coded encryption key in source is critical finding.",
-      "confidence": 1.0
+      "module_id": "MOD-005",
+      "name": "Reporting",
+      "responsibility": "HR analytics and compliance reporting: headcount, compensation summary, turnover, new hires, leave utilization, payroll summary, EEO compliance.",
+      "source_folders": [
+        "plsql/packages/PKG_REPORTING.pks",
+        "plsql/packages/PKG_REPORTING.pkb",
+        "schema/views/hrms_views.sql (VW_ACTIVE_EMPLOYEES, VW_ORG_HIERARCHY, VW_EMPLOYEE_COMPENSATION, VW_LEAVE_SUMMARY, VW_PAYROLL_LATEST, VW_PENDING_APPROVALS)"
+      ],
+      "main_components": [
+        "PKG_REPORTING (8 public procedures)",
+        "VW_ACTIVE_EMPLOYEES", "VW_ORG_HIERARCHY", "VW_EMPLOYEE_COMPENSATION",
+        "VW_LEAVE_SUMMARY", "VW_PAYROLL_LATEST", "VW_PENDING_APPROVALS"
+      ],
+      "entry_points": [
+        "HRMS_REPORTS form (OPEN_FORM from HRMS_MENU — form not in source set)",
+        "Oracle Reports .rdf (mentioned in PKG_REPORTING.pks header — not in source)",
+        "PKG_REPORTING.headcount_report",
+        "PKG_REPORTING.compensation_summary",
+        "PKG_REPORTING.turnover_report",
+        "PKG_REPORTING.new_hires_report",
+        "PKG_REPORTING.leave_utilization_report",
+        "PKG_REPORTING.payroll_summary_report",
+        "PKG_REPORTING.eeo_compliance_report"
+      ],
+      "depends_on_modules": ["MOD-001 (Employee — data)", "MOD-003 (Payroll — data)", "MOD-002 (Leave — data)", "MOD-004 (Performance — data)", "MOD-011 (Common)"],
+      "used_by_modules": [],
+      "afferent_coupling": 0,
+      "efferent_coupling": 5,
+      "boundary_quality": "Strong",
+      "confidence": 0.88,
+      "evidence": [
+        { "file": "plsql/packages/PKG_REPORTING.pks", "reason": "Dedicated reporting package; all procedures return REF CURSORs for use by reports/forms" },
+        { "file": "schema/views/hrms_views.sql", "reason": "6 read-only views for reporting" }
+      ],
+      "open_questions": [
+        "HRMS_REPORTS.fmb referenced in menu but not in source set — does it exist?",
+        "RPT_* denormalized reporting tables mentioned in refresh_reporting_tables but none defined in schema — were they omitted from source?",
+        "Oracle Reports .rdf files mentioned in header — where are they?"
+      ]
     },
     {
-      "module_id": "MOD-06",
-      "name": "Integration / Cross-Cutting",
-      "description": "External system integrations (GL journal, ADP benefits feed, time-attendance import), async notification queue, shared utilities, validation, reporting, audit trail.",
-      "owned_packages": [
-        "PKG_INTEGRATION",
-        "PKG_NOTIFICATION",
-        "PKG_AUDIT",
-        "PKG_COMMON",
-        "PKG_VALIDATION",
-        "PKG_REPORTING"
+      "module_id": "MOD-006",
+      "name": "Integration",
+      "responsibility": "External system integration: GL journal feed to Oracle Financials (flat file), ADP benefits enrollment export (fixed-width file), time-and-attendance import (CSV), org structure sync (LDAP stub).",
+      "source_folders": [
+        "plsql/packages/PKG_INTEGRATION.pks",
+        "plsql/packages/PKG_INTEGRATION.pkb"
       ],
-      "owned_forms": ["HRMS_MENU.fmb", "HRMS_REPORTS.fmb (referenced, not scanned)", "HRMS_ADMIN.fmb (referenced, not scanned)"],
-      "owned_libraries": ["HRMS_COMMON_LIB.pll", "HRMS_VALIDATION_LIB.pll"],
-      "primary_tables": [
-        "AUDIT_LOG",
-        "SYSTEM_PARAMETERS",
-        "NOTIFICATION_QUEUE",
-        "LOOKUP_VALUES"
+      "main_components": [
+        "PKG_INTEGRATION (5 public procedures/functions)",
+        "UTL_FILE (Oracle directory objects: GL_FEED_OUT, BENEFITS_FEED_OUT, TIME_ATTENDANCE_IN)",
+        "PAYROLL_OUTPUT directory object (used by PKG_PAYROLL.generate_pay_register)"
       ],
-      "shared_tables": ["ALL domain tables (via reporting and audit)"],
-      "inbound_calls_from": ["PKG_EMPLOYEE", "PKG_PAYROLL", "PKG_LEAVE", "PKG_PERFORMANCE", "PKG_SECURITY", "ALL_FORMS"],
-      "outbound_calls_to": ["EXTERNAL: Oracle Financials (flat file)", "EXTERNAL: ADP Benefits (flat file)", "EXTERNAL: Time-Attendance system (CSV)", "EXTERNAL: SMTP server for email"],
-      "coupling_score": 10,
-      "coupling_notes": "PKG_COMMON and PKG_AUDIT are called by every other package. PKG_NOTIFICATION is called by every domain module. This module is a true shared kernel — not independently deployable.",
-      "confidence": 1.0
-    }
-  ],
-  "inter_module_dependencies": [
-    {"from": "MOD-01", "to": "MOD-02", "type": "call", "reason": "PKG_EMPLOYEE.create_employee → PKG_PAYROLL.create_salary_record", "bidirectional": true, "is_cycle": true},
-    {"from": "MOD-01", "to": "MOD-06", "type": "call", "reason": "PKG_EMPLOYEE → PKG_AUDIT, PKG_COMMON, PKG_NOTIFICATION"},
-    {"from": "MOD-02", "to": "MOD-01", "type": "call", "reason": "PKG_PAYROLL validates employee via PKG_EMPLOYEE.is_active", "bidirectional": false, "is_cycle": true},
-    {"from": "MOD-02", "to": "MOD-06", "type": "call", "reason": "PKG_PAYROLL → PKG_AUDIT, PKG_COMMON, PKG_NOTIFICATION, PKG_INTEGRATION"},
-    {"from": "MOD-03", "to": "MOD-01", "type": "data_read", "reason": "PKG_LEAVE reads EMPLOYEES table for active status and manager lookup"},
-    {"from": "MOD-03", "to": "MOD-06", "type": "call", "reason": "PKG_LEAVE → PKG_AUDIT, PKG_COMMON, PKG_NOTIFICATION"},
-    {"from": "MOD-04", "to": "MOD-01", "type": "data_read", "reason": "PKG_PERFORMANCE reads EMPLOYEES for review generation and manager assignment"},
-    {"from": "MOD-04", "to": "MOD-06", "type": "call", "reason": "PKG_PERFORMANCE → PKG_AUDIT, PKG_COMMON, PKG_NOTIFICATION"},
-    {"from": "MOD-05", "to": "MOD-01", "type": "data_read", "reason": "PKG_SECURITY reads EMPLOYEES for authentication and JOB_GRADES for permission check"},
-    {"from": "MOD-05", "to": "MOD-06", "type": "call", "reason": "PKG_SECURITY → PKG_AUDIT, PKG_COMMON"}
-  ],
-  "cycles": [
+      "entry_points": [
+        "PKG_INTEGRATION.generate_gl_journal (batch scheduler — nightly)",
+        "PKG_INTEGRATION.export_benefits_feed (batch scheduler — weekly)",
+        "PKG_INTEGRATION.import_time_attendance (batch, p_file_name parameter)",
+        "PKG_INTEGRATION.sync_org_structure (stub — not implemented)"
+      ],
+      "depends_on_modules": ["MOD-003 (Payroll — data)", "MOD-001 (Employee — data)", "MOD-011 (Common)"],
+      "used_by_modules": [],
+      "afferent_coupling": 0,
+      "efferent_coupling": 3,
+      "boundary_quality": "Weak",
+      "confidence": 0.82,
+      "evidence": [
+        { "file": "plsql/packages/PKG_INTEGRATION.pkb", "reason": "3 UTL_FILE-based integrations; FTP credentials in SYSTEM_PARAMETERS (cleartext)" },
+        { "file": "plsql/packages/PKG_INTEGRATION.pks", "reason": "Known issues: no retry logic, ADP vendor-specific format, flat file exchange" }
+      ],
+      "open_questions": [
+        "Are the Oracle directory objects (GL_FEED_OUT, BENEFITS_FEED_OUT, TIME_ATTENDANCE_IN, PAYROLL_OUTPUT) defined in a DBA script not included in source?",
+        "import_time_attendance has TODO: parsing not implemented — is there a separate utility that does this?",
+        "sync_org_structure is a stub — is LDAP/AD sync handled by a different team/system?",
+        "FTP credentials stored in SYSTEM_PARAMETERS table — which parameters and who populates them?"
+      ]
+    },
     {
-      "cycle_id": "CYCLE-01",
-      "participants": ["PKG_EMPLOYEE", "PKG_PAYROLL"],
-      "description": "PKG_EMPLOYEE.create_employee calls PKG_PAYROLL.create_salary_record; PKG_PAYROLL calls PKG_EMPLOYEE.is_active for validation",
-      "severity": "HIGH",
-      "evidence_file": "plsql/packages/PKG_EMPLOYEE.pks",
-      "evidence_comment": "-- Circular dependency with PKG_PAYROLL (salary validation)"
+      "module_id": "MOD-007",
+      "name": "Notification",
+      "responsibility": "Asynchronous notification queuing and delivery via SMTP. Queues email notifications for leave approvals, employee events, performance review milestones. Batch queue processor runs every 5 minutes via DBMS_SCHEDULER.",
+      "source_folders": [
+        "plsql/packages/PKG_NOTIFICATION.pks",
+        "plsql/packages/PKG_NOTIFICATION.pkb",
+        "schema/tables/04_performance_tables.sql (NOTIFICATION_QUEUE)"
+      ],
+      "main_components": [
+        "PKG_NOTIFICATION (4 public procedures)",
+        "NOTIFICATION_QUEUE table",
+        "UTL_SMTP (smtp.internal.company.com:25)"
+      ],
+      "entry_points": [
+        "PKG_NOTIFICATION.send_notification (called by PKG_EMPLOYEE, PKG_LEAVE, PKG_PAYROLL, PKG_PERFORMANCE)",
+        "PKG_NOTIFICATION.process_queue (DBMS_SCHEDULER every 5 minutes)",
+        "PKG_NOTIFICATION.retry_failed (batch)",
+        "PKG_NOTIFICATION.cancel_notification"
+      ],
+      "depends_on_modules": ["MOD-011 (Common)"],
+      "used_by_modules": ["MOD-001 (Employee)", "MOD-002 (Leave)", "MOD-003 (Payroll — implied)", "MOD-004 (Performance)"],
+      "afferent_coupling": 4,
+      "efferent_coupling": 1,
+      "boundary_quality": "Strong",
+      "confidence": 0.94,
+      "evidence": [
+        { "file": "plsql/packages/PKG_NOTIFICATION.pkb", "reason": "PRAGMA AUTONOMOUS_TRANSACTION ensures notification never blocks business transactions; queue-based async delivery" },
+        { "file": "plsql/packages/PKG_NOTIFICATION.pks", "reason": "Known issues: no rate limiting, SMTP hard-coded to smtp.internal.company.com:25" }
+      ],
+      "open_questions": [
+        "Is there a DBMS_SCHEDULER job definition for process_queue (every 5 minutes) in a script not in scope?",
+        "SMS and IN_APP notification types are listed in NOTIFICATION_QUEUE but process_queue only handles EMAIL — are those implemented elsewhere?"
+      ]
+    },
+    {
+      "module_id": "MOD-008",
+      "name": "Audit",
+      "responsibility": "Cross-cutting audit trail. Records all DML operations to AUDIT_LOG with old/new values, user, IP, session. Provides change history retrieval. Supports 365-day default retention with purge capability.",
+      "source_folders": [
+        "plsql/packages/PKG_AUDIT.pks",
+        "plsql/packages/PKG_AUDIT.pkb",
+        "plsql/triggers/trg_audit.sql (TRG_SALARY_AUDIT, TRG_LEAVE_REQUEST_AUDIT, TRG_DEPARTMENT_AUDIT)",
+        "schema/tables/04_performance_tables.sql (AUDIT_LOG)"
+      ],
+      "main_components": [
+        "PKG_AUDIT (3 public procedures/functions)",
+        "TRG_SALARY_AUDIT", "TRG_LEAVE_REQUEST_AUDIT", "TRG_DEPARTMENT_AUDIT",
+        "AUDIT_LOG table"
+      ],
+      "entry_points": [
+        "PKG_AUDIT.log_action (called by all packages and DB triggers)",
+        "PKG_AUDIT.get_change_history (read)",
+        "PKG_AUDIT.purge_old_records (batch/admin)"
+      ],
+      "depends_on_modules": [],
+      "used_by_modules": ["MOD-001 (Employee)", "MOD-002 (Leave)", "MOD-003 (Payroll)", "MOD-004 (Performance)", "MOD-009 (Security)", "MOD-011 (Common — logs to AUDIT_LOG)"],
+      "afferent_coupling": 6,
+      "efferent_coupling": 0,
+      "boundary_quality": "Strong",
+      "confidence": 0.98,
+      "evidence": [
+        { "file": "plsql/packages/PKG_AUDIT.pkb", "reason": "PRAGMA AUTONOMOUS_TRANSACTION; all packages call log_action; failures silently swallowed" }
+      ],
+      "open_questions": []
+    },
+    {
+      "module_id": "MOD-009",
+      "name": "Security",
+      "responsibility": "Authentication (username/password login, session creation), session validation (30-minute timeout), grade-based authorization (has_permission), SSN encryption/decryption (AES-256), password hashing (MD5), password change.",
+      "source_folders": [
+        "plsql/packages/PKG_SECURITY.pks",
+        "plsql/packages/PKG_SECURITY.pkb",
+        "forms/xml-exports/HRMS_LOGIN.xml",
+        "schema/tables/04_performance_tables.sql (USER_SESSIONS)"
+      ],
+      "main_components": [
+        "PKG_SECURITY (8 public procedures/functions)",
+        "HRMS_LOGIN form",
+        "USER_SESSIONS table"
+      ],
+      "entry_points": [
+        "HRMS_LOGIN form (application entry point)",
+        "PKG_SECURITY.authenticate",
+        "PKG_SECURITY.logout",
+        "PKG_SECURITY.is_session_valid (called by every form's WHEN-NEW-FORM-INSTANCE)",
+        "PKG_SECURITY.has_permission (called at form open and button press)"
+      ],
+      "depends_on_modules": ["MOD-001 (Employee — set_session_context)", "MOD-008 (Audit)"],
+      "used_by_modules": ["All forms (HRMS_LOGIN, HRMS_MENU, HRMS_EMPLOYEE, HRMS_PAYROLL, HRMS_LEAVE, HRMS_PERFORMANCE)"],
+      "afferent_coupling": 6,
+      "efferent_coupling": 2,
+      "boundary_quality": "Moderate",
+      "confidence": 0.90,
+      "evidence": [
+        { "file": "plsql/packages/PKG_SECURITY.pkb", "reason": "Hard-coded encryption key; MD5 password hashing; no account lockout; password verification stub" },
+        { "file": "forms/xml-exports/HRMS_LOGIN.xml", "reason": "Login form; known cleartext password transmission" }
+      ],
+      "open_questions": [
+        "USER_CREDENTIALS table referenced in PKG_SECURITY (change_password, authenticate comments) but not defined in schema — where is it?",
+        "Password verification in authenticate() appears to not verify the actual password hash — is authentication truly implemented?",
+        "Hard-coded encryption key 'HR$ystem_3ncrypt10n_K3y_2024!!' in PKG_SECURITY.pkb — is this production key?"
+      ]
+    },
+    {
+      "module_id": "MOD-010",
+      "name": "Validation",
+      "responsibility": "Reusable validation functions: date ranges, salary-grade compliance, email/phone format, employee number format, business day calculation, required field checks. Used by both server-side packages and Oracle Forms client-side.",
+      "source_folders": [
+        "plsql/packages/PKG_VALIDATION.pks",
+        "plsql/packages/PKG_VALIDATION.pkb",
+        "forms/libraries/HRMS_VALIDATION_LIB.pll.sql"
+      ],
+      "main_components": [
+        "PKG_VALIDATION (8 public functions — server-side)",
+        "HRMS_VALIDATION_LIB.pll (client-side form library — 5 functions)"
+      ],
+      "entry_points": [
+        "PKG_VALIDATION functions (called by PKG_EMPLOYEE, PKG_PAYROLL from server side)",
+        "HRMS_VALIDATION_LIB functions (called from form WHEN-VALIDATE-ITEM triggers)"
+      ],
+      "depends_on_modules": ["MOD-011 (Common)"],
+      "used_by_modules": ["MOD-001 (Employee)", "MOD-003 (Payroll)", "All forms"],
+      "afferent_coupling": 3,
+      "efferent_coupling": 1,
+      "boundary_quality": "Strong",
+      "confidence": 0.95,
+      "evidence": [
+        { "file": "plsql/packages/PKG_VALIDATION.pkb", "reason": "8 validation functions; delegates email/phone to PKG_COMMON" },
+        { "file": "forms/libraries/HRMS_VALIDATION_LIB.pll.sql", "reason": "Client-side library with documented drift from server-side (email subdomain handling, SSN zero-segment check)" }
+      ],
+      "open_questions": [
+        "Known drift between HRMS_VALIDATION_LIB.validate_email and PKG_COMMON.is_valid_email — which is authoritative?",
+        "validate_required_fields only handles 'EMPLOYEES' table case — is it used for other tables?"
+      ]
+    },
+    {
+      "module_id": "MOD-011",
+      "name": "Common",
+      "responsibility": "Cross-cutting utilities: error/info logging (to AUDIT_LOG), system parameter management (read/write SYSTEM_PARAMETERS), date utilities (business days, fiscal year/quarter), formatting (phone, SSN, currency, name), base validation (email, phone, SSN).",
+      "source_folders": [
+        "plsql/packages/PKG_COMMON.pks",
+        "plsql/packages/PKG_COMMON.pkb",
+        "forms/libraries/HRMS_COMMON_LIB.pll.sql",
+        "schema/tables/04_performance_tables.sql (SYSTEM_PARAMETERS, AUDIT_LOG, LOOKUP_VALUES)"
+      ],
+      "main_components": [
+        "PKG_COMMON (17 public procedures/functions)",
+        "HRMS_COMMON_LIB.pll (toolbar + session + formatting helpers)",
+        "SYSTEM_PARAMETERS table",
+        "LOOKUP_VALUES table"
+      ],
+      "entry_points": [
+        "PKG_COMMON.log_error / log_info (called from all packages on exception)",
+        "PKG_COMMON.get_param / set_param (system configuration)",
+        "HRMS_COMMON_LIB toolbar functions (attached to all forms)"
+      ],
+      "depends_on_modules": [],
+      "used_by_modules": ["All modules (MOD-001 through MOD-010)"],
+      "afferent_coupling": 10,
+      "efferent_coupling": 0,
+      "boundary_quality": "Strong",
+      "confidence": 0.99,
+      "evidence": [
+        { "file": "plsql/packages/PKG_COMMON.pks", "reason": "No cross-package dependencies; base package called by all others" },
+        { "file": "forms/libraries/HRMS_COMMON_LIB.pll.sql", "reason": "Attached to all HRMS forms; provides toolbar/session/format utilities" }
+      ],
+      "open_questions": [
+        "LOOKUP_VALUES table has no dedicated PL/SQL package — is it read directly by forms via LOVs or does PKG_COMMON provide a get_lookup function?",
+        "Fiscal year starts October 1 per PKG_COMMON.get_fiscal_year — is this configurable via SYSTEM_PARAMETERS or always hard-coded?"
+      ]
     }
   ]
 }

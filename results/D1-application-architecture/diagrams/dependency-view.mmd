@@ -1,51 +1,93 @@
----
-title: HRMS Package Dependency Graph
----
-graph LR
-    classDef domain fill:#dbeafe,stroke:#2563eb,color:#1e3a8a
-    classDef infra fill:#dcfce7,stroke:#16a34a,color:#14532d
-    classDef security fill:#fef9c3,stroke:#ca8a04,color:#713f12
-    classDef form fill:#f3e8ff,stroke:#9333ea,color:#581c87
-    classDef external fill:#fee2e2,stroke:#dc2626,color:#7f1d1d
+graph TD
+    subgraph Forms["Oracle Forms Layer"]
+        LOGIN["HRMS_LOGIN.fmb"]
+        MENU["HRMS_MENU.fmb (MDI Shell)"]
+        EMP_FORM["HRMS_EMPLOYEE.fmb"]
+        PAY_FORM["HRMS_PAYROLL.fmb"]
+        LEAVE_FORM["HRMS_LEAVE.fmb"]
+        PERF_FORM["HRMS_PERFORMANCE.fmb"]
+        COMMON_LIB["HRMS_COMMON_LIB.pll"]
+        VAL_LIB["HRMS_VALIDATION_LIB.pll"]
+        MENU_MMB["HRMS_MENU.mmb"]
+    end
 
-    EMP["PKG_EMPLOYEE\n⚠ SQL injection\n⚠ Race condition"]:::domain
-    PAY["PKG_PAYROLL\n⚠ Partial commits\n⚠ Hard-coded tax"]:::domain
-    LEAVE["PKG_LEAVE\n⚠ Carryover bug"]:::domain
-    PERF["PKG_PERFORMANCE"]:::domain
-    SEC["PKG_SECURITY\n🔴 Hard-coded key\n🔴 Auth stub"]:::security
-    NOTIF["PKG_NOTIFICATION\n⚠ SMTP hard-coded"]:::infra
-    INTEG["PKG_INTEGRATION\n⚠ Stubs"]:::infra
-    AUDIT["PKG_AUDIT"]:::infra
-    COMMON["PKG_COMMON\n(Shared Kernel)"]:::infra
-    VAL["PKG_VALIDATION"]:::infra
-    RPT["PKG_REPORTING\n⚠ Hard-coded IDs"]:::infra
+    subgraph Packages["PL/SQL Business Logic Layer"]
+        PKG_SEC["PKG_SECURITY"]
+        PKG_EMP["PKG_EMPLOYEE"]
+        PKG_PAY["PKG_PAYROLL"]
+        PKG_LEAVE["PKG_LEAVE"]
+        PKG_PERF["PKG_PERFORMANCE"]
+        PKG_NOTIF["PKG_NOTIFICATION"]
+        PKG_INT["PKG_INTEGRATION"]
+        PKG_RPT["PKG_REPORTING"]
+        PKG_AUDIT["PKG_AUDIT"]
+        PKG_CMN["PKG_COMMON"]
+        PKG_VAL["PKG_VALIDATION"]
+    end
 
-    EMP <-->|"🔄 CYCLE-01"| PAY
-    EMP --> LEAVE
-    EMP --> AUDIT
-    EMP --> COMMON
-    EMP --> NOTIF
+    subgraph Data["Data / Infrastructure Layer"]
+        TABLES[("HRMS Tables (22)")]
+        VIEWS[("HRMS Views (6)")]
+        TRIGGERS["DB Triggers (6)"]
+        SEQS["Sequences (30)"]
+        UTLFILE["UTL_FILE / Directories"]
+        UTLSMTP["UTL_SMTP"]
+        DBMSCRYPTO["DBMS_CRYPTO"]
+        DBMSSCHED["DBMS_SCHEDULER (implied)"]
+    end
 
-    PAY --> AUDIT
-    PAY --> COMMON
-    PAY --> NOTIF
-    PAY --> INTEG
+    LOGIN --> PKG_SEC
+    MENU --> PKG_SEC
+    EMP_FORM --> PKG_EMP
+    EMP_FORM --> PKG_VAL
+    PAY_FORM --> PKG_PAY
+    LEAVE_FORM --> PKG_LEAVE
+    PERF_FORM --> PKG_PERF
+    EMP_FORM --> COMMON_LIB
+    PAY_FORM --> COMMON_LIB
+    LEAVE_FORM --> COMMON_LIB
+    PERF_FORM --> COMMON_LIB
+    EMP_FORM --> VAL_LIB
+    PAY_FORM --> VAL_LIB
+    LEAVE_FORM --> VAL_LIB
+    PERF_FORM --> VAL_LIB
 
-    LEAVE --> AUDIT
-    LEAVE --> COMMON
-    LEAVE --> NOTIF
+    PKG_EMP --> PKG_PAY
+    PKG_PAY --> PKG_EMP
+    PKG_EMP -.->|"⚠ CIRCULAR"| PKG_PAY
 
-    PERF --> AUDIT
-    PERF --> COMMON
-    PERF --> NOTIF
+    PKG_EMP --> PKG_AUDIT
+    PKG_EMP --> PKG_NOTIF
+    PKG_PAY --> PKG_NOTIF
+    PKG_LEAVE --> PKG_NOTIF
+    PKG_PERF --> PKG_NOTIF
 
-    SEC --> AUDIT
-    SEC --> COMMON
+    PKG_EMP --> PKG_CMN
+    PKG_PAY --> PKG_CMN
+    PKG_LEAVE --> PKG_CMN
+    PKG_SEC --> PKG_CMN
+    PKG_INT --> PKG_CMN
+    PKG_RPT --> PKG_CMN
+    PKG_AUDIT --> PKG_CMN
+    PKG_VAL --> PKG_CMN
 
-    NOTIF --> COMMON
-    INTEG --> COMMON
-    VAL --> COMMON
+    PKG_VAL --> TABLES
+    PKG_EMP --> TABLES
+    PKG_PAY --> TABLES
+    PKG_LEAVE --> TABLES
+    PKG_PERF --> TABLES
+    PKG_RPT --> VIEWS
+    PKG_SEC --> TABLES
 
-    INTEG -->|"UTL_FILE\nflat file"| GLFEED[/"Oracle Financials\n(GL journal)"/]:::external
-    INTEG -->|"UTL_FILE\nfixed-width"| ADPFEED[/"ADP Benefits\n(feed)"/]:::external
-    NOTIF -->|"UTL_SMTP\nport 25"| SMTP[/"Internal SMTP Relay"/]:::external
+    PKG_NOTIF --> UTLSMTP
+    PKG_INT --> UTLFILE
+    PKG_PAY --> UTLFILE
+    PKG_SEC --> DBMSCRYPTO
+    TABLES --> TRIGGERS
+    TRIGGERS --> PKG_AUDIT
+    DBMSSCHED --> PKG_NOTIF
+    DBMSSCHED --> PKG_LEAVE
+
+    style PKG_EMP fill:#ffd700,stroke:#cc0000,stroke-width:2px
+    style PKG_PAY fill:#ffd700,stroke:#cc0000,stroke-width:2px
+    style PKG_SEC fill:#ff6b6b,stroke:#cc0000,stroke-width:2px

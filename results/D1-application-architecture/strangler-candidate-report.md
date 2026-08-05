@@ -1,208 +1,158 @@
-# Strangler Candidate Report
-**System:** HRMS v4.2  
-**Stage:** Stage 10 — Strangler Fig / Migration Candidates  
-**Date:** 2026-08-03
+# Strangler Migration Candidate Report — HRMS Oracle Forms Application
+
+**Extractor:** AA Agent 1 — Application Architecture Extractor  
+**Date:** 2026-08-04  
+**Strategy:** Strangler Fig Pattern — incrementally replace legacy Oracle Forms + PL/SQL modules with modern services while keeping the system operational throughout migration.
 
 ---
 
-## Overview
+## 1. Migration Readiness Overview
 
-The HRMS is a legacy Oracle Forms 12c client-server monolith with all business logic in PL/SQL packages. The Strangler Fig pattern applies by extracting one module at a time behind a new REST/service interface while the Oracle Forms client continues to call the legacy layer during the transition period.
+The HRMS is a 3-tier monolith with 11 logical modules. Each module maps to one PL/SQL package and zero or one Oracle Forms form. The modules are moderately well-bounded, making a module-by-module strangler approach viable. A proposed strangler proxy (e.g., Oracle REST Data Services or a thin API gateway) would sit in front of the PL/SQL packages and gradually route calls to new services as they are built.
 
-The ranking below orders modules by migration readiness: high readiness = fewer blockers, lower coupling, cleaner boundaries, no active critical bugs in the modernization path.
+**Critical pre-conditions for ANY migration to begin:**
 
----
-
-## Module Ranking: Migration Readiness
-
-### Rank 1 — Performance (MOD-04) ★★★★★
-
-**Readiness: HIGH**
-
-| Dimension | Assessment |
-|-----------|------------|
-| Coupling score | 3 / 10 — lowest in the system |
-| Circular dependencies | None |
-| External integrations | None — only SMTP notifications (shared) |
-| Active bugs | None blocking; rating label hard-coding is cosmetic |
-| Tables owned | 3 (REVIEW_CYCLES, PERFORMANCE_REVIEWS, PERFORMANCE_GOALS) |
-| Batch jobs | None (generate_reviews_for_cycle is a one-time operation, not scheduled) |
-| Security violations | None specific to this module |
-
-**Why extract first:**  
-PKG_PERFORMANCE has no circular dependencies, no external file I/O, no scheduled jobs, and joins only EMPLOYEES (read-only). A REST API wrapping the 12 procedures can be built and tested independently. HRMS_PERFORMANCE.fmb can then be re-pointed to the REST API with minimal change.
-
-**Strangler approach:**  
-1. Build `PerformanceService` API (REST) wrapping PKG_PERFORMANCE procedures  
-2. Migrate HRMS_PERFORMANCE.fmb calls to REST (or replace form with web UI)  
-3. Run old and new in parallel with feature flag  
-4. Decommission PKG_PERFORMANCE once stable
-
-**Blockers:** None
+| Pre-condition | Status | Action Required |
+|---|---|---|
+| AES key rotation | NOT DONE | Rotate key, re-encrypt all SSN fields (VIO-001) |
+| Authentication implementation | NOT DONE | Implement real password verification (VIO-003) |
+| SQL injection fix | NOT DONE | Fix PKG_EMPLOYEE.search_employees (VIO-002) |
+| Circular dependency broken | NOT DONE | Break PKG_EMPLOYEE ↔ PKG_PAYROLL cycle (VIO-008) |
+| TAX_BRACKETS externalized | NOT DONE | Move 2024 brackets to table, implement read logic (VIO-010) |
 
 ---
 
-### Rank 2 — Leave (MOD-03) ★★★★☆
+## 2. Module Ranking for Strangler Migration
 
-**Readiness: HIGH**
+Modules are ranked by: **migration risk (lower = better)**, **business value unlocked (higher = better)**, **decoupling effort (lower = better)**.
 
-| Dimension | Assessment |
-|-----------|------------|
-| Coupling score | 4 / 10 |
-| Circular dependencies | None |
-| External integrations | None — SMTP only (shared) |
-| Active bugs | 2 (expire_carryover double-subtract; calculate_business_days observed holidays) |
-| Tables owned | 5 (LEAVE_TYPES, LEAVE_BALANCES, LEAVE_REQUESTS, LEAVE_ACCRUAL_LOG, HOLIDAYS) |
-| Batch jobs | 1 (run_monthly_accrual — DBMS_SCHEDULER DDL missing) |
+### Tier 1 — Migrate First (Low Risk, High Value)
 
-**Why extract second:**  
-Clear domain boundary. PKG_EMPLOYEE.terminate_employee calls PKG_LEAVE to cancel leave — this is a one-directional dependency that can be handled via a domain event (EmployeeTerminated → cancel pending leave). The two bugs must be fixed before migration.
+#### MOD-011: Common (PKG_COMMON)
+**Migration Risk:** LOW  
+**Rationale:** No inbound functional dependencies (afferent = 10, but none are behavior-coupling). Pure utilities. Can be re-implemented as a shared library or configuration service that all migrated modules import. Must be migrated first as all other modules depend on it.  
+**Strangler Approach:** Replace with a configuration microservice (GET /config/{group}/{code}) + shared utility library. No UI needed.  
+**Blockers:** None.  
+**Estimated Effort:** Small.
 
-**Strangler approach:**  
-1. Fix expire_carryover idempotency bug and calculate_business_days observed holiday bug  
-2. Recover DBMS_SCHEDULER DDL (or recreate it); migrate to a cron/job service  
-3. Build `LeaveService` REST API  
-4. Replace PKG_EMPLOYEE.terminate_employee → PKG_LEAVE cross-call with an event  
-5. Migrate HRMS_LEAVE.fmb
-
-**Blockers:** 2 bugs to fix; scheduler DDL must be recovered before migration
+#### MOD-008: Audit (PKG_AUDIT)
+**Migration Risk:** LOW  
+**Rationale:** Efferent coupling = 0 (no outbound dependencies). Afferent = 9 (all callers). Its AUTONOMOUS_TRANSACTION isolation means callers never wait on audit. Can be replaced with a centralized audit service (e.g., writing to an append-only event store) without touching callers initially.  
+**Strangler Approach:** Introduce an audit event bus (Kafka topic or simple REST endpoint). Legacy callers continue calling PKG_AUDIT; PKG_AUDIT becomes a thin adapter writing to the new bus.  
+**Blockers:** None.  
+**Estimated Effort:** Small-Medium.
 
 ---
 
-### Rank 3 — Notification / Audit (MOD-06 partial) ★★★★☆
+### Tier 2 — Migrate Second (Medium Risk, High Value)
 
-**Readiness: HIGH**
+#### MOD-007: Notification (PKG_NOTIFICATION)
+**Migration Risk:** LOW-MEDIUM  
+**Rationale:** Afferent = 4, efferent = 1 (PKG_COMMON). Queue-based design maps cleanly to modern message brokers. SMS and IN_APP notification types exist in the schema but are unimplemented — new system can implement them.  
+**Strangler Approach:** Replace NOTIFICATION_QUEUE + UTL_SMTP with a notification service (email provider API). Callers still call PKG_NOTIFICATION.send_notification; the package body is redirected to call the new service via UTL_HTTP.  
+**Blockers:** SMTP server migration coordination.  
+**Estimated Effort:** Medium.
 
-| Dimension | Assessment |
-|-----------|------------|
-| Coupling | 10 / 10 — called by everything, but this means it should be infrastructure, not a domain module |
-| Critical issue | SMTP config hard-coded; no TLS; new connection per email |
-| Approach | Replace the implementation, not the interface |
+#### MOD-010: Validation (PKG_VALIDATION + HRMS_VALIDATION_LIB)
+**Migration Risk:** LOW-MEDIUM  
+**Rationale:** Validation is stateless and side-effect-free. Migrating validation unlocks resolving the client/server validation drift (VIO-013). Can be implemented as a shared validation library that both the new UI and API use.  
+**Strangler Approach:** Build a validation service or shared library. Replace PKG_VALIDATION calls in new services. Remove HRMS_VALIDATION_LIB from legacy forms once those forms are migrated.  
+**Blockers:** Must define canonical validation rules before building.  
+**Estimated Effort:** Small.
 
-**Why extract early:**  
-PKG_NOTIFICATION and PKG_AUDIT are the shared infrastructure kernel. They should be replaced with proper observability (structured logging service) and messaging (AWS SES, SendGrid, or similar) early in modernization — before other modules are extracted. All modules call them through a thin interface that can be swapped.
-
-**Strangler approach:**  
-1. Replace PKG_NOTIFICATION with a proper async message queue (SQS, RabbitMQ) + email service (SES/SendGrid)  
-2. Replace PKG_AUDIT with structured audit log (event store or append-only audit DB)  
-3. All other modules call the new interface — no code change needed in callers
-
-**Blockers:** None blocking; SMTP config must be moved to environment variables first
-
----
-
-### Rank 4 — Security / Auth (MOD-05) ★★★☆☆
-
-**Readiness: MEDIUM**
-
-| Dimension | Assessment |
-|-----------|------------|
-| Coupling | 9 / 10 — all forms call is_session_valid on every navigation |
-| Critical violations | 4 CRITICAL/HIGH security violations |
-| Blocker | PKG_SECURITY.authenticate is a stub — no working auth |
-| Encryption | Hard-coded AES key; all SSNs must be re-encrypted on migration |
-
-**Why extract fourth:**  
-This module is the most urgent from a security standpoint but has the most pre-work. The authentication stub must be fixed first (or replaced by an IdP). SSN re-encryption requires a key rotation plan that cannot be rushed.
-
-**Strangler approach:**  
-1. **Before migration:** Fix authenticate stub; implement brute-force protection; rotate encryption key; re-encrypt SSNs  
-2. Replace PKG_SECURITY with OAuth2 / OIDC identity provider (Okta, Azure AD, Oracle IAM)  
-3. Replace grade-based RBAC with proper role/permission model  
-4. Oracle Forms session check becomes JWT validation
-
-**Blockers:** CRITICAL — authentication stub must be fixed; encryption key rotation must be completed; USER_CREDENTIALS DDL must be located
+#### MOD-001: Employee (PKG_EMPLOYEE + HRMS_EMPLOYEE form)
+**Migration Risk:** MEDIUM  
+**Rationale:** Core business module. Highest afferent coupling (6 callers), but the module boundary is strong. Migrating Employee unlocks self-service portals and REST APIs for HRIS integrations. The SQL injection vulnerability (VIO-002) and circular dependency (VIO-008) must be resolved first.  
+**Strangler Approach:** Build an Employee Service (REST API). Route read operations first (/employees/{id}, /employees/search) while writes still go through legacy. Migrate writes once service is stable. Oracle Forms HRMS_EMPLOYEE becomes a thin client calling the new API via a proxy package.  
+**Blockers:** VIO-002 (SQL injection), VIO-008 (circular dep), VIO-009 (hire date discrepancy).  
+**Estimated Effort:** Large.
 
 ---
 
-### Rank 5 — Employee (MOD-01) ★★★☆☆
+### Tier 3 — Migrate Third (Medium Risk, Significant Value)
 
-**Readiness: MEDIUM**
+#### MOD-002: Leave (PKG_LEAVE + HRMS_LEAVE form)
+**Migration Risk:** MEDIUM  
+**Rationale:** Well-bounded module. Business rules are complex (accrual, carryover, holiday handling) but self-contained. Mobile self-service leave (referenced in PKG_LEAVE comments) is a strong business driver. Depends on Employee being migrated first.  
+**Strangler Approach:** Build Leave Service. Migrate HRMS_LEAVE form to web UI as part of the same effort. Monthly accrual and carryover jobs become scheduled tasks in the new service.  
+**Blockers:** Employee service must be migrated first (PKG_LEAVE calls PKG_EMPLOYEE implicitly via EMPLOYEES table queries).  
+**Estimated Effort:** Large.
 
-| Dimension | Assessment |
-|-----------|------------|
-| Coupling | 8 / 10 |
-| Circular dependency | CYCLE-01 with PKG_PAYROLL — must be broken first |
-| SQL injection | VIO-SEC-02 — must be fixed before any API wrapper |
-| Active TODOs | COBRA, access revocation, final pay |
-| Tables owned | 8 core tables |
-
-**Why fifth:**  
-Employee is the core domain entity referenced by every other module. Extracting it too early creates a shared service all other modules depend on. The circular dependency with Payroll must be resolved first. The SQL injection vulnerability is a critical blocker for any REST API exposure.
-
-**Strangler approach:**  
-1. Fix SQL injection in search_employees  
-2. Replace generate_emp_number with SEQ_EMPLOYEE  
-3. Break CYCLE-01 (introduce a SalaryInitializationService or event-driven approach)  
-4. Implement COBRA/access revocation/final pay TODOs  
-5. Extract as `EmployeeService`
-
-**Blockers:** SQL injection; circular dependency; COBRA/final pay missing
+#### MOD-004: Performance (PKG_PERFORMANCE + HRMS_PERFORMANCE form)
+**Migration Risk:** MEDIUM  
+**Rationale:** Lowest afferent coupling of functional modules (1 caller). Performance reviews are a natural candidate for a dedicated SaaS integration or standalone service. Blocked only by Employee being available.  
+**Strangler Approach:** Build Performance Service. Migrate HRMS_PERFORMANCE form to web UI. Notification integration is clean (already queue-based).  
+**Blockers:** Employee service.  
+**Estimated Effort:** Medium-Large.
 
 ---
 
-### Rank 6 — Payroll (MOD-02) ★★☆☆☆
+### Tier 4 — Migrate Last (High Risk, Complex)
 
-**Readiness: LOW**
+#### MOD-003: Payroll (PKG_PAYROLL + HRMS_PAYROLL form)
+**Migration Risk:** HIGH  
+**Rationale:** Highest compliance and financial risk. Hard-coded tax brackets (VIO-010), placeholder YTD fields (VIO-011), and the circular dependency with Employee (VIO-008) must all be resolved first. Row-by-row processing (VIO-018) needs re-architecture. Consider commercial payroll SaaS (ADP, Paylocity) rather than custom migration.  
+**Strangler Approach:** (Option A) Replace with payroll SaaS, reroute ADP integration; (Option B) Build Payroll Service with externalized tax tables. Option A strongly preferred.  
+**Blockers:** VIO-008 (circular dep), VIO-010 (tax brackets), VIO-011 (YTD), Employee service fully migrated.  
+**Estimated Effort:** Very Large (or SaaS replacement).
 
-| Dimension | Assessment |
-|-----------|------------|
-| Coupling | 8 / 10 |
-| Circular dependency | CYCLE-01 with PKG_EMPLOYEE |
-| Partial commits | VIO-ARCH-02 — critical data integrity risk |
-| Hard-coded tax values | Will be wrong every new tax year |
-| External integrations | GL journal file, ADP benefits feed — both vendor-specific |
+#### MOD-006: Integration (PKG_INTEGRATION)
+**Migration Risk:** HIGH  
+**Rationale:** All three integration points need redesigning: GL (flat file → API), ADP (FTP → API), Time & Attendance (TODO stub). Depends on Employee, Payroll, and Leave being migrated. FTP credentials (VIO-005) must be resolved.  
+**Strangler Approach:** Replace each integration point independently using the respective system's REST API. Build an integration middleware layer.  
+**Blockers:** All upstream modules migrated; VIO-005 (cleartext creds).  
+**Estimated Effort:** Large per integration point.
 
-**Why last:**  
-Payroll is the highest-risk module. The partial-commit anti-pattern, hard-coded tax values, and external file integrations all need resolution before extraction. Payroll errors have direct financial and legal consequences.
+#### MOD-009: Security (PKG_SECURITY)
+**Migration Risk:** HIGH  
+**Rationale:** Cannot be migrated until authentication is actually implemented (VIO-003). Migration of Security should coincide with replacing Oracle Forms session management with a standards-based auth provider (OAuth2/OIDC). This is a prerequisite for all web-facing services.  
+**Strangler Approach:** Introduce OAuth2 / OIDC provider (e.g., Keycloak, Auth0, Oracle IAM). Replace PKG_SECURITY.authenticate with SSO token validation in each new service. Legacy Forms can authenticate via a SAML adapter.  
+**Blockers:** VIO-003 (auth stub), VIO-001 (encryption key), VIO-004 (MD5 hash).  
+**Estimated Effort:** Large.
 
-**Strangler approach:**  
-1. Move tax brackets to TAX_BRACKETS table (already exists in schema — currently unused by calculate_payroll)  
-2. Refactor calculate_payroll to use BULK COLLECT/FORALL; remove partial commits  
-3. Break CYCLE-01  
-4. Replace UTL_FILE GL journal and ADP exports with API integrations or a dedicated integration service  
-5. Extract as `PayrollService` — last
-
-**Blockers:** Partial commits; hard-coded tax values; circular dependency; GL/ADP file integrations
+#### MOD-005: Reporting (PKG_REPORTING)
+**Migration Risk:** MEDIUM  
+**Rationale:** Pure read-only queries. The main blocker is that RPT_* reporting tables are referenced but not defined in schema. refresh_reporting_tables is a stub. Reporting is best migrated by connecting a BI/reporting tool (e.g., Oracle Analytics, Power BI) directly to the new services' data stores, rendering PKG_REPORTING obsolete.  
+**Strangler Approach:** Expose read APIs from each migrated service. Connect BI tool. Retire PKG_REPORTING.  
+**Blockers:** Other modules migrated first (reporting needs data from them).  
+**Estimated Effort:** Medium (mostly BI configuration, not code).
 
 ---
 
-## Recommended Migration Sequence
+## 3. Recommended Migration Sequence
 
 ```
-Phase 1 (Pre-migration security):
-  - Fix PKG_SECURITY.authenticate stub
-  - Rotate SSN encryption key
-  - Fix SQL injection in search_employees
+Phase 0 (Security Remediation — mandatory before any migration):
+  Fix VIO-001, VIO-002, VIO-003, VIO-004, VIO-008, VIO-010, VIO-011
 
-Phase 2 (Infrastructure replacement):
-  - Replace PKG_NOTIFICATION with proper email service
-  - Replace PKG_AUDIT with structured event log
-  - Recover/document DBMS_SCHEDULER job DDL
+Phase 1 (Infrastructure services):
+  MOD-011 Common → configuration service + shared lib
+  MOD-008 Audit  → audit event service / event bus
+  MOD-009 Security → OAuth2/OIDC provider (Identity service)
 
-Phase 3 (Domain extraction — low risk first):
-  - Extract PerformanceService (MOD-04)
-  - Extract LeaveService (MOD-03, after fixing bugs)
+Phase 2 (Core HR):
+  MOD-010 Validation → shared validation library
+  MOD-007 Notification → notification service
+  MOD-001 Employee → Employee Service + web UI
 
-Phase 4 (Security modernization):
-  - Replace PKG_SECURITY with OAuth2/OIDC IdP
+Phase 3 (Workflow modules):
+  MOD-002 Leave → Leave Service + web UI (self-service)
+  MOD-004 Performance → Performance Service + web UI
 
-Phase 5 (Core domain):
-  - Break CYCLE-01 (PKG_EMPLOYEE ↔ PKG_PAYROLL)
-  - Extract EmployeeService (MOD-01)
-
-Phase 6 (Highest risk):
-  - Fix payroll partial-commit and tax-config issues
-  - Extract PayrollService (MOD-02)
+Phase 4 (Financial and Integration):
+  MOD-003 Payroll → SaaS replacement preferred
+  MOD-006 Integration → API-based integration layer
+  MOD-005 Reporting → BI tool integration
 ```
 
 ---
 
-## Components NOT Recommended for Strangler Extraction
+## 4. Oracle Forms Decommission Path
 
-| Component | Reason |
-|-----------|--------|
-| PKG_COMMON | Shared utility — inline into new services or replace with standard libraries |
-| PKG_VALIDATION | Merge validation into each domain service |
-| PKG_REPORTING | Replace with dedicated BI/reporting tool (Power BI, Metabase, etc.) |
-| Oracle Forms (.fmb) | Rewrite as modern web UI; do not wrap/proxy |
+Oracle Forms cannot be incrementally strangled — it must be replaced module-by-module as each corresponding service is built. Recommended approach:
+1. Build new web UI for each module as part of the module's service migration (Phase 2-4)
+2. Run both old form and new web UI in parallel for UAT period
+3. Disable old form once new UI is accepted
+4. Decommission Oracle Forms server and WebLogic/OC4J instance after all forms are retired
+
+**HRMS_REPORTS.fmb and HRMS_ADMIN.fmb** — these forms are referenced in the menu but not in the source set. They must be located and inventoried before migration planning is finalized.

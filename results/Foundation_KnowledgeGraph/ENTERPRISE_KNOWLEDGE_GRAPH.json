@@ -1,0 +1,211 @@
+```json
+        "transitions": [
+          {"from": "DRAFT", "to": "CALCULATED", "trigger": "calculate"},
+          {"from": "CALCULATED", "to": "APPROVED", "trigger": "approve"},
+          {"from": "APPROVED", "to": "GL_GENERATED", "trigger": "generate_gl"},
+          {"from": "GL_GENERATED", "to": "COMPLETED", "trigger": "close"}
+        ]
+      },
+      "columns": [
+        { "name": "runId", "source_column": "RUN_ID", "type": "Long", "constraints": ["PK"] },
+        { "name": "runName", "source_column": "RUN_NAME", "type": "String", "constraints": ["NOT_NULL"] },
+        { "name": "payPeriodStart", "source_column": "PAY_PERIOD_START", "type": "LocalDate", "constraints": ["NOT_NULL"] },
+        { "name": "payPeriodEnd", "source_column": "PAY_PERIOD_END", "type": "LocalDate", "constraints": ["NOT_NULL"] },
+        { "name": "runDate", "source_column": "RUN_DATE", "type": "LocalDate", "constraints": ["NOT_NULL"] },
+        { "name": "status", "source_column": "STATUS", "type": "PayrollRunStatus", "constraints": ["NOT_NULL"] },
+        { "name": "totalGross", "source_column": "TOTAL_GROSS", "type": "BigDecimal" },
+        { "name": "totalNet", "source_column": "TOTAL_NET", "type": "BigDecimal" },
+        { "name": "totalDeductions", "source_column": "TOTAL_DEDUCTIONS", "type": "BigDecimal" },
+        { "name": "calculatedDate", "source_column": "CALCULATED_DATE", "type": "LocalDateTime" },
+        { "name": "approvedBy", "source_column": "APPROVED_BY", "type": "Long", "fk": "Employee.employeeId" },
+        { "name": "approvedDate", "source_column": "APPROVED_DATE", "type": "LocalDateTime" },
+        { "name": "createdBy", "source_column": "CREATED_BY", "type": "Long", "fk": "Employee.employeeId" },
+        { "name": "createdDate", "source_column": "CREATED_DATE", "type": "LocalDateTime", "constraints": ["NOT_NULL"] }
+      ]
+    },
+    {
+      "id": "ENT-004",
+      "name": "LeaveBalance",
+      "source_table": "LEAVE_BALANCES",
+      "status": "CONFIRMED",
+      "virtual_columns": ["available"],
+      "columns": [
+        { "name": "balanceId", "source_column": "BALANCE_ID", "type": "Long", "constraints": ["PK"] },
+        { "name": "employeeId", "source_column": "EMPLOYEE_ID", "type": "Long", "fk": "Employee.employeeId", "constraints": ["NOT_NULL"] },
+        { "name": "leaveTypeId", "source_column": "LEAVE_TYPE_ID", "type": "Long", "fk": "LeaveType.leaveTypeId", "constraints": ["NOT_NULL"] },
+        { "name": "leaveYear", "source_column": "LEAVE_YEAR", "type": "Integer", "constraints": ["NOT_NULL"] },
+        { "name": "openingBalance", "source_column": "OPENING_BALANCE", "type": "BigDecimal", "constraints": ["NOT_NULL"] },
+        { "name": "accrued", "source_column": "ACCRUED", "type": "BigDecimal", "constraints": ["NOT_NULL"] },
+        { "name": "used", "source_column": "USED", "type": "BigDecimal", "constraints": ["NOT_NULL"] },
+        { "name": "pending", "source_column": "PENDING", "type": "BigDecimal", "constraints": ["NOT_NULL"] },
+        { "name": "adjustment", "source_column": "ADJUSTMENT", "type": "BigDecimal" },
+        { "name": "available", "source_column": "AVAILABLE", "type": "BigDecimal", "virtual": true, "formula": "openingBalance + accrued - used + adjustment - pending" },
+        { "name": "updatedDate", "source_column": "UPDATED_DATE", "type": "LocalDateTime" }
+      ]
+    },
+    {
+      "id": "ENT-005",
+      "name": "PerformanceReview",
+      "source_table": "PERFORMANCE_REVIEWS",
+      "status": "CONFIRMED",
+      "status_machine": {
+        "states": ["PENDING", "SELF_COMPLETE", "MANAGER_COMPLETE", "CALIBRATED", "FINAL"],
+        "transitions": [
+          {"from": "PENDING", "to": "SELF_COMPLETE", "trigger": "self_complete"},
+          {"from": "SELF_COMPLETE", "to": "MANAGER_COMPLETE", "trigger": "manager_complete"},
+          {"from": "MANAGER_COMPLETE", "to": "CALIBRATED", "trigger": "calibrate"},
+          {"from": "CALIBRATED", "to": "FINAL", "trigger": "finalise"},
+          {"from": "MANAGER_COMPLETE", "to": "FINAL", "trigger": "finalise_uncalibrated"}
+        ]
+      },
+      "columns": [
+        { "name": "reviewId", "source_column": "REVIEW_ID", "type": "Long", "constraints": ["PK"] },
+        { "name": "employeeId", "source_column": "EMPLOYEE_ID", "type": "Long", "fk": "Employee.employeeId", "constraints": ["NOT_NULL"] },
+        { "name": "cycleId", "source_column": "CYCLE_ID", "type": "Long", "fk": "ReviewCycle.cycleId", "constraints": ["NOT_NULL"] },
+        { "name": "selfRating", "source_column": "SELF_RATING", "type": "Integer", "validation": "min=1,max=5" },
+        { "name": "managerRating", "source_column": "MANAGER_RATING", "type": "Integer", "validation": "min=1,max=5" },
+        { "name": "overallRating", "source_column": "OVERALL_RATING", "type": "Integer", "constraints": ["NOT_NULL"], "validation": "min=1,max=5" },
+        { "name": "calibratedRating", "source_column": "CALIBRATED_RATING", "type": "Integer", "validation": "min=1,max=5", "legacy_gap": "CALIBRATION_NO_WRITE_PATH" },
+        { "name": "reviewStatus", "source_column": "REVIEW_STATUS", "type": "ReviewStatus", "constraints": ["NOT_NULL"] }
+      ]
+    }
+  ],
+  "api_endpoints": [
+    { "id": "EP-001", "method": "GET",  "path": "/employees",                              "bc": "BC-01", "security": "ROLE_HR_SPECIALIST", "async": false },
+    { "id": "EP-002", "method": "POST", "path": "/employees",                              "bc": "BC-01", "security": "ROLE_HR_SPECIALIST", "async": false },
+    { "id": "EP-003", "method": "GET",  "path": "/employees/{employeeId}",                 "bc": "BC-01", "security": "ROLE_EMPLOYEE",     "async": false },
+    { "id": "EP-004", "method": "PUT",  "path": "/employees/{employeeId}",                 "bc": "BC-01", "security": "ROLE_HR_SPECIALIST", "async": false },
+    { "id": "EP-005", "method": "POST", "path": "/employees/{employeeId}/terminate",       "bc": "BC-01", "security": "ROLE_HR_MANAGER",   "async": false },
+    { "id": "EP-006", "method": "POST", "path": "/employees/{employeeId}/transfer",        "bc": "BC-01", "security": "ROLE_HR_MANAGER",   "async": false },
+    { "id": "EP-007", "method": "POST", "path": "/employees/{employeeId}/status",          "bc": "BC-01", "security": "ROLE_HR_MANAGER",   "async": false },
+    { "id": "EP-008", "method": "GET",  "path": "/employees/{employeeId}/history",         "bc": "BC-01", "security": "ROLE_EMPLOYEE",     "async": false },
+    { "id": "EP-009", "method": "GET",  "path": "/departments",                            "bc": "BC-07", "security": "ROLE_EMPLOYEE",     "async": false },
+    { "id": "EP-010", "method": "POST", "path": "/departments",                            "bc": "BC-07", "security": "ROLE_HR_ADMIN",     "async": false },
+    { "id": "EP-011", "method": "GET",  "path": "/departments/{departmentId}",             "bc": "BC-07", "security": "ROLE_EMPLOYEE",     "async": false },
+    { "id": "EP-012", "method": "PUT",  "path": "/departments/{departmentId}",             "bc": "BC-07", "security": "ROLE_HR_ADMIN",     "async": false },
+    { "id": "EP-013", "method": "GET",  "path": "/departments/{departmentId}/employees",   "bc": "BC-07", "security": "ROLE_MANAGER",      "async": false },
+    { "id": "EP-014", "method": "GET",  "path": "/positions",                              "bc": "BC-07", "security": "ROLE_EMPLOYEE",     "async": false },
+    { "id": "EP-015", "method": "POST", "path": "/positions",                              "bc": "BC-07", "security": "ROLE_HR_ADMIN",     "async": false },
+    { "id": "EP-016", "method": "GET",  "path": "/positions/{positionId}",                 "bc": "BC-07", "security": "ROLE_EMPLOYEE",     "async": false },
+    { "id": "EP-017", "method": "PUT",  "path": "/positions/{positionId}",                 "bc": "BC-07", "security": "ROLE_HR_ADMIN",     "async": false },
+    { "id": "EP-018", "method": "GET",  "path": "/org/chart",                              "bc": "BC-07", "security": "ROLE_HR_SPECIALIST", "async": false },
+    { "id": "EP-019", "method": "GET",  "path": "/employees/{employeeId}/salary",          "bc": "BC-02", "security": "ROLE_EMPLOYEE",     "async": false },
+    { "id": "EP-020", "method": "GET",  "path": "/employees/{employeeId}/salary/history",  "bc": "BC-02", "security": "ROLE_HR_SPECIALIST", "async": false },
+    { "id": "EP-021", "method": "POST", "path": "/compensation/salary-records",            "bc": "BC-02", "security": "ROLE_HR_MANAGER",   "async": false },
+    { "id": "EP-022", "method": "GET",  "path": "/payroll/runs",                           "bc": "BC-02", "security": "ROLE_HR_SPECIALIST", "async": false },
+    { "id": "EP-023", "method": "POST", "path": "/payroll/runs",                           "bc": "BC-02", "security": "ROLE_HR_MANAGER",   "async": false },
+    { "id": "EP-024", "method": "GET",  "path": "/payroll/runs/{runId}",                   "bc": "BC-02", "security": "ROLE_HR_SPECIALIST", "async": false },
+    { "id": "EP-025", "method": "POST", "path": "/payroll/runs/{runId}/calculate",         "bc": "BC-02", "security": "ROLE_HR_MANAGER",   "async": true  },
+    { "id": "EP-026", "method": "POST", "path": "/payroll/runs/{runId}/approve",           "bc": "BC-02", "security": "ROLE_HR_MANAGER",   "async": false },
+    { "id": "EP-027", "method": "POST", "path": "/payroll/runs/{runId}/generate-gl",       "bc": "BC-02", "security": "ROLE_HR_ADMIN",     "async": true  },
+    { "id": "EP-028", "method": "POST", "path": "/payroll/runs/{runId}/close",             "bc": "BC-02", "security": "ROLE_HR_ADMIN",     "async": false },
+    { "id": "EP-029", "method": "GET",  "path": "/payroll/runs/{runId}/details",           "bc": "BC-02", "security": "ROLE_HR_SPECIALIST", "async": false },
+    { "id": "EP-030", "method": "GET",  "path": "/employees/{employeeId}/payroll/details", "bc": "BC-02", "security": "ROLE_EMPLOYEE",     "async": false },
+    { "id": "EP-031", "method": "GET",  "path": "/leave/types",                            "bc": "BC-03", "security": "ROLE_EMPLOYEE",     "async": false },
+    { "id": "EP-032", "method": "POST", "path": "/leave/types",                            "bc": "BC-03", "security": "ROLE_HR_ADMIN",     "async": false },
+    { "id": "EP-033", "method": "GET",  "path": "/leave/balances",                         "bc": "BC-03", "security": "ROLE_HR_SPECIALIST", "async": false },
+    { "id": "EP-034", "method": "GET",  "path": "/employees/{employeeId}/leave/balances",  "bc": "BC-03", "security": "ROLE_EMPLOYEE",     "async": false },
+    { "id": "EP-035", "method": "POST", "path": "/leave/requests",                         "bc": "BC-03", "security": "ROLE_EMPLOYEE",     "async": false },
+    { "id": "EP-036", "method": "GET",  "path": "/leave/requests/{requestId}",             "bc": "BC-03", "security": "ROLE_EMPLOYEE",     "async": false },
+    { "id": "EP-037", "method": "PUT",  "path": "/leave/requests/{requestId}/approve",     "bc": "BC-03", "security": "ROLE_MANAGER",      "async": false },
+    { "id": "EP-038", "method": "PUT",  "path": "/leave/requests/{requestId}/reject",      "bc": "BC-03", "security": "ROLE_MANAGER",      "async": false },
+    { "id": "EP-039", "method": "PUT",  "path": "/leave/requests/{requestId}/cancel",      "bc": "BC-03", "security": "ROLE_EMPLOYEE",     "async": false },
+    { "id": "EP-040", "method": "POST", "path": "/leave/balances/accrue",                  "bc": "BC-03", "security": "ROLE_HR_ADMIN",     "async": true  },
+    { "id": "EP-041", "method": "GET",  "path": "/performance/cycles",                     "bc": "BC-04", "security": "ROLE_EMPLOYEE",     "async": false },
+    { "id": "EP-042", "method": "POST", "path": "/performance/cycles",                     "bc": "BC-04", "security": "ROLE_HR_ADMIN",     "async": false },
+    { "id": "EP-043", "method": "GET",  "path": "/performance/cycles/{cycleId}",           "bc": "BC-04", "security": "ROLE_EMPLOYEE",     "async": false },
+    { "id": "EP-044", "method": "POST", "path": "/performance/cycles/{cycleId}/close",     "bc": "BC-04", "security": "ROLE_HR_ADMIN",     "async": false },
+    { "id": "EP-045", "method": "GET",  "path": "/performance/reviews",                    "bc": "BC-04", "security": "ROLE_HR_SPECIALIST", "async": false },
+    { "id": "EP-046", "method": "POST", "path": "/performance/reviews",                    "bc": "BC-04", "security": "ROLE_HR_ADMIN",     "async": false },
+    { "id": "EP-047", "method": "GET",  "path": "/performance/reviews/{reviewId}",         "bc": "BC-04", "security": "ROLE_EMPLOYEE",     "async": false },
+    { "id": "EP-048", "method": "PUT",  "path": "/performance/reviews/{reviewId}/self-complete",    "bc": "BC-04", "security": "ROLE_EMPLOYEE", "async": false },
+    { "id": "EP-049", "method": "PUT",  "path": "/performance/reviews/{reviewId}/manager-complete", "bc": "BC-04", "security": "ROLE_MANAGER",  "async": false },
+    { "id": "EP-050", "method": "PUT",  "path": "/performance/reviews/{reviewId}/calibrate",        "bc": "BC-04", "security": "ROLE_HR_ADMIN", "async": false, "fixes_gap": "SEC-GAP-07" },
+    { "id": "EP-051", "method": "GET",  "path": "/performance/goals",                      "bc": "BC-04", "security": "ROLE_EMPLOYEE",     "async": false },
+    { "id": "EP-052", "method": "POST", "path": "/performance/goals",                      "bc": "BC-04", "security": "ROLE_EMPLOYEE",     "async": false },
+    { "id": "EP-053", "method": "PUT",  "path": "/performance/goals/{goalId}",             "bc": "BC-04", "security": "ROLE_EMPLOYEE",     "async": false },
+    { "id": "EP-054", "method": "GET",  "path": "/benefits/plans",                         "bc": "BC-05", "security": "ROLE_EMPLOYEE",     "async": false },
+    { "id": "EP-055", "method": "POST", "path": "/benefits/plans",                         "bc": "BC-05", "security": "ROLE_HR_ADMIN",     "async": false },
+    { "id": "EP-056", "method": "GET",  "path": "/employees/{employeeId}/benefits",        "bc": "BC-05", "security": "ROLE_EMPLOYEE",     "async": false },
+    { "id": "EP-057", "method": "POST", "path": "/benefits/enrollments",                   "bc": "BC-05", "security": "ROLE_HR_SPECIALIST", "async": false },
+    { "id": "EP-058", "method": "PUT",  "path": "/benefits/enrollments/{enrollmentId}/terminate", "bc": "BC-05", "security": "ROLE_HR_SPECIALIST", "async": false },
+    { "id": "EP-059", "method": "POST", "path": "/auth/login",                             "bc": "BC-06", "security": "PUBLIC",            "async": false },
+    { "id": "EP-060", "method": "POST", "path": "/auth/logout",                            "bc": "BC-06", "security": "AUTHENTICATED",     "async": false },
+    { "id": "EP-061", "method": "POST", "path": "/auth/refresh",                           "bc": "BC-06", "security": "PUBLIC",            "async": false },
+    { "id": "EP-062", "method": "POST", "path": "/auth/change-password",                   "bc": "BC-06", "security": "AUTHENTICATED",     "async": false },
+    { "id": "EP-063", "method": "POST", "path": "/auth/admin/reset-password",              "bc": "BC-06", "security": "ROLE_SYSTEM_ADMIN", "async": false },
+    { "id": "EP-064", "method": "GET",  "path": "/notifications/templates",                "bc": "BC-08", "security": "ROLE_HR_ADMIN",     "async": false },
+    { "id": "EP-065", "method": "POST", "path": "/notifications/templates",                "bc": "BC-08", "security": "ROLE_HR_ADMIN",     "async": false },
+    { "id": "EP-066", "method": "GET",  "path": "/employees/{employeeId}/notifications",   "bc": "BC-08", "security": "ROLE_EMPLOYEE",     "async": false },
+    { "id": "EP-067", "method": "POST", "path": "/notifications/queue/retry",              "bc": "BC-08", "security": "ROLE_HR_ADMIN",     "async": true  },
+    { "id": "EP-068", "method": "POST", "path": "/integration/exports/payroll-gl",         "bc": "BC-09", "security": "ROLE_HR_ADMIN",     "async": true  },
+    { "id": "EP-069", "method": "POST", "path": "/integration/exports/benefits-adp",       "bc": "BC-09", "security": "ROLE_HR_ADMIN",     "async": true  },
+    { "id": "EP-070", "method": "GET",  "path": "/integration/exports/{exportId}",         "bc": "BC-09", "security": "ROLE_HR_ADMIN",     "async": false },
+    { "id": "EP-071", "method": "GET",  "path": "/integration/exports/{exportId}/download","bc": "BC-09", "security": "ROLE_HR_ADMIN",     "async": false },
+    { "id": "EP-072", "method": "GET",  "path": "/reports/headcount",                      "bc": "BC-10", "security": "ROLE_HR_SPECIALIST", "async": false },
+    { "id": "EP-073", "method": "GET",  "path": "/reports/turnover",                       "bc": "BC-10", "security": "ROLE_HR_SPECIALIST", "async": false },
+    { "id": "EP-074", "method": "GET",  "path": "/reports/compensation",                   "bc": "BC-10", "security": "ROLE_HR_MANAGER",   "async": false },
+    { "id": "EP-075", "method": "GET",  "path": "/reports/leave",                          "bc": "BC-10", "security": "ROLE_HR_SPECIALIST", "async": false },
+    { "id": "EP-076", "method": "GET",  "path": "/reports/performance",                    "bc": "BC-10", "security": "ROLE_HR_SPECIALIST", "async": false }
+  ],
+  "defects": [
+    { "id": "DEF-001", "code": "HOH_ZERO_TAX",                    "severity": "HIGH",     "bc": "BC-02", "description": "HEAD_OF_HOUSEHOLD tax filing status returns $0 federal tax in PKG_PAYROLL", "remediation_rule": "GEN-006", "fix_required_before_phase": 3 },
+    { "id": "DEF-002", "code": "NO_SESSION_INVALIDATION",          "severity": "HIGH",     "bc": "BC-06", "description": "Grade change takes effect without invalidating existing sessions", "remediation_rule": "GEN-006", "fix_required_before_phase": 1 },
+    { "id": "DEF-003", "code": "PENDING_OMITTED_FROM_VIEW",        "severity": "MEDIUM",   "bc": "BC-03", "description": "VW_LEAVE_SUMMARY omits PENDING column; approved-not-taken leave invisible", "remediation_rule": "GEN-006", "fix_required_before_phase": 2 },
+    { "id": "DEF-004", "code": "CALIBRATION_NO_WRITE_PATH",        "severity": "MEDIUM",   "bc": "BC-04", "description": "CALIBRATED_RATING has no application write procedure; requires direct SQL", "remediation_rule": "GEN-006", "fix_required_before_phase": 2 },
+    { "id": "DEF-005", "code": "CARRY_FORWARD_UNIMPLEMENTED",      "severity": "MEDIUM",   "bc": "BC-03", "description": "LEAVE_TYPES.CARRY_FORWARD flag exists but year-end carry-forward logic not implemented", "remediation_rule": "GEN-006", "fix_required_before_phase": 2 },
+    { "id": "DEF-006", "code": "PTO_PAYOUT_UNIMPLEMENTED",         "severity": "MEDIUM",   "bc": "BC-03", "description": "IS_PAID flag exists but final-pay PTO payout not implemented in termination flow", "remediation_rule": "GEN-006", "fix_required_before_phase": 3 },
+    { "id": "DEF-007", "code": "NACHA_NOT_IMPLEMENTED",            "severity": "MEDIUM",   "bc": "BC-09", "description": "ACH/NACHA file generation not implemented; direct deposit impossible", "remediation_rule": "GEN-006", "fix_required_before_phase": 3 },
+    { "id": "DEF-008", "code": "KEY_IN_DATABASE",                  "severity": "CRITICAL", "bc": "BC-06", "description": "AES-256 encryption key stored in SYSTEM_CONFIG in same DB as encrypted data", "remediation_rule": "GEN-006", "fix_required_before_phase": 1 }
+  ],
+  "inferred_tables": [
+    { "table": "EMPLOYEE_PAY_ELEMENTS", "inferred_from": "PKG_PAYROLL element ID constants", "decision": "PENDING" },
+    { "table": "USER_CREDENTIALS",      "inferred_from": "PKG_SECURITY authenticate procedure", "decision": "PENDING" },
+    { "table": "TERMINATION_CODES",     "inferred_from": "EMPLOYEES.TERMINATION_REASON FK", "decision": "PENDING" },
+    { "table": "TIME_ATTENDANCE_RECORDS","inferred_from": "Code comments referencing time import", "decision": "PENDING" },
+    { "table": "RPT_HEADCOUNT_SNAPSHOT","inferred_from": "Reporting context inference", "decision": "PENDING" },
+    { "table": "RPT_TURNOVER_SUMMARY",  "inferred_from": "Reporting context inference", "decision": "PENDING" },
+    { "table": "RPT_PAYROLL_SUMMARY",   "inferred_from": "Reporting context inference", "decision": "PENDING" }
+  ],
+  "validation_gates": [
+    { "id": "VG-01", "name": "Data Dictionary Completeness",  "blocking": true,  "automated": true,  "required_before_artefacts": ["ART-001", "ART-002"] },
+    { "id": "VG-02", "name": "Domain Model Completeness",     "blocking": true,  "automated": true,  "required_before_artefacts": ["ART-004"] },
+    { "id": "VG-03", "name": "API Contract Completeness",     "blocking": true,  "automated": true,  "required_before_artefacts": ["ART-005", "ART-006", "ART-010"] },
+    { "id": "VG-04", "name": "Business Rule Mapping",         "blocking": true,  "automated": false, "required_before_artefacts": ["ART-004"] },
+    { "id": "VG-05", "name": "Security Architecture Review",  "blocking": true,  "automated": false, "required_before_artefacts": ["ART-008"] },
+    { "id": "VG-06", "name": "Migration Script Dry-Run",      "blocking": true,  "automated": true,  "required_before_artefacts": ["ART-001"] },
+    { "id": "VG-07", "name": "Test Coverage Gate",            "blocking": true,  "automated": true,  "required_before_artefacts": [] },
+    { "id": "VG-08", "name": "NFR Validation",               "blocking": true,  "automated": false, "required_before_artefacts": [] }
+  ],
+  "migration_phases": [
+    {
+      "phase": 1,
+      "name": "Foundation",
+      "duration_months": 3,
+      "bounded_contexts": ["BC-01", "BC-06", "BC-07"],
+      "critical_fixes": ["DEF-002", "DEF-008"]
+    },
+    {
+      "phase": 2,
+      "name": "Core HR Operations",
+      "duration_months": 3,
+      "bounded_contexts": ["BC-03", "BC-04", "BC-08"],
+      "critical_fixes": ["DEF-003", "DEF-004", "DEF-005"]
+    },
+    {
+      "phase": 3,
+      "name": "Payroll and Benefits",
+      "duration_months": 4,
+      "bounded_contexts": ["BC-02", "BC-05", "BC-09"],
+      "critical_fixes": ["DEF-001", "DEF-006", "DEF-007"]
+    },
+    {
+      "phase": 4,
+      "name": "Integration, Reporting, Hardening",
+      "duration_months": 2,
+      "bounded_contexts": ["BC-10"],
+      "critical_fixes": []
+    }
+  ]
+}
+```

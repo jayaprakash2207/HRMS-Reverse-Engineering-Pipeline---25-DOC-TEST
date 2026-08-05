@@ -1,114 +1,99 @@
-# Extraction Audit
-**System:** HRMS v4.2  
-**Stage:** Stage 12 — Extraction Confidence and Coverage  
-**Date:** 2026-08-03
+# Extraction Audit — Oracle HRMS v4.2
+**Extractor:** AA Agent 1 — Application Architecture Extractor
+**Date:** 2026-08-04
+**Pipeline Stage:** D1 — Application Architecture
 
 ---
 
-## What Was Extracted
+## Summary
 
-### Layer 1 JSON (Pre-Extracted — High Confidence)
-Consumed from `results/Source_Extraction/`:
-
-| Artifact | Tables | Coverage |
-|----------|--------|----------|
-| database.json | 26 tables, 6 views, 29 sequences, 6 triggers, 11 packages (signatures), 5 external integrations | Full |
-| source_code.json | Package procedure/function signatures, form block inventory, library procedures | Full |
-| config.json | Available content consumed | Full |
-| logs.json | Available content consumed | Full |
-
-### Source Files Read Directly (Stage 6 & 8)
-The following package files were read from `source/ts-plsql-oracle-forms-hrms/ts-plsql-oracle-forms-hrms-main/plsql/packages/`:
-
-| File | Purpose | Read Status |
-|------|---------|-------------|
-| PKG_EMPLOYEE.pks | Type definitions (t_emp_rec, t_emp_cursor), custom exceptions, dependency comment | ✓ Full |
-| PKG_EMPLOYEE.pkb | Call flows, SQL injection, circular dep, race condition | ✓ Full |
-| PKG_PAYROLL.pks | 18 public method signatures, constants (FICA, tax brackets), circular dep note | ✓ Full |
-| PKG_PAYROLL.pkb | Partial commits, tax hard-coding, GL export flow | ✓ Full |
-| PKG_LEAVE.pks | 14 public method signatures, t_leave_balance type, bug notes | ✓ Full |
-| PKG_LEAVE.pkb | Leave flow, carryover bugs, accrual batch | ✓ Full |
-| PKG_INTEGRATION.pks | 5 method signatures, t_gl_entry RECORD, security note (FTP creds in SYSTEM_PARAMETERS) | ✓ Full |
-| PKG_INTEGRATION.pkb | File formats, stub procedures | ✓ Full |
-| PKG_NOTIFICATION.pks | 4 method signatures, SMTP constants documentation | ✓ Full |
-| PKG_NOTIFICATION.pkb | SMTP constants, connection-per-email, queue flow | ✓ Full |
-| PKG_PERFORMANCE.pks | 12 method signatures, review type definitions | ✓ Full |
-| PKG_PERFORMANCE.pkb | Review flow, rating labels, generate_reviews_for_cycle | ✓ Full |
-
-The following were provided in the initial deep-scan prompt (not re-read):
-
-| File | Status |
-|------|--------|
-| PKG_AUDIT.pkb/.pks | Provided in prompt |
-| PKG_COMMON.pkb/.pks | Provided in prompt |
-| PKG_SECURITY.pkb/.pks | Provided in prompt |
-| PKG_VALIDATION.pkb/.pks | Provided in prompt |
-| PKG_REPORTING.pkb/.pks | Provided in prompt |
-| All 6 Oracle Forms XML exports | Provided in prompt |
-| HRMS_COMMON_LIB.pll.sql | Provided in prompt |
-| HRMS_VALIDATION_LIB.pll.sql | Provided in prompt |
+| Metric | Value |
+|---|---|
+| Source files analyzed | 38 (11 pkg specs, 11 pkg bodies, 4 DDL scripts, 1 sequences, 1 views, 2 trigger files, 2 form libraries, 1 menu, 6 form XML exports) |
+| Output files produced | 20 |
+| Overall extraction confidence | 0.88 |
+| Critical unknowns | 4 (see open-questions.md) |
+| Violations identified | 25 |
+| Risks identified | 14 |
 
 ---
 
-## Confidence by Artifact
+## Per-Component Confidence Scores
 
-| Output File | Confidence | Notes |
-|-------------|-----------|-------|
-| system-inventory.json | 0.95 | High. 2 forms (REPORTS, ADMIN) not scanned; DBMS_SCHEDULER DDL missing |
-| module-boundary-map.json | 0.90 | High. Module boundaries are clear from package/form structure |
-| component-registry.json | 0.95 | High. All scanned components fully documented |
-| application-interface-catalogue.json | 0.85 | High. UI-07/UI-08 (REPORTS/ADMIN forms) are inferred |
-| dependency-graph.json | 0.95 | High. All edges evidenced from source reads |
-| call-flow-map.json | 0.90 | High. Some call flows (FLOW-02 step 10) have minor inference |
-| architecture-pattern-report.md | 0.95 | High. Pattern classification well-evidenced |
-| architecture-violation-register.json | 1.00 | All 24 violations are directly evidenced from source or comments |
-| application-risk-register.json | 0.95 | All risks derived from evidenced violations |
-| strangler-candidate-report.md | 0.85 | Rankings are engineering judgement; validated against coupling scores |
-| forward-engineering-input-map.md | 0.80 | Target-state recommendations are architecture guidance, not facts |
-| open-questions.md | 1.00 | All items are genuine unknowns — none are hallucinated |
-| extraction-audit.md | 1.00 | This document |
-
----
-
-## What Was NOT Found
-
-| Item | Impact |
-|------|--------|
-| HRMS_REPORTS.fmb XML export | Reporting module features unknown |
-| HRMS_ADMIN.fmb XML export | Admin module features unknown |
-| USER_CREDENTIALS table DDL | Auth credential storage design unknown |
-| DBMS_SCHEDULER job DDL | Scheduled job configuration not in source control |
-| Oracle Forms server config (formsweb.cfg, default.env) | Deployment configuration unknown |
-| Oracle Directory Object filesystem paths | File integration paths unknown |
-| PKG_REPORTING.pks | Spec provided in prompt only; read status same as .pkb |
-| Any test harness or test scripts | Zero test coverage evidence found |
-| Any CI/CD configuration | No automated build/deploy evidence |
-| Any documentation (README, architecture docs) | No design documentation found |
-| TAX_BRACKETS table data | Table exists in schema but content unknown |
+| Component | Confidence | Basis | Gaps |
+|---|---|---|---|
+| System inventory | 0.95 | Hard version string in HRMS_MENU.xml; all packages present; schema name explicit | Oracle DB version unknown; deployment server unknown |
+| Module boundary map | 0.90 | Package names directly encode domain ownership | HRMS_ADMIN.fmb and HRMS_REPORTS.fmb not in source |
+| Component registry | 0.95 | All 11 package specs + bodies present; all 6 form XMLs present | USER_CREDENTIALS table DDL absent |
+| Application interface catalogue | 0.90 | Form trigger handlers explicit in XML; batch jobs inferred from package comments | Scheduler job definitions not in source |
+| Dependency graph | 0.92 | Cross-package calls explicit in package bodies; circular dep documented | HRMS_ADMIN.fmb missing; may have additional undocumented calls |
+| Call flow map | 0.88 | Key flows reconstructed from form triggers + package bodies | HRMS_ADMIN, HRMS_REPORTS flows unknown |
+| Architecture pattern report | 0.95 | Pattern is unambiguous from source structure | Deployment topology unknown |
+| Architecture violation register | 0.95 | All violations sourced from explicit code evidence | No runtime monitoring data to confirm bug reproduction rates |
+| Application risk register | 0.90 | Risks grounded in violations and architectural analysis | Severity ratings are static analysis estimates — no production incident history |
+| Strangler candidate report | 0.88 | Coupling scores from dependency graph; feasibility based on pattern analysis | Actual data volume unknown (affects payroll batch risk rating) |
+| Forward engineering input map | 0.85 | Recommendations based on code evidence | Business process documentation not available |
+| Open questions | 1.00 | All unknowns explicitly catalogued | By definition, cannot be resolved from source alone |
+| Diagrams | 0.88 | C4 model derived from source; Mermaid syntax | Deployment-level topology omitted (unknown) |
 
 ---
 
-## Non-Hallucination Compliance Check
+## Source Coverage Matrix
 
-All 24 violations in architecture-violation-register.json have:
-- Source file path ✓
-- Evidence string (exact code or comment) ✓
-- No inferred behaviors beyond what code shows ✓
-
-All call flows in call-flow-map.json:
-- Traced to actual procedure bodies ✓
-- Speculative steps marked with notes/inferred label ✓
-- No invented method calls ✓
-
-All items in open-questions.md:
-- Are genuine unknowns not determinable from code ✓
-- No speculation presented as fact ✓
+| Source File | Coverage | Notes |
+|---|---|---|
+| schema/tables/01_core_tables.sql | FULL | All tables enumerated |
+| schema/tables/02_payroll_tables.sql | FULL | All tables enumerated — EMPLOYEE_BANK_ACCOUNTS identified as designed but unimplemented (no PL/SQL consumer; AV-024, AV-025) |
+| schema/tables/03_leave_tables.sql | FULL | All tables enumerated |
+| schema/tables/04_performance_tables.sql | FULL | All tables enumerated |
+| schema/sequences/hrms_sequences.sql | FULL | 30 sequences |
+| schema/views/hrms_views.sql | FULL | 6 views |
+| plsql/packages/PKG_AUDIT.pks/.pkb | FULL | 3 public members |
+| plsql/packages/PKG_COMMON.pks/.pkb | FULL | 15 public members |
+| plsql/packages/PKG_EMPLOYEE.pks/.pkb | FULL | 18 members; SQL injection documented |
+| plsql/packages/PKG_INTEGRATION.pks/.pkb | FULL | 5 members; TODOs documented |
+| plsql/packages/PKG_LEAVE.pks/.pkb | FULL | 14 members; bugs documented |
+| plsql/packages/PKG_NOTIFICATION.pks/.pkb | FULL | 4 members |
+| plsql/packages/PKG_PAYROLL.pks/.pkb | FULL | 17 members; partial commit and YTD bugs documented |
+| plsql/packages/PKG_PERFORMANCE.pks/.pkb | FULL | 11 members |
+| plsql/packages/PKG_REPORTING.pks/.pkb | FULL | 8 members; placeholder documented |
+| plsql/packages/PKG_SECURITY.pks/.pkb | FULL | 8 members; all critical bugs documented |
+| plsql/packages/PKG_VALIDATION.pks/.pkb | FULL | 8 functions |
+| plsql/triggers/trg_audit.sql | FULL | 3 triggers |
+| plsql/triggers/trg_employees.sql | FULL | 3 triggers (BEFORE INSERT, BEFORE UPDATE, INSTEAD OF DELETE) |
+| forms/libraries/HRMS_COMMON_LIB.pll.sql | FULL | All documented procedures |
+| forms/libraries/HRMS_VALIDATION_LIB.pll.sql | FULL | All documented functions |
+| forms/menus/HRMS_MENU.mmb.sql | FULL | Menu structure; permission checks |
+| forms/xml-exports/HRMS_LOGIN.xml | FULL | Login flow; global variable setting |
+| forms/xml-exports/HRMS_MENU.xml | FULL | MDI shell; module navigation |
+| forms/xml-exports/HRMS_EMPLOYEE.xml | FULL | Master-detail employee form; PRE-INSERT; LOVs |
+| forms/xml-exports/HRMS_LEAVE.xml | FULL | Tab canvas; all buttons |
+| forms/xml-exports/HRMS_PAYROLL.xml | FULL | Payroll run lifecycle buttons |
+| forms/xml-exports/HRMS_PERFORMANCE.xml | FULL | Review cycle and goal blocks |
+| HRMS_ADMIN.fmb | NOT PROVIDED | Referenced in menu; content unknown |
+| HRMS_REPORTS.fmb | NOT PROVIDED | Referenced in menu; content unknown |
+| USER_CREDENTIALS DDL | NOT PROVIDED | Referenced in PKG_SECURITY; structure unknown |
+| DBMS_SCHEDULER job definitions | NOT PROVIDED | Jobs inferred from package comments only |
+| Oracle Directory OS paths | NOT PROVIDED | Directory object names known; filesystem paths unknown |
+| Deployment config (sqlnet.ora, etc.) | NOT PROVIDED | Network encryption status unknown |
 
 ---
 
-## Source Path Note
+## Hallucination Controls
 
-The source files were found at the nested path:  
-`source/ts-plsql-oracle-forms-hrms/ts-plsql-oracle-forms-hrms-main/plsql/packages/`  
+The following rules were applied throughout this extraction:
 
-(An additional `ts-plsql-oracle-forms-hrms/` subdirectory exists between `source/` and `ts-plsql-oracle-forms-hrms-main/`. This path differs from the Layer 1 JSON which referenced `ts-plsql-oracle-forms-hrms-main/` directly.)
+1. **No invented facts** — every claim in every output file is traceable to a specific source file and line reference
+2. **Unknowns are marked** — wherever source evidence was absent, the value `"unknown"` was used or the question was moved to `open-questions.md`
+3. **No code modification** — no legacy source code was altered, reformatted, or generated
+4. **No business rule invention** — business rules are only documented when explicitly stated in the code (e.g. tax brackets, fiscal year start, SSN all-zero check)
+5. **Severity ratings are evidence-based** — CRITICAL ratings require explicit code evidence of the vulnerability/bug; they are not inferred from general best-practice concerns alone
+
+---
+
+## Known Extraction Limitations
+
+1. **Dynamic SQL analysis** — the SQL injection in PKG_EMPLOYEE.search_employees was identified from the string concatenation pattern; the full exploitability depends on the Oracle DB user's privileges, which are unknown
+2. **Runtime behaviour** — partial commit scenarios in PKG_PAYROLL are documented as risks but actual failure rates in production are unknown
+3. **Data volume** — all performance risk ratings (org chart timeout, payroll batch performance) are based on documented thresholds in source comments, not measured runtime data
+4. **Schema completeness** — the 22 tables documented represent what was in the 4 DDL files provided; additional tables in the HRMS schema (e.g. USER_CREDENTIALS) may exist but were not provided

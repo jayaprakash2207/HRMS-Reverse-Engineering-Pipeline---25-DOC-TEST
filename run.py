@@ -230,7 +230,7 @@ def step_rule_annotator(output_dir: Path) -> dict:
     return _run_or_exit(
         [py, str(PIPELINE_DIR / "rule_annotator_runner.py"), "--output", str(output_dir)],
         label="[STEP 0] Rule Annotator — Auto-Inject Business Rule Comments",
-        timeout=3600,
+        timeout=7200,
     )
 
 
@@ -377,19 +377,6 @@ def orchestrate(source: str, output_dir: Path, skip_layer1: bool,
     for d in (ba_out, da_out, ta_out, aa_out):
         d.mkdir(parents=True, exist_ok=True)
 
-    # ── Step 0: Rule Annotator ────────────────────────────────────────────────
-    # Runs after file_cache.json exists (Step 2), but we wire it here so
-    # --track setup covers it. It skips cleanly if cache not yet ready.
-    print(f"\n{'─' * 64}")
-    print(bold(cyan(f"[STEP 0/{_TOTAL_STEPS}]  Rule Annotator — Auto-Inject Business Rule Comments")))
-    print(f"{'─' * 64}")
-    if not _should_run(1):
-        print(yellow(f"\n  [STEP 0] Rule Annotator — skipped (outside batch range)"))
-        all_results.append({"label": "[STEP 0] Rule Annotator", "returncode": 0,
-                             "stdout": "skipped (batch)", "stderr": "", "duration_s": 0.0})
-    else:
-        all_results.append(step_rule_annotator(output_dir))
-
     # ── Step 1: Layer 1 ───────────────────────────────────────────────────────
     _banner(1, "Layer 1 — Deterministic Source Extraction")
     if not _should_run(1):
@@ -407,6 +394,17 @@ def orchestrate(source: str, output_dir: Path, skip_layer1: bool,
         all_results.append(_skip(2, "Scan Once"))
     else:
         all_results.append(step_scan_once(repo_root, output_dir))
+
+    # ── Step 0: Rule Annotator (runs after file_cache.json is created in Step 2) ──
+    print(f"\n{'─' * 64}")
+    print(bold(cyan(f"[STEP 0/{_TOTAL_STEPS}]  Rule Annotator — Auto-Inject Business Rule Comments")))
+    print(f"{'─' * 64}")
+    if not _should_run(1):
+        print(yellow(f"\n  [STEP 0] Rule Annotator — skipped (outside batch range)"))
+        all_results.append({"label": "[STEP 0] Rule Annotator", "returncode": 0,
+                             "stdout": "skipped (batch)", "stderr": "", "duration_s": 0.0})
+    else:
+        all_results.append(step_rule_annotator(output_dir))
 
     # ── Step 3: Scan Agent ────────────────────────────────────────────────────
     _banner(3, "Scan Agent — Deep Extract All Files (chunk by chunk)")

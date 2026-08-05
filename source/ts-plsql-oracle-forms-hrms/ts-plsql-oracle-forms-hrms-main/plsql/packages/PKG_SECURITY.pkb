@@ -5,6 +5,7 @@ CREATE OR REPLACE PACKAGE BODY HRMS.PKG_SECURITY AS
 
     -- VULNERABILITY: Encryption key hard-coded in source
     c_encryption_key RAW(32) := UTL_RAW.CAST_TO_RAW('HR$ystem_3ncrypt10n_K3y_2024!!');
+    -- CONSTRAINT: Session inactivity timeout is fixed at 30 minutes; sessions older than this threshold are automatically expired
     c_session_timeout_min CONSTANT NUMBER := 30;
 
     -- -----------------------------------------------------------------------
@@ -39,6 +40,7 @@ CREATE OR REPLACE PACKAGE BODY HRMS.PKG_SECURITY AS
     BEGIN
         -- Look up user
         BEGIN
+            -- BUSINESS: Only employees with EMPLOYMENT_STATUS = 'ACTIVE' are eligible to authenticate; terminated, suspended, or otherwise inactive employees are excluded
             SELECT EMP_ID INTO v_emp_id
             FROM EMPLOYEES
             WHERE UPPER(EMAIL) = UPPER(p_username)
@@ -47,9 +49,11 @@ CREATE OR REPLACE PACKAGE BODY HRMS.PKG_SECURITY AS
             WHEN NO_DATA_FOUND THEN
                 -- VULNERABILITY: Timing attack - different response time for
                 -- invalid user vs invalid password
+                -- RULE: Authentication is rejected with a generic message when no active employee is found for the supplied email, preventing username enumeration
                 RAISE_APPLICATION_ERROR(-20301, 'Invalid username or password');
             WHEN TOO_MANY_ROWS THEN
                 -- Multiple employees with same email - use first active one
+                -- BUSINESS: When multiple active employees share the same email address, the employee with the lowest EMP_ID is selected as the authenticated user
                 SELECT MIN(EMP_ID) INTO v_emp_id
                 FROM EMPLOYEES
                 WHERE UPPER(EMAIL) = UPPER(p_username)
@@ -106,11 +110,13 @@ CREATE OR REPLACE PACKAGE BODY HRMS.PKG_SECURITY AS
         FROM USER_SESSIONS
         WHERE SESSION_ID = p_session_id;
 
+        -- RULE: A session is only considered valid when SESSION_STATUS is exactly 'ACTIVE'; any other status (e.g. 'CLOSED', 'EXPIRED') immediately invalidates the session
         IF v_status != 'ACTIVE' THEN
             RETURN FALSE;
         END IF;
 
         -- Check timeout
+        -- RULE: A session is automatically expired and invalidated if more than 30 minutes have elapsed since the login time
         IF (SYSDATE - v_login_time) * 24 * 60 > c_session_timeout_min THEN
             -- Auto-expire session
             UPDATE USER_SESSIONS SET
@@ -150,19 +156,25 @@ CREATE OR REPLACE PACKAGE BODY HRMS.PKG_SECURITY AS
         -- Grade >= 5: View all, edit own department
         -- Grade < 5: View/edit own records only
 
+        -- CONSTRAINT: Job grade 8 is the minimum threshold for unrestricted (senior management) access to all modules and actions
+        -- RULE: Employees at job grade 8 or above are granted full access to every module and every action without further restriction
         IF v_grade_id >= 8 THEN
             RETURN TRUE;  -- Senior management - full access
         END IF;
 
+        -- CONSTRAINT: Job grade 5 is the minimum threshold for read-only access across all modules
+        -- RULE: Employees at job grade 5 or above may perform VIEW actions on any module regardless of their department
         IF p_action = 'VIEW' AND v_grade_id >= 5 THEN
             RETURN TRUE;  -- Mid-level can view all
         END IF;
 
         -- Module-specific rules
+        -- RULE: All employees regardless of job grade are permitted to create and view their own leave requests in the LEAVE module
         IF p_module = 'LEAVE' AND p_action IN ('CREATE', 'VIEW') THEN
             RETURN TRUE;  -- Everyone can submit/view own leave
         END IF;
 
+        -- RULE: All employees regardless of job grade are permitted to view their own record in the EMPLOYEE module
         IF p_module = 'EMPLOYEE' AND p_action = 'VIEW' THEN
             RETURN TRUE;  -- Everyone can view own profile
         END IF;
@@ -215,15 +227,22 @@ CREATE OR REPLACE PACKAGE BODY HRMS.PKG_SECURITY AS
     ) IS
     BEGIN
         -- Password complexity check
+        -- CONSTRAINT: Minimum allowable password length is 8 characters
+        -- RULE: A new password must be at least 8 characters long; shorter passwords are rejected before any update is applied
         IF LENGTH(p_new_password) < 8 THEN
+            -- RULE: Password change is blocked when the new password contains fewer than 8 characters
             RAISE_APPLICATION_ERROR(-20310, 'Password must be at least 8 characters');
         END IF;
 
+        -- RULE: A new password must contain at least one uppercase letter; passwords composed entirely of lowercase characters are rejected
         IF NOT REGEXP_LIKE(p_new_password, '[A-Z]') THEN
+            -- RULE: Password change is blocked when the new password contains no uppercase letters
             RAISE_APPLICATION_ERROR(-20311, 'Password must contain an uppercase letter');
         END IF;
 
+        -- RULE: A new password must contain at least one numeric digit; passwords with no numbers are rejected
         IF NOT REGEXP_LIKE(p_new_password, '[0-9]') THEN
+            -- RULE: Password change is blocked when the new password contains no numeric digits
             RAISE_APPLICATION_ERROR(-20312, 'Password must contain a number');
         END IF;
 

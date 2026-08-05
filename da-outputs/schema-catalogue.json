@@ -1,56 +1,1171 @@
 {
-  "database_engine": "Oracle Database 19c",
-  "schema": "HRMS",
-  "db_connection": "CODE-ONLY — no Oracle client (sqlplus/sqlcl) located on PATH in this session, no docker-compose.yml/tnsnames.ora/connection config present under source/ts-plsql-oracle-forms-hrms, and Layer 1 config.connection_strings is empty (no connection string ever extracted). Shell probes (`where sqlplus`, `command -v sqlplus`) were blocked by session tool-permission policy before returning a result. Continuing code-only for all findings below.",
-  "source": "source/ts-plsql-oracle-forms-hrms (schema/tables/01-04_*.sql, DDL-as-source-of-truth, no separate migration framework — treated as migration-tier evidence, confidence 0.9)",
-  "table_count": 30,
-  "view_count": 6,
-  "trigger_count": 6,
-  "package_count": 11,
-  "sequence_count": 29,
-  "domains": {
-    "Core HR": ["DEPARTMENTS", "LOCATIONS", "JOB_GRADES", "JOB_TITLES", "EMPLOYEES", "EMPLOYEE_HISTORY", "EMPLOYEE_DEPENDENTS", "EMERGENCY_CONTACTS"],
-    "Payroll": ["SALARY_RECORDS", "PAY_ELEMENTS", "EMPLOYEE_PAY_ELEMENTS", "PAY_PERIODS", "PAYROLL_RUNS", "PAYROLL_DETAILS", "TAX_BRACKETS", "EMPLOYEE_TAX_INFO", "EMPLOYEE_BANK_ACCOUNTS"],
-    "Leave Management": ["LEAVE_TYPES", "LEAVE_BALANCES", "LEAVE_REQUESTS", "LEAVE_ACCRUAL_LOG", "HOLIDAYS"],
-    "Performance & Cross-cutting": ["REVIEW_CYCLES", "PERFORMANCE_REVIEWS", "PERFORMANCE_GOALS", "AUDIT_LOG", "SYSTEM_PARAMETERS", "NOTIFICATION_QUEUE", "USER_SESSIONS", "LOOKUP_VALUES"]
+  "extraction_metadata": {
+    "db_connection": "CODE-ONLY — sqlplus not found on PATH and no Oracle instant client at common install paths. Commands attempted: which sqlplus; ls C:/Program Files/Oracle/instantclient_21_11/; ls C:/app/oracle/product/19.0.0/dbhome_1/bin/",
+    "schema": "HRMS",
+    "database_engine": "Oracle 19c",
+    "extraction_date": "2026-08-04",
+    "confidence": "0.90 — confirmed by DDL migration files",
+    "totals": {
+      "tables": 38,
+      "tables_note": "30 confirmed DDL tables + 7 INFERRED RPT_* tables implied by PKG_REPORTING.refresh_reporting_tables stub comment + 1 IMPLIED TIME_ATTENDANCE_RECORDS table inferred from PKG_INTEGRATION.import_time_attendance TODO stub",
+      "columns": 352,
+      "foreign_keys": 27,
+      "unique_constraints": 13,
+      "check_constraints": 24,
+      "indexes_noted": 0,
+      "sequences": 29,
+      "views": 6,
+      "triggers": 6,
+      "packages": 11
+    }
   },
   "tables": [
-    {"name": "DEPARTMENTS", "pk": "DEPT_ID", "unique": ["DEPT_CODE"], "fk_declared": [], "fk_conceptual_undeclared": ["PARENT_DEPT_ID -> DEPARTMENTS.DEPT_ID (self)", "MANAGER_EMP_ID -> EMPLOYEES.EMP_ID", "LOCATION_CODE -> LOCATIONS.LOCATION_CODE"], "row_count": {"volume": "LOW", "volume_detail": "11 rows via seed 01_reference_data.sql — DB not connected, seed-file count only (not live-verified)."}, "confidence": 0.9},
-    {"name": "LOCATIONS", "pk": "LOCATION_CODE (natural key, not surrogate)", "fk_declared": [], "row_count": {"volume": "LOW", "volume_detail": "3 rows via seed (HQ, CHI, SF)."}, "confidence": 0.9, "note": "Seed script inserts column PHONE which does not exist in DDL (column is PHONE_NUMBER) — seed would fail with ORA-00904."},
-    {"name": "JOB_GRADES", "pk": "GRADE_ID", "unique": ["GRADE_CODE"], "row_count": {"volume": "LOW", "volume_detail": "10 rows via seed."}, "confidence": 0.9, "note": "Seed omits NOT NULL GRADE_CODE and references nonexistent GRADE_LEVEL column — seed would fail with ORA-01400 (cannot insert NULL) even before reaching the invalid-column error."},
-    {"name": "JOB_TITLES", "pk": "JOB_ID", "unique": ["JOB_CODE"], "fk_declared": ["GRADE_ID -> JOB_GRADES.GRADE_ID"], "row_count": {"volume": "LOW", "volume_detail": "27 rows via seed."}, "confidence": 0.9},
-    {"name": "EMPLOYEES", "pk": "EMP_ID (NOT NULL, no DEFAULT/sequence in DDL)", "unique": ["EMP_NUMBER"], "fk_declared": ["DEPT_ID -> DEPARTMENTS", "JOB_ID -> JOB_TITLES", "MANAGER_EMP_ID -> EMPLOYEES (self)", "LOCATION_CODE -> LOCATIONS"], "row_count": {"volume": "LOW", "volume_detail": "26 rows via seed (25 active + 1 terminated, EMP_ID 99)."}, "confidence": 0.9, "pii_fields": ["SSN_ENCRYPTED", "DATE_OF_BIRTH", "EMAIL", "PHONE_WORK", "PHONE_MOBILE", "ADDRESS_LINE1/2", "PHOTO_BLOB"], "note": "No unique constraint on EMAIL at DB level — uniqueness among ACTIVE_FLAG='Y' rows is enforced only by TRG_EMP_BEFORE_INSERT (application-trigger-level, not schema-level)."},
-    {"name": "EMPLOYEE_HISTORY", "pk": "HIST_ID", "fk_declared": ["EMP_ID -> EMPLOYEES"], "row_count": {"volume": "UNKNOWN", "volume_detail": "No seed data provided; DB not connected."}, "confidence": 0.9, "note": "TRG_EMP_BEFORE_UPDATE inserts into this table using column names (HISTORY_ID, CHANGE_DATE, OLD_VALUE, NEW_VALUE, CHANGED_BY, CHANGE_REASON) that do not exist in this DDL (actual columns: HIST_ID, EFFECTIVE_DATE, OLD_DEPT_ID/NEW_DEPT_ID etc., CREATED_BY) and CHANGE_TYPE values ('DEPARTMENT_CHANGE','JOB_CHANGE') not permitted by CHK_CHANGE_TYPE. Every employee UPDATE that changes status/dept/job will raise an unhandled ORA-00904 or ORA-02290 inside the trigger."},
-    {"name": "EMPLOYEE_DEPENDENTS", "pk": "DEPENDENT_ID", "fk_declared": ["EMP_ID -> EMPLOYEES"], "row_count": {"volume": "UNKNOWN", "volume_detail": "No seed data; DB not connected."}, "confidence": 0.9, "pii_fields": ["SSN_ENCRYPTED", "DATE_OF_BIRTH"]},
-    {"name": "EMERGENCY_CONTACTS", "pk": "CONTACT_ID", "fk_declared": ["EMP_ID -> EMPLOYEES"], "row_count": {"volume": "UNKNOWN", "volume_detail": "No seed data; DB not connected."}, "confidence": 0.9, "pii_fields": ["CONTACT_NAME", "PHONE_PRIMARY/SECONDARY", "EMAIL"]},
-    {"name": "SALARY_RECORDS", "pk": "SALARY_ID", "fk_declared": ["EMP_ID -> EMPLOYEES"], "row_count": {"volume": "LOW", "volume_detail": "22 rows via seed (one active per seeded employee)."}, "confidence": 0.9, "pii_fields": ["BASE_SALARY"]},
-    {"name": "PAY_ELEMENTS", "pk": "ELEMENT_ID", "unique": ["ELEMENT_CODE"], "row_count": {"volume": "LOW", "volume_detail": "11 rows via seed."}, "confidence": 0.9},
-    {"name": "EMPLOYEE_PAY_ELEMENTS", "pk": "EMP_ELEMENT_ID", "fk_declared": ["EMP_ID -> EMPLOYEES", "ELEMENT_ID -> PAY_ELEMENTS"], "row_count": {"volume": "UNKNOWN", "volume_detail": "No seed data; DB not connected."}, "confidence": 0.9},
-    {"name": "PAY_PERIODS", "pk": "PERIOD_ID", "row_count": {"volume": "UNKNOWN", "volume_detail": "No seed data; DB not connected."}, "confidence": 0.9},
-    {"name": "PAYROLL_RUNS", "pk": "RUN_ID", "fk_declared": ["PERIOD_ID -> PAY_PERIODS"], "row_count": {"volume": "UNKNOWN", "volume_detail": "No seed data; DB not connected."}, "confidence": 0.9},
-    {"name": "PAYROLL_DETAILS", "pk": "DETAIL_ID", "fk_declared": ["RUN_ID -> PAYROLL_RUNS", "EMP_ID -> EMPLOYEES", "ELEMENT_ID -> PAY_ELEMENTS"], "row_count": {"volume": "UNKNOWN", "volume_detail": "No seed data; DB not connected."}, "confidence": 0.9},
-    {"name": "TAX_BRACKETS", "pk": "BRACKET_ID", "row_count": {"volume": "UNKNOWN", "volume_detail": "No seed data; DB not connected."}, "confidence": 0.9},
-    {"name": "EMPLOYEE_TAX_INFO", "pk": "TAX_INFO_ID", "unique": ["EMP_ID, TAX_YEAR"], "fk_declared": ["EMP_ID -> EMPLOYEES"], "row_count": {"volume": "UNKNOWN", "volume_detail": "No seed data; DB not connected."}, "confidence": 0.9, "pii_fields": ["FILING_STATUS", "ADDITIONAL_FED_WH/STATE_WH"]},
-    {"name": "EMPLOYEE_BANK_ACCOUNTS", "pk": "BANK_ACCT_ID", "fk_declared": ["EMP_ID -> EMPLOYEES"], "row_count": {"volume": "UNKNOWN", "volume_detail": "No seed data; DB not connected."}, "confidence": 0.9, "pii_fields": ["ROUTING_NUMBER", "ACCOUNT_NUMBER_ENC"]},
-    {"name": "LEAVE_TYPES", "pk": "LEAVE_TYPE_ID", "unique": ["LEAVE_TYPE_CODE"], "row_count": {"volume": "LOW", "volume_detail": "6 rows via seed (PTO, SICK, COMP, FMLA, JURY, BEREAVE)."}, "confidence": 0.9},
-    {"name": "LEAVE_BALANCES", "pk": "BALANCE_ID", "unique": ["EMP_ID, LEAVE_TYPE_ID, CALENDAR_YEAR"], "fk_declared": ["EMP_ID -> EMPLOYEES", "LEAVE_TYPE_ID -> LEAVE_TYPES"], "computed_column": "AVAILABLE = OPENING_BALANCE + ACCRUED - USED + ADJUSTMENT - PENDING (GENERATED ALWAYS VIRTUAL)", "row_count": {"volume": "UNKNOWN", "volume_detail": "No seed data; DB not connected."}, "confidence": 0.9},
-    {"name": "LEAVE_REQUESTS", "pk": "REQUEST_ID", "fk_declared": ["EMP_ID -> EMPLOYEES", "LEAVE_TYPE_ID -> LEAVE_TYPES", "APPROVER_EMP_ID -> EMPLOYEES (self)"], "row_count": {"volume": "UNKNOWN", "volume_detail": "No seed data; DB not connected."}, "confidence": 0.9},
-    {"name": "LEAVE_ACCRUAL_LOG", "pk": "ACCRUAL_ID", "fk_declared": ["EMP_ID -> EMPLOYEES", "LEAVE_TYPE_ID -> LEAVE_TYPES"], "fk_conceptual_undeclared": ["RUN_ID -> presumably a batch/payroll run, no FK enforced"], "row_count": {"volume": "UNKNOWN", "volume_detail": "No seed data; DB not connected."}, "confidence": 0.9},
-    {"name": "HOLIDAYS", "pk": "HOLIDAY_ID", "fk_conceptual_undeclared": ["LOCATION_CODE -> LOCATIONS.LOCATION_CODE"], "row_count": {"volume": "LOW", "volume_detail": "10 rows via seed, all 2024 calendar, all LOCATION_CODE=NULL (company-wide)."}, "confidence": 0.9},
-    {"name": "REVIEW_CYCLES", "pk": "CYCLE_ID", "row_count": {"volume": "UNKNOWN", "volume_detail": "No seed data; DB not connected."}, "confidence": 0.9},
-    {"name": "PERFORMANCE_REVIEWS", "pk": "REVIEW_ID", "fk_declared": ["CYCLE_ID -> REVIEW_CYCLES", "EMP_ID -> EMPLOYEES", "REVIEWER_EMP_ID -> EMPLOYEES (self)"], "row_count": {"volume": "UNKNOWN", "volume_detail": "No seed data; DB not connected."}, "confidence": 0.9},
-    {"name": "PERFORMANCE_GOALS", "pk": "GOAL_ID", "fk_declared": ["REVIEW_ID -> PERFORMANCE_REVIEWS", "EMP_ID -> EMPLOYEES"], "row_count": {"volume": "UNKNOWN", "volume_detail": "No seed data; DB not connected."}, "confidence": 0.9},
-    {"name": "AUDIT_LOG", "pk": "AUDIT_ID", "row_count": {"volume": "UNKNOWN", "volume_detail": "No seed data; DB not connected. In production this is the highest-growth table (SEQ_AUDIT is the only CACHE 100 sequence, implying anticipated high insert volume)."}, "confidence": 0.9, "note": "CHK_AUDIT_ACTION only permits INSERT/UPDATE/DELETE, but TRG_LEAVE_REQUEST_AUDIT passes literal 'STATUS_CHANGE' as the action value into PKG_AUDIT.log_action(p_action=...), which writes straight into ACTION_TYPE — this will raise ORA-02290 on every leave-status change, assuming no intermediate translation inside the unread PKG_AUDIT.pkb body."},
-    {"name": "SYSTEM_PARAMETERS", "pk": "PARAM_ID", "unique": ["PARAM_GROUP, PARAM_CODE"], "row_count": {"volume": "LOW", "volume_detail": "10 rows via seed."}, "confidence": 0.9, "note": "Seed script uses column DESCRIPTION (actual column is PARAM_DESCRIPTION) — ORA-00904, seed would fail."},
-    {"name": "NOTIFICATION_QUEUE", "pk": "NOTIFICATION_ID", "fk_conceptual_undeclared": ["RECIPIENT_EMP_ID -> EMPLOYEES.EMP_ID (no FK declared)"], "row_count": {"volume": "UNKNOWN", "volume_detail": "No seed data; DB not connected."}, "confidence": 0.9},
-    {"name": "USER_SESSIONS", "pk": "SESSION_ID", "fk_declared": ["EMP_ID -> EMPLOYEES"], "row_count": {"volume": "UNKNOWN", "volume_detail": "No seed data; DB not connected."}, "confidence": 0.9, "pii_fields": ["IP_ADDRESS", "USERNAME"]},
-    {"name": "LOOKUP_VALUES", "pk": "LOOKUP_ID", "unique": ["LOOKUP_TYPE, LOOKUP_CODE"], "fk_conceptual_undeclared": ["PARENT_LOOKUP_ID -> LOOKUP_VALUES.LOOKUP_ID (self, no FK)"], "row_count": {"volume": "UNKNOWN", "volume_detail": "No seed data; DB not connected."}, "confidence": 0.9}
+    {
+      "name": "DEPARTMENTS",
+      "schema": "HRMS",
+      "source_file": "schema/tables/01_core_tables.sql",
+      "comment": "Organization departments and cost centers",
+      "columns": [
+        {"name": "DEPT_ID",       "type": "NUMBER(10)",    "nullable": false, "default": null,    "notes": "Primary key"},
+        {"name": "DEPT_CODE",     "type": "VARCHAR2(20)",  "nullable": false, "default": null,    "notes": "Business code"},
+        {"name": "DEPT_NAME",     "type": "VARCHAR2(100)", "nullable": false, "default": null,    "notes": null},
+        {"name": "PARENT_DEPT_ID","type": "NUMBER(10)",    "nullable": true,  "default": null,    "notes": "Self-referencing FK for dept hierarchy"},
+        {"name": "COST_CENTER",   "type": "VARCHAR2(20)",  "nullable": true,  "default": null,    "notes": "Financial cost center code for GL integration"},
+        {"name": "MANAGER_EMP_ID","type": "NUMBER(10)",    "nullable": true,  "default": null,    "notes": "Soft ref — no FK defined; points to EMPLOYEES.EMP_ID"},
+        {"name": "LOCATION_CODE", "type": "VARCHAR2(10)",  "nullable": true,  "default": null,    "notes": "Soft ref to LOCATIONS"},
+        {"name": "ACTIVE_FLAG",   "type": "CHAR(1)",       "nullable": false, "default": "'Y'",   "notes": "Y/N soft-delete flag"},
+        {"name": "CREATED_BY",    "type": "VARCHAR2(30)",  "nullable": false, "default": null,    "notes": null},
+        {"name": "CREATED_DATE",  "type": "DATE",          "nullable": false, "default": "SYSDATE","notes": null},
+        {"name": "MODIFIED_BY",   "type": "VARCHAR2(30)",  "nullable": true,  "default": null,    "notes": null},
+        {"name": "MODIFIED_DATE", "type": "DATE",          "nullable": true,  "default": null,    "notes": null}
+      ],
+      "primary_key": {"name": "PK_DEPARTMENTS", "columns": ["DEPT_ID"]},
+      "unique_constraints": [{"name": "UK_DEPT_CODE", "columns": ["DEPT_CODE"]}],
+      "foreign_keys": [],
+      "check_constraints": [
+        {"name": "CHK_DEPT_ACTIVE", "expression": "ACTIVE_FLAG IN ('Y','N')"}
+      ],
+      "soft_references": [
+        {"column": "MANAGER_EMP_ID", "references": "EMPLOYEES.EMP_ID", "note": "No FK constraint — circular dependency avoided"},
+        {"column": "LOCATION_CODE",  "references": "LOCATIONS.LOCATION_CODE", "note": "No FK constraint"}
+      ],
+      "row_count": {"volume": "UNKNOWN", "volume_detail": "DB not connected — connection refused/client absent"}
+    },
+    {
+      "name": "LOCATIONS",
+      "schema": "HRMS",
+      "source_file": "schema/tables/01_core_tables.sql",
+      "columns": [
+        {"name": "LOCATION_CODE",  "type": "VARCHAR2(10)",  "nullable": false, "default": null,             "notes": "Primary key (natural key)"},
+        {"name": "LOCATION_NAME",  "type": "VARCHAR2(100)", "nullable": false, "default": null,             "notes": null},
+        {"name": "ADDRESS_LINE1",  "type": "VARCHAR2(200)", "nullable": true,  "default": null,             "notes": null},
+        {"name": "ADDRESS_LINE2",  "type": "VARCHAR2(200)", "nullable": true,  "default": null,             "notes": null},
+        {"name": "CITY",           "type": "VARCHAR2(100)", "nullable": true,  "default": null,             "notes": null},
+        {"name": "STATE_PROVINCE", "type": "VARCHAR2(100)", "nullable": true,  "default": null,             "notes": null},
+        {"name": "POSTAL_CODE",    "type": "VARCHAR2(20)",  "nullable": true,  "default": null,             "notes": null},
+        {"name": "COUNTRY_CODE",   "type": "VARCHAR2(3)",   "nullable": true,  "default": null,             "notes": "ISO 3-char country code"},
+        {"name": "PHONE_NUMBER",   "type": "VARCHAR2(30)",  "nullable": true,  "default": null,             "notes": null},
+        {"name": "TIMEZONE",       "type": "VARCHAR2(50)",  "nullable": true,  "default": "'America/New_York'","notes": "IANA timezone string"},
+        {"name": "ACTIVE_FLAG",    "type": "CHAR(1)",       "nullable": false, "default": "'Y'",            "notes": null},
+        {"name": "CREATED_BY",     "type": "VARCHAR2(30)",  "nullable": false, "default": null,             "notes": null},
+        {"name": "CREATED_DATE",   "type": "DATE",          "nullable": false, "default": "SYSDATE",        "notes": null},
+        {"name": "MODIFIED_BY",    "type": "VARCHAR2(30)",  "nullable": true,  "default": null,             "notes": null},
+        {"name": "MODIFIED_DATE",  "type": "DATE",          "nullable": true,  "default": null,             "notes": null}
+      ],
+      "primary_key": {"name": "PK_LOCATIONS", "columns": ["LOCATION_CODE"]},
+      "unique_constraints": [],
+      "foreign_keys": [],
+      "check_constraints": [],
+      "seed_data": [
+        {"LOCATION_CODE": "HQ",  "LOCATION_NAME": "Corporate Headquarters", "CITY": "New York",      "STATE_PROVINCE": "NY", "COUNTRY_CODE": "US"},
+        {"LOCATION_CODE": "CHI", "LOCATION_NAME": "Chicago Regional Office", "CITY": "Chicago",     "STATE_PROVINCE": "IL", "COUNTRY_CODE": "US"},
+        {"LOCATION_CODE": "SF",  "LOCATION_NAME": "San Francisco Branch",   "CITY": "San Francisco","STATE_PROVINCE": "CA", "COUNTRY_CODE": "US"}
+      ]
+    },
+    {
+      "name": "JOB_GRADES",
+      "schema": "HRMS",
+      "source_file": "schema/tables/01_core_tables.sql",
+      "columns": [
+        {"name": "GRADE_ID",        "type": "NUMBER(5)",    "nullable": false, "default": null,  "notes": "Primary key"},
+        {"name": "GRADE_CODE",      "type": "VARCHAR2(10)", "nullable": false, "default": null,  "notes": null},
+        {"name": "GRADE_NAME",      "type": "VARCHAR2(50)", "nullable": false, "default": null,  "notes": null},
+        {"name": "MIN_SALARY",      "type": "NUMBER(12,2)", "nullable": false, "default": null,  "notes": "Annual salary band minimum"},
+        {"name": "MAX_SALARY",      "type": "NUMBER(12,2)", "nullable": false, "default": null,  "notes": "Annual salary band maximum"},
+        {"name": "OVERTIME_ELIGIBLE","type": "CHAR(1)",     "nullable": true,  "default": "'N'", "notes": null},
+        {"name": "ACTIVE_FLAG",     "type": "CHAR(1)",      "nullable": false, "default": "'Y'", "notes": null},
+        {"name": "CREATED_BY",      "type": "VARCHAR2(30)", "nullable": false, "default": null,  "notes": null},
+        {"name": "CREATED_DATE",    "type": "DATE",         "nullable": false, "default": "SYSDATE","notes": null},
+        {"name": "MODIFIED_BY",     "type": "VARCHAR2(30)", "nullable": true,  "default": null,  "notes": null},
+        {"name": "MODIFIED_DATE",   "type": "DATE",         "nullable": true,  "default": null,  "notes": null}
+      ],
+      "primary_key": {"name": "PK_JOB_GRADES", "columns": ["GRADE_ID"]},
+      "unique_constraints": [{"name": "UK_GRADE_CODE", "columns": ["GRADE_CODE"]}],
+      "foreign_keys": [],
+      "check_constraints": [
+        {"name": "CHK_SALARY_RANGE", "expression": "MAX_SALARY >= MIN_SALARY"}
+      ],
+      "seed_data": [
+        {"GRADE_ID": 1,  "GRADE_NAME": "Entry Level",     "MIN_SALARY": 35000,  "MAX_SALARY": 55000},
+        {"GRADE_ID": 2,  "GRADE_NAME": "Junior",          "MIN_SALARY": 45000,  "MAX_SALARY": 70000},
+        {"GRADE_ID": 3,  "GRADE_NAME": "Mid-Level",       "MIN_SALARY": 60000,  "MAX_SALARY": 90000},
+        {"GRADE_ID": 4,  "GRADE_NAME": "Senior",          "MIN_SALARY": 80000,  "MAX_SALARY": 120000},
+        {"GRADE_ID": 5,  "GRADE_NAME": "Lead",            "MIN_SALARY": 95000,  "MAX_SALARY": 145000},
+        {"GRADE_ID": 6,  "GRADE_NAME": "Manager",         "MIN_SALARY": 110000, "MAX_SALARY": 170000},
+        {"GRADE_ID": 7,  "GRADE_NAME": "Senior Manager",  "MIN_SALARY": 130000, "MAX_SALARY": 200000},
+        {"GRADE_ID": 8,  "GRADE_NAME": "Director",        "MIN_SALARY": 160000, "MAX_SALARY": 250000},
+        {"GRADE_ID": 9,  "GRADE_NAME": "VP",              "MIN_SALARY": 200000, "MAX_SALARY": 350000},
+        {"GRADE_ID": 10, "GRADE_NAME": "C-Suite",         "MIN_SALARY": 300000, "MAX_SALARY": 600000}
+      ]
+    },
+    {
+      "name": "JOB_TITLES",
+      "schema": "HRMS",
+      "source_file": "schema/tables/01_core_tables.sql",
+      "columns": [
+        {"name": "JOB_ID",       "type": "NUMBER(10)",    "nullable": false, "default": null,    "notes": "Primary key"},
+        {"name": "JOB_CODE",     "type": "VARCHAR2(20)",  "nullable": false, "default": null,    "notes": null},
+        {"name": "JOB_TITLE",    "type": "VARCHAR2(100)", "nullable": false, "default": null,    "notes": null},
+        {"name": "JOB_FAMILY",   "type": "VARCHAR2(50)",  "nullable": true,  "default": null,    "notes": null},
+        {"name": "GRADE_ID",     "type": "NUMBER(5)",     "nullable": false, "default": null,    "notes": "FK to JOB_GRADES"},
+        {"name": "EEO_CATEGORY", "type": "VARCHAR2(10)",  "nullable": true,  "default": null,    "notes": "EEOC job category code (e.g. 1.1, 2.0)"},
+        {"name": "FLSA_STATUS",  "type": "VARCHAR2(10)",  "nullable": true,  "default": "'EXEMPT'","notes": "EXEMPT or NON-EXEMPT"},
+        {"name": "ACTIVE_FLAG",  "type": "CHAR(1)",       "nullable": false, "default": "'Y'",   "notes": null},
+        {"name": "CREATED_BY",   "type": "VARCHAR2(30)",  "nullable": false, "default": null,    "notes": null},
+        {"name": "CREATED_DATE", "type": "DATE",          "nullable": false, "default": "SYSDATE","notes": null},
+        {"name": "MODIFIED_BY",  "type": "VARCHAR2(30)",  "nullable": true,  "default": null,    "notes": null},
+        {"name": "MODIFIED_DATE","type": "DATE",          "nullable": true,  "default": null,    "notes": null}
+      ],
+      "primary_key": {"name": "PK_JOB_TITLES", "columns": ["JOB_ID"]},
+      "unique_constraints": [{"name": "UK_JOB_CODE", "columns": ["JOB_CODE"]}],
+      "foreign_keys": [
+        {"name": "FK_JOB_GRADE", "columns": ["GRADE_ID"], "references_table": "JOB_GRADES", "references_columns": ["GRADE_ID"], "on_delete": "NO ACTION", "on_update": "NO ACTION"}
+      ],
+      "check_constraints": []
+    },
+    {
+      "name": "EMPLOYEES",
+      "schema": "HRMS",
+      "source_file": "schema/tables/01_core_tables.sql",
+      "comment": "Master employee records - core entity of the HRMS system",
+      "columns": [
+        {"name": "EMP_ID",             "type": "NUMBER(10)",    "nullable": false, "default": null,         "notes": "Surrogate PK — from SEQ_EMPLOYEE"},
+        {"name": "EMP_NUMBER",         "type": "VARCHAR2(20)",  "nullable": false, "default": null,         "notes": "Business key format EMP-NNNNNN; UNIQUE"},
+        {"name": "FIRST_NAME",         "type": "VARCHAR2(50)",  "nullable": false, "default": null,         "notes": "Stored UPPER(TRIM()) by PKG_EMPLOYEE"},
+        {"name": "MIDDLE_NAME",        "type": "VARCHAR2(50)",  "nullable": true,  "default": null,         "notes": null},
+        {"name": "LAST_NAME",          "type": "VARCHAR2(50)",  "nullable": false, "default": null,         "notes": "Stored UPPER(TRIM()) by PKG_EMPLOYEE"},
+        {"name": "DATE_OF_BIRTH",      "type": "DATE",          "nullable": true,  "default": null,         "notes": "PII"},
+        {"name": "GENDER",             "type": "CHAR(1)",        "nullable": true,  "default": null,         "notes": "M/F/O — CHECK constraint enforced"},
+        {"name": "MARITAL_STATUS",     "type": "VARCHAR2(10)",  "nullable": true,  "default": null,         "notes": null},
+        {"name": "NATIONALITY",        "type": "VARCHAR2(50)",  "nullable": true,  "default": null,         "notes": null},
+        {"name": "SSN_ENCRYPTED",      "type": "VARCHAR2(200)", "nullable": true,  "default": null,         "notes": "AES-256 CBC encrypted SSN; decrypted only in PKG_SECURITY.decrypt_ssn"},
+        {"name": "EMAIL",              "type": "VARCHAR2(100)", "nullable": true,  "default": null,         "notes": "Stored LOWER(TRIM()); used as login username; PII"},
+        {"name": "PHONE_WORK",         "type": "VARCHAR2(30)",  "nullable": true,  "default": null,         "notes": null},
+        {"name": "PHONE_MOBILE",       "type": "VARCHAR2(30)",  "nullable": true,  "default": null,         "notes": null},
+        {"name": "ADDRESS_LINE1",      "type": "VARCHAR2(200)", "nullable": true,  "default": null,         "notes": "PII"},
+        {"name": "ADDRESS_LINE2",      "type": "VARCHAR2(200)", "nullable": true,  "default": null,         "notes": "PII"},
+        {"name": "CITY",               "type": "VARCHAR2(100)", "nullable": true,  "default": null,         "notes": "PII"},
+        {"name": "STATE_PROVINCE",     "type": "VARCHAR2(100)", "nullable": true,  "default": null,         "notes": "PII"},
+        {"name": "POSTAL_CODE",        "type": "VARCHAR2(20)",  "nullable": true,  "default": null,         "notes": "PII"},
+        {"name": "COUNTRY_CODE",       "type": "VARCHAR2(3)",   "nullable": true,  "default": null,         "notes": null},
+        {"name": "HIRE_DATE",          "type": "DATE",          "nullable": false, "default": null,         "notes": "Cannot be > 180 days future (TRG_EMP_BEFORE_INSERT)"},
+        {"name": "TERMINATION_DATE",   "type": "DATE",          "nullable": true,  "default": null,         "notes": null},
+        {"name": "TERMINATION_REASON", "type": "VARCHAR2(50)",  "nullable": true,  "default": null,         "notes": "VOLUNTARY used in turnover report"},
+        {"name": "DEPT_ID",            "type": "NUMBER(10)",    "nullable": false, "default": null,         "notes": "FK to DEPARTMENTS"},
+        {"name": "JOB_ID",             "type": "NUMBER(10)",    "nullable": false, "default": null,         "notes": "FK to JOB_TITLES"},
+        {"name": "MANAGER_EMP_ID",     "type": "NUMBER(10)",    "nullable": true,  "default": null,         "notes": "Self-referencing FK; NULL = top-level"},
+        {"name": "LOCATION_CODE",      "type": "VARCHAR2(10)",  "nullable": true,  "default": null,         "notes": "FK to LOCATIONS; defaults from DEPARTMENTS if not provided"},
+        {"name": "EMPLOYMENT_TYPE",    "type": "VARCHAR2(20)",  "nullable": true,  "default": "'FULL_TIME'", "notes": "FULL_TIME/PART_TIME/CONTRACT/INTERN"},
+        {"name": "EMPLOYMENT_STATUS",  "type": "VARCHAR2(20)",  "nullable": true,  "default": "'ACTIVE'",   "notes": "ACTIVE/ON_LEAVE/SUSPENDED/TERMINATED"},
+        {"name": "PHOTO_BLOB",         "type": "BLOB",          "nullable": true,  "default": null,         "notes": "Employee photo"},
+        {"name": "NOTES",              "type": "CLOB",          "nullable": true,  "default": null,         "notes": "Free-text notes"},
+        {"name": "ACTIVE_FLAG",        "type": "CHAR(1)",       "nullable": false, "default": "'Y'",        "notes": "Y/N soft-delete; set to N on termination"},
+        {"name": "CREATED_BY",         "type": "VARCHAR2(30)",  "nullable": false, "default": null,         "notes": null},
+        {"name": "CREATED_DATE",       "type": "DATE",          "nullable": false, "default": "SYSDATE",    "notes": null},
+        {"name": "MODIFIED_BY",        "type": "VARCHAR2(30)",  "nullable": true,  "default": null,         "notes": null},
+        {"name": "MODIFIED_DATE",      "type": "DATE",          "nullable": true,  "default": null,         "notes": null}
+      ],
+      "primary_key": {"name": "PK_EMPLOYEES", "columns": ["EMP_ID"]},
+      "unique_constraints": [{"name": "UK_EMP_NUMBER", "columns": ["EMP_NUMBER"]}],
+      "foreign_keys": [
+        {"name": "FK_EMP_DEPT",     "columns": ["DEPT_ID"],        "references_table": "DEPARTMENTS", "references_columns": ["DEPT_ID"],       "on_delete": "NO ACTION"},
+        {"name": "FK_EMP_JOB",      "columns": ["JOB_ID"],         "references_table": "JOB_TITLES",  "references_columns": ["JOB_ID"],        "on_delete": "NO ACTION"},
+        {"name": "FK_EMP_MANAGER",  "columns": ["MANAGER_EMP_ID"], "references_table": "EMPLOYEES",   "references_columns": ["EMP_ID"],        "on_delete": "NO ACTION", "notes": "Self-referencing"},
+        {"name": "FK_EMP_LOCATION", "columns": ["LOCATION_CODE"],  "references_table": "LOCATIONS",   "references_columns": ["LOCATION_CODE"], "on_delete": "NO ACTION"}
+      ],
+      "check_constraints": [
+        {"name": "CHK_EMP_STATUS", "expression": "EMPLOYMENT_STATUS IN ('ACTIVE','ON_LEAVE','SUSPENDED','TERMINATED')"},
+        {"name": "CHK_EMP_TYPE",   "expression": "EMPLOYMENT_TYPE IN ('FULL_TIME','PART_TIME','CONTRACT','INTERN')"},
+        {"name": "CHK_EMP_GENDER", "expression": "GENDER IN ('M','F','O')"}
+      ]
+    },
+    {
+      "name": "EMPLOYEE_HISTORY",
+      "schema": "HRMS",
+      "source_file": "schema/tables/01_core_tables.sql",
+      "notes": "DDL uses typed old/new columns (OLD_DEPT_ID etc.) but TRG_EMP_BEFORE_UPDATE inserts to columns HISTORY_ID/CHANGE_DATE/OLD_VALUE/NEW_VALUE — trigger references a differently-shaped insert; confidence 0.90 on DDL shape",
+      "columns": [
+        {"name": "HIST_ID",       "type": "NUMBER(15)",   "nullable": false, "default": null,     "notes": "PK — SEQ_EMP_HISTORY"},
+        {"name": "EMP_ID",        "type": "NUMBER(10)",   "nullable": false, "default": null,     "notes": "FK to EMPLOYEES"},
+        {"name": "CHANGE_TYPE",   "type": "VARCHAR2(30)", "nullable": false, "default": null,     "notes": "Constrained enumeration"},
+        {"name": "EFFECTIVE_DATE","type": "DATE",         "nullable": false, "default": null,     "notes": null},
+        {"name": "OLD_DEPT_ID",   "type": "NUMBER(10)",   "nullable": true,  "default": null,     "notes": null},
+        {"name": "NEW_DEPT_ID",   "type": "NUMBER(10)",   "nullable": true,  "default": null,     "notes": null},
+        {"name": "OLD_JOB_ID",    "type": "NUMBER(10)",   "nullable": true,  "default": null,     "notes": null},
+        {"name": "NEW_JOB_ID",    "type": "NUMBER(10)",   "nullable": true,  "default": null,     "notes": null},
+        {"name": "OLD_MANAGER_ID","type": "NUMBER(10)",   "nullable": true,  "default": null,     "notes": null},
+        {"name": "NEW_MANAGER_ID","type": "NUMBER(10)",   "nullable": true,  "default": null,     "notes": null},
+        {"name": "OLD_SALARY",    "type": "NUMBER(12,2)", "nullable": true,  "default": null,     "notes": null},
+        {"name": "NEW_SALARY",    "type": "NUMBER(12,2)", "nullable": true,  "default": null,     "notes": null},
+        {"name": "OLD_LOCATION",  "type": "VARCHAR2(10)", "nullable": true,  "default": null,     "notes": null},
+        {"name": "NEW_LOCATION",  "type": "VARCHAR2(10)", "nullable": true,  "default": null,     "notes": null},
+        {"name": "REASON_CODE",   "type": "VARCHAR2(30)", "nullable": true,  "default": null,     "notes": null},
+        {"name": "COMMENTS",      "type": "VARCHAR2(4000)","nullable": true, "default": null,     "notes": null},
+        {"name": "CREATED_BY",    "type": "VARCHAR2(30)", "nullable": false, "default": null,     "notes": null},
+        {"name": "CREATED_DATE",  "type": "DATE",         "nullable": false, "default": "SYSDATE","notes": null}
+      ],
+      "primary_key": {"name": "PK_EMP_HISTORY", "columns": ["HIST_ID"]},
+      "foreign_keys": [
+        {"name": "FK_HIST_EMP", "columns": ["EMP_ID"], "references_table": "EMPLOYEES", "references_columns": ["EMP_ID"], "on_delete": "NO ACTION"}
+      ],
+      "check_constraints": [
+        {"name": "CHK_CHANGE_TYPE", "expression": "CHANGE_TYPE IN ('HIRE','TRANSFER','PROMOTION','DEMOTION','SALARY_CHANGE','TERMINATION','REHIRE','LEAVE_START','LEAVE_END','STATUS_CHANGE')"}
+      ]
+    },
+    {
+      "name": "EMPLOYEE_DEPENDENTS",
+      "schema": "HRMS",
+      "source_file": "schema/tables/01_core_tables.sql",
+      "columns": [
+        {"name": "DEPENDENT_ID",      "type": "NUMBER(10)",   "nullable": false, "default": null,      "notes": "PK — SEQ_DEPENDENT"},
+        {"name": "EMP_ID",            "type": "NUMBER(10)",   "nullable": false, "default": null,      "notes": "FK to EMPLOYEES"},
+        {"name": "FIRST_NAME",        "type": "VARCHAR2(50)", "nullable": false, "default": null,      "notes": "PII"},
+        {"name": "LAST_NAME",         "type": "VARCHAR2(50)", "nullable": false, "default": null,      "notes": "PII"},
+        {"name": "RELATIONSHIP",      "type": "VARCHAR2(20)", "nullable": false, "default": null,      "notes": "CHECK constrained"},
+        {"name": "DATE_OF_BIRTH",     "type": "DATE",         "nullable": true,  "default": null,      "notes": "PII"},
+        {"name": "SSN_ENCRYPTED",     "type": "VARCHAR2(200)","nullable": true,  "default": null,      "notes": "AES-256 encrypted SSN; PII"},
+        {"name": "BENEFITS_ENROLLED", "type": "CHAR(1)",      "nullable": true,  "default": "'N'",     "notes": null},
+        {"name": "ACTIVE_FLAG",       "type": "CHAR(1)",      "nullable": false, "default": "'Y'",     "notes": null},
+        {"name": "CREATED_BY",        "type": "VARCHAR2(30)", "nullable": false, "default": null,      "notes": null},
+        {"name": "CREATED_DATE",      "type": "DATE",         "nullable": false, "default": "SYSDATE", "notes": null},
+        {"name": "MODIFIED_BY",       "type": "VARCHAR2(30)", "nullable": true,  "default": null,      "notes": null},
+        {"name": "MODIFIED_DATE",     "type": "DATE",         "nullable": true,  "default": null,      "notes": null}
+      ],
+      "primary_key": {"name": "PK_EMP_DEPENDENTS", "columns": ["DEPENDENT_ID"]},
+      "foreign_keys": [
+        {"name": "FK_DEP_EMP", "columns": ["EMP_ID"], "references_table": "EMPLOYEES", "references_columns": ["EMP_ID"], "on_delete": "NO ACTION"}
+      ],
+      "check_constraints": [
+        {"name": "CHK_RELATIONSHIP", "expression": "RELATIONSHIP IN ('SPOUSE','CHILD','PARENT','DOMESTIC_PARTNER','OTHER')"}
+      ]
+    },
+    {
+      "name": "EMERGENCY_CONTACTS",
+      "schema": "HRMS",
+      "source_file": "schema/tables/01_core_tables.sql",
+      "columns": [
+        {"name": "CONTACT_ID",       "type": "NUMBER(10)",   "nullable": false, "default": null,      "notes": "PK — SEQ_EMERGENCY_CONTACT"},
+        {"name": "EMP_ID",           "type": "NUMBER(10)",   "nullable": false, "default": null,      "notes": "FK to EMPLOYEES"},
+        {"name": "CONTACT_NAME",     "type": "VARCHAR2(100)","nullable": false, "default": null,      "notes": "PII"},
+        {"name": "RELATIONSHIP",     "type": "VARCHAR2(30)", "nullable": true,  "default": null,      "notes": null},
+        {"name": "PHONE_PRIMARY",    "type": "VARCHAR2(30)", "nullable": false, "default": null,      "notes": "PII"},
+        {"name": "PHONE_SECONDARY",  "type": "VARCHAR2(30)", "nullable": true,  "default": null,      "notes": "PII"},
+        {"name": "EMAIL",            "type": "VARCHAR2(100)","nullable": true,  "default": null,      "notes": "PII"},
+        {"name": "PRIORITY_ORDER",   "type": "NUMBER(2)",    "nullable": true,  "default": "1",       "notes": "1 = highest priority"},
+        {"name": "ACTIVE_FLAG",      "type": "CHAR(1)",      "nullable": false, "default": "'Y'",     "notes": null},
+        {"name": "CREATED_BY",       "type": "VARCHAR2(30)", "nullable": false, "default": null,      "notes": null},
+        {"name": "CREATED_DATE",     "type": "DATE",         "nullable": false, "default": "SYSDATE", "notes": null},
+        {"name": "MODIFIED_BY",      "type": "VARCHAR2(30)", "nullable": true,  "default": null,      "notes": null},
+        {"name": "MODIFIED_DATE",    "type": "DATE",         "nullable": true,  "default": null,      "notes": null}
+      ],
+      "primary_key": {"name": "PK_EMERGENCY_CONTACTS", "columns": ["CONTACT_ID"]},
+      "foreign_keys": [
+        {"name": "FK_EC_EMP", "columns": ["EMP_ID"], "references_table": "EMPLOYEES", "references_columns": ["EMP_ID"], "on_delete": "NO ACTION"}
+      ],
+      "check_constraints": []
+    },
+    {
+      "name": "SALARY_RECORDS",
+      "schema": "HRMS",
+      "source_file": "schema/tables/02_payroll_tables.sql",
+      "columns": [
+        {"name": "SALARY_ID",     "type": "NUMBER(10)",   "nullable": false, "default": null,        "notes": "PK — SEQ_SALARY"},
+        {"name": "EMP_ID",        "type": "NUMBER(10)",   "nullable": false, "default": null,        "notes": "FK to EMPLOYEES"},
+        {"name": "EFFECTIVE_DATE","type": "DATE",         "nullable": false, "default": null,        "notes": "Start of this salary record"},
+        {"name": "END_DATE",      "type": "DATE",         "nullable": true,  "default": null,        "notes": "NULL = currently active; set to effective_date-1 on salary change"},
+        {"name": "BASE_SALARY",   "type": "NUMBER(12,2)", "nullable": false, "default": null,        "notes": "Annual amount; must be > 0"},
+        {"name": "CURRENCY_CODE", "type": "VARCHAR2(3)",  "nullable": true,  "default": "'USD'",     "notes": null},
+        {"name": "PAY_FREQUENCY", "type": "VARCHAR2(20)", "nullable": true,  "default": "'MONTHLY'", "notes": "CHECK constrained"},
+        {"name": "SALARY_BASIS",  "type": "VARCHAR2(20)", "nullable": true,  "default": "'ANNUAL'",  "notes": "Always ANNUAL per PKG_PAYROLL.create_salary_record"},
+        {"name": "CHANGE_REASON", "type": "VARCHAR2(50)", "nullable": true,  "default": null,        "notes": null},
+        {"name": "CHANGE_PCT",    "type": "NUMBER(5,2)",  "nullable": true,  "default": null,        "notes": "% change from previous salary"},
+        {"name": "APPROVED_BY",   "type": "NUMBER(10)",   "nullable": true,  "default": null,        "notes": "EMP_ID of approver — soft ref, no FK"},
+        {"name": "APPROVAL_DATE", "type": "DATE",         "nullable": true,  "default": null,        "notes": null},
+        {"name": "ACTIVE_FLAG",   "type": "CHAR(1)",      "nullable": false, "default": "'Y'",       "notes": null},
+        {"name": "CREATED_BY",    "type": "VARCHAR2(30)", "nullable": false, "default": null,        "notes": null},
+        {"name": "CREATED_DATE",  "type": "DATE",         "nullable": false, "default": "SYSDATE",   "notes": null},
+        {"name": "MODIFIED_BY",   "type": "VARCHAR2(30)", "nullable": true,  "default": null,        "notes": null},
+        {"name": "MODIFIED_DATE", "type": "DATE",         "nullable": true,  "default": null,        "notes": null}
+      ],
+      "primary_key": {"name": "PK_SALARY_RECORDS", "columns": ["SALARY_ID"]},
+      "foreign_keys": [
+        {"name": "FK_SAL_EMP", "columns": ["EMP_ID"], "references_table": "EMPLOYEES", "references_columns": ["EMP_ID"], "on_delete": "NO ACTION"}
+      ],
+      "check_constraints": [
+        {"name": "CHK_PAY_FREQ",   "expression": "PAY_FREQUENCY IN ('WEEKLY','BIWEEKLY','SEMIMONTHLY','MONTHLY')"},
+        {"name": "CHK_SAL_BASIS",  "expression": "SALARY_BASIS IN ('ANNUAL','HOURLY')"}
+      ]
+    },
+    {
+      "name": "PAY_ELEMENTS",
+      "schema": "HRMS",
+      "source_file": "schema/tables/02_payroll_tables.sql",
+      "columns": [
+        {"name": "ELEMENT_ID",          "type": "NUMBER(10)",   "nullable": false, "default": null,    "notes": "PK — SEQ_PAY_ELEMENT"},
+        {"name": "ELEMENT_CODE",        "type": "VARCHAR2(30)", "nullable": false, "default": null,    "notes": "Business key; UNIQUE"},
+        {"name": "ELEMENT_NAME",        "type": "VARCHAR2(100)","nullable": false, "default": null,    "notes": null},
+        {"name": "ELEMENT_TYPE",        "type": "VARCHAR2(20)", "nullable": false, "default": null,    "notes": "CHECK constrained"},
+        {"name": "CALCULATION_TYPE",    "type": "VARCHAR2(20)", "nullable": false, "default": null,    "notes": "CHECK constrained"},
+        {"name": "DEFAULT_AMOUNT",      "type": "NUMBER(12,2)", "nullable": true,  "default": null,    "notes": null},
+        {"name": "DEFAULT_PERCENTAGE",  "type": "NUMBER(5,2)",  "nullable": true,  "default": null,    "notes": null},
+        {"name": "TAXABLE_FLAG",        "type": "CHAR(1)",      "nullable": true,  "default": "'Y'",   "notes": null},
+        {"name": "PRETAX_FLAG",         "type": "CHAR(1)",      "nullable": true,  "default": "'N'",   "notes": null},
+        {"name": "EMPLOYER_PAID",       "type": "CHAR(1)",      "nullable": true,  "default": "'N'",   "notes": null},
+        {"name": "GL_ACCOUNT_CODE",     "type": "VARCHAR2(30)", "nullable": true,  "default": null,    "notes": "Used by PKG_INTEGRATION.generate_gl_journal"},
+        {"name": "PRIORITY_ORDER",      "type": "NUMBER(5)",    "nullable": true,  "default": "100",   "notes": "Processing order in payroll calculation"},
+        {"name": "ACTIVE_FLAG",         "type": "CHAR(1)",      "nullable": false, "default": "'Y'",   "notes": null},
+        {"name": "CREATED_BY",          "type": "VARCHAR2(30)", "nullable": false, "default": null,    "notes": null},
+        {"name": "CREATED_DATE",        "type": "DATE",         "nullable": false, "default": "SYSDATE","notes": null},
+        {"name": "MODIFIED_BY",         "type": "VARCHAR2(30)", "nullable": true,  "default": null,    "notes": null},
+        {"name": "MODIFIED_DATE",       "type": "DATE",         "nullable": true,  "default": null,    "notes": null}
+      ],
+      "primary_key": {"name": "PK_PAY_ELEMENTS", "columns": ["ELEMENT_ID"]},
+      "unique_constraints": [{"name": "UK_PAY_ELEM_CODE", "columns": ["ELEMENT_CODE"]}],
+      "foreign_keys": [],
+      "check_constraints": [
+        {"name": "CHK_ELEM_TYPE", "expression": "ELEMENT_TYPE IN ('EARNING','DEDUCTION','TAX','BENEFIT','REIMBURSEMENT')"},
+        {"name": "CHK_CALC_TYPE", "expression": "CALCULATION_TYPE IN ('FLAT','PERCENTAGE','HOURS','FORMULA')"}
+      ]
+    },
+    {
+      "name": "EMPLOYEE_PAY_ELEMENTS",
+      "schema": "HRMS",
+      "source_file": "schema/tables/02_payroll_tables.sql",
+      "columns": [
+        {"name": "EMP_ELEMENT_ID",  "type": "NUMBER(10)",   "nullable": false, "default": null,      "notes": "PK — SEQ_EMP_PAY_ELEMENT"},
+        {"name": "EMP_ID",          "type": "NUMBER(10)",   "nullable": false, "default": null,      "notes": "FK to EMPLOYEES"},
+        {"name": "ELEMENT_ID",      "type": "NUMBER(10)",   "nullable": false, "default": null,      "notes": "FK to PAY_ELEMENTS"},
+        {"name": "EFFECTIVE_DATE",  "type": "DATE",         "nullable": false, "default": null,      "notes": null},
+        {"name": "END_DATE",        "type": "DATE",         "nullable": true,  "default": null,      "notes": "NULL = currently active"},
+        {"name": "AMOUNT",          "type": "NUMBER(12,2)", "nullable": true,  "default": null,      "notes": null},
+        {"name": "PERCENTAGE",      "type": "NUMBER(5,2)",  "nullable": true,  "default": null,      "notes": null},
+        {"name": "OVERRIDE_AMOUNT", "type": "NUMBER(12,2)", "nullable": true,  "default": null,      "notes": "Takes priority over AMOUNT and PERCENTAGE if set"},
+        {"name": "ACTIVE_FLAG",     "type": "CHAR(1)",      "nullable": false, "default": "'Y'",     "notes": null},
+        {"name": "CREATED_BY",      "type": "VARCHAR2(30)", "nullable": false, "default": null,      "notes": null},
+        {"name": "CREATED_DATE",    "type": "DATE",         "nullable": false, "default": "SYSDATE", "notes": null},
+        {"name": "MODIFIED_BY",     "type": "VARCHAR2(30)", "nullable": true,  "default": null,      "notes": null},
+        {"name": "MODIFIED_DATE",   "type": "DATE",         "nullable": true,  "default": null,      "notes": null}
+      ],
+      "primary_key": {"name": "PK_EMP_PAY_ELEMENTS", "columns": ["EMP_ELEMENT_ID"]},
+      "foreign_keys": [
+        {"name": "FK_EPE_EMP",     "columns": ["EMP_ID"],     "references_table": "EMPLOYEES",   "references_columns": ["EMP_ID"],     "on_delete": "NO ACTION"},
+        {"name": "FK_EPE_ELEMENT", "columns": ["ELEMENT_ID"], "references_table": "PAY_ELEMENTS", "references_columns": ["ELEMENT_ID"], "on_delete": "NO ACTION"}
+      ],
+      "check_constraints": []
+    },
+    {
+      "name": "PAY_PERIODS",
+      "schema": "HRMS",
+      "source_file": "schema/tables/02_payroll_tables.sql",
+      "columns": [
+        {"name": "PERIOD_ID",         "type": "NUMBER(10)",   "nullable": false, "default": null,    "notes": "PK — SEQ_PAY_PERIOD"},
+        {"name": "PERIOD_NAME",       "type": "VARCHAR2(50)", "nullable": false, "default": null,    "notes": "e.g. '2024-01 (Jan)' or '2024-BW-01'"},
+        {"name": "PAY_FREQUENCY",     "type": "VARCHAR2(20)", "nullable": false, "default": null,    "notes": null},
+        {"name": "PERIOD_START_DATE", "type": "DATE",         "nullable": false, "default": null,    "notes": null},
+        {"name": "PERIOD_END_DATE",   "type": "DATE",         "nullable": false, "default": null,    "notes": null},
+        {"name": "PAY_DATE",          "type": "DATE",         "nullable": false, "default": null,    "notes": "Actual disbursement date; moved to preceding Friday if weekend"},
+        {"name": "STATUS",            "type": "VARCHAR2(20)", "nullable": true,  "default": "'OPEN'","notes": "CHECK constrained"},
+        {"name": "CLOSED_BY",         "type": "VARCHAR2(30)", "nullable": true,  "default": null,    "notes": null},
+        {"name": "CLOSED_DATE",       "type": "DATE",         "nullable": true,  "default": null,    "notes": null},
+        {"name": "CREATED_BY",        "type": "VARCHAR2(30)", "nullable": false, "default": null,    "notes": null},
+        {"name": "CREATED_DATE",      "type": "DATE",         "nullable": false, "default": "SYSDATE","notes": null},
+        {"name": "MODIFIED_BY",       "type": "VARCHAR2(30)", "nullable": true,  "default": null,    "notes": null},
+        {"name": "MODIFIED_DATE",     "type": "DATE",         "nullable": true,  "default": null,    "notes": null}
+      ],
+      "primary_key": {"name": "PK_PAY_PERIODS", "columns": ["PERIOD_ID"]},
+      "foreign_keys": [],
+      "check_constraints": [
+        {"name": "CHK_PERIOD_STATUS", "expression": "STATUS IN ('OPEN','PROCESSING','CLOSED','REVERSED')"}
+      ]
+    },
+    {
+      "name": "PAYROLL_RUNS",
+      "schema": "HRMS",
+      "source_file": "schema/tables/02_payroll_tables.sql",
+      "columns": [
+        {"name": "RUN_ID",              "type": "NUMBER(10)",   "nullable": false, "default": null,       "notes": "PK — SEQ_PAYROLL_RUN"},
+        {"name": "PERIOD_ID",           "type": "NUMBER(10)",   "nullable": false, "default": null,       "notes": "FK to PAY_PERIODS"},
+        {"name": "RUN_TYPE",            "type": "VARCHAR2(20)", "nullable": true,  "default": "'REGULAR'","notes": "CHECK constrained"},
+        {"name": "RUN_DATE",            "type": "DATE",         "nullable": false, "default": null,       "notes": null},
+        {"name": "STATUS",              "type": "VARCHAR2(20)", "nullable": true,  "default": "'PENDING'","notes": "CHECK constrained"},
+        {"name": "TOTAL_GROSS",         "type": "NUMBER(15,2)", "nullable": true,  "default": null,       "notes": null},
+        {"name": "TOTAL_DEDUCTIONS",    "type": "NUMBER(15,2)", "nullable": true,  "default": null,       "notes": null},
+        {"name": "TOTAL_NET",           "type": "NUMBER(15,2)", "nullable": true,  "default": null,       "notes": null},
+        {"name": "TOTAL_EMPLOYER_COST", "type": "NUMBER(15,2)", "nullable": true,  "default": null,       "notes": null},
+        {"name": "EMPLOYEE_COUNT",      "type": "NUMBER(10)",   "nullable": true,  "default": null,       "notes": null},
+        {"name": "ERROR_COUNT",         "type": "NUMBER(10)",   "nullable": true,  "default": "0",        "notes": null},
+        {"name": "SUBMITTED_BY",        "type": "VARCHAR2(30)", "nullable": true,  "default": null,       "notes": null},
+        {"name": "SUBMITTED_DATE",      "type": "DATE",         "nullable": true,  "default": null,       "notes": null},
+        {"name": "APPROVED_BY",         "type": "VARCHAR2(30)", "nullable": true,  "default": null,       "notes": "VARCHAR2 — stores username, not EMP_ID"},
+        {"name": "APPROVED_DATE",       "type": "DATE",         "nullable": true,  "default": null,       "notes": null},
+        {"name": "CREATED_BY",          "type": "VARCHAR2(30)", "nullable": false, "default": null,       "notes": null},
+        {"name": "CREATED_DATE",        "type": "DATE",         "nullable": false, "default": "SYSDATE",  "notes": null},
+        {"name": "MODIFIED_BY",         "type": "VARCHAR2(30)", "nullable": true,  "default": null,       "notes": null},
+        {"name": "MODIFIED_DATE",       "type": "DATE",         "nullable": true,  "default": null,       "notes": null}
+      ],
+      "primary_key": {"name": "PK_PAYROLL_RUNS", "columns": ["RUN_ID"]},
+      "foreign_keys": [
+        {"name": "FK_PR_PERIOD", "columns": ["PERIOD_ID"], "references_table": "PAY_PERIODS", "references_columns": ["PERIOD_ID"], "on_delete": "NO ACTION"}
+      ],
+      "check_constraints": [
+        {"name": "CHK_RUN_TYPE",   "expression": "RUN_TYPE IN ('REGULAR','SUPPLEMENTAL','BONUS','FINAL')"},
+        {"name": "CHK_RUN_STATUS", "expression": "STATUS IN ('PENDING','CALCULATING','CALCULATED','APPROVED','PAID','REVERSED','ERROR')"}
+      ]
+    },
+    {
+      "name": "PAYROLL_DETAILS",
+      "schema": "HRMS",
+      "source_file": "schema/tables/02_payroll_tables.sql",
+      "columns": [
+        {"name": "DETAIL_ID",    "type": "NUMBER(15)",   "nullable": false, "default": null,         "notes": "PK — SEQ_PAYROLL_DETAIL"},
+        {"name": "RUN_ID",       "type": "NUMBER(10)",   "nullable": false, "default": null,         "notes": "FK to PAYROLL_RUNS"},
+        {"name": "EMP_ID",       "type": "NUMBER(10)",   "nullable": false, "default": null,         "notes": "FK to EMPLOYEES"},
+        {"name": "ELEMENT_ID",   "type": "NUMBER(10)",   "nullable": false, "default": null,         "notes": "FK to PAY_ELEMENTS; 1=base, 100-103=taxes fixed"},
+        {"name": "ELEMENT_TYPE", "type": "VARCHAR2(20)", "nullable": false, "default": null,         "notes": "Denormalized from PAY_ELEMENTS for query performance"},
+        {"name": "HOURS_WORKED", "type": "NUMBER(6,2)",  "nullable": true,  "default": null,         "notes": "For hourly elements"},
+        {"name": "RATE",         "type": "NUMBER(12,4)", "nullable": true,  "default": null,         "notes": "Hourly/unit rate used in calculation"},
+        {"name": "AMOUNT",       "type": "NUMBER(12,2)", "nullable": false, "default": null,         "notes": "Positive = earning; negative = deduction/tax"},
+        {"name": "YTD_AMOUNT",   "type": "NUMBER(15,2)", "nullable": true,  "default": null,         "notes": null},
+        {"name": "STATUS",       "type": "VARCHAR2(20)", "nullable": true,  "default": "'CALCULATED'","notes": "CALCULATED/ERROR/REVERSED"},
+        {"name": "ERROR_MESSAGE","type": "VARCHAR2(4000)","nullable": true, "default": null,         "notes": null},
+        {"name": "CREATED_BY",   "type": "VARCHAR2(30)", "nullable": false, "default": null,         "notes": null},
+        {"name": "CREATED_DATE", "type": "DATE",         "nullable": false, "default": "SYSDATE",    "notes": null}
+      ],
+      "primary_key": {"name": "PK_PAYROLL_DETAILS", "columns": ["DETAIL_ID"]},
+      "foreign_keys": [
+        {"name": "FK_PD_RUN",     "columns": ["RUN_ID"],     "references_table": "PAYROLL_RUNS",  "references_columns": ["RUN_ID"],     "on_delete": "NO ACTION"},
+        {"name": "FK_PD_EMP",     "columns": ["EMP_ID"],     "references_table": "EMPLOYEES",     "references_columns": ["EMP_ID"],     "on_delete": "NO ACTION"},
+        {"name": "FK_PD_ELEMENT", "columns": ["ELEMENT_ID"], "references_table": "PAY_ELEMENTS",  "references_columns": ["ELEMENT_ID"], "on_delete": "NO ACTION"}
+      ],
+      "check_constraints": []
+    },
+    {
+      "name": "TAX_BRACKETS",
+      "schema": "HRMS",
+      "source_file": "schema/tables/02_payroll_tables.sql",
+      "notes": "Table exists and is seeded conceptually but PKG_PAYROLL hard-codes 2024 brackets instead of reading from this table (documented TODO)",
+      "columns": [
+        {"name": "BRACKET_ID",    "type": "NUMBER(10)",   "nullable": false, "default": null,   "notes": "PK — SEQ_TAX_BRACKET"},
+        {"name": "TAX_YEAR",      "type": "NUMBER(4)",    "nullable": false, "default": null,   "notes": null},
+        {"name": "FILING_STATUS", "type": "VARCHAR2(30)", "nullable": false, "default": null,   "notes": "CHECK constrained"},
+        {"name": "BRACKET_MIN",   "type": "NUMBER(12,2)", "nullable": false, "default": null,   "notes": null},
+        {"name": "BRACKET_MAX",   "type": "NUMBER(12,2)", "nullable": true,  "default": null,   "notes": "NULL = no upper bound (top bracket)"},
+        {"name": "TAX_RATE",      "type": "NUMBER(5,4)",  "nullable": false, "default": null,   "notes": "Stored as decimal fraction e.g. 0.2200 = 22%"},
+        {"name": "BASE_TAX",      "type": "NUMBER(12,2)", "nullable": true,  "default": "0",    "notes": "Cumulative tax at start of bracket"},
+        {"name": "STATE_CODE",    "type": "VARCHAR2(3)",  "nullable": true,  "default": null,   "notes": "NULL = federal bracket"},
+        {"name": "ACTIVE_FLAG",   "type": "CHAR(1)",      "nullable": false, "default": "'Y'",  "notes": null},
+        {"name": "CREATED_BY",    "type": "VARCHAR2(30)", "nullable": false, "default": null,   "notes": null},
+        {"name": "CREATED_DATE",  "type": "DATE",         "nullable": false, "default": "SYSDATE","notes": null}
+      ],
+      "primary_key": {"name": "PK_TAX_BRACKETS", "columns": ["BRACKET_ID"]},
+      "foreign_keys": [],
+      "check_constraints": [
+        {"name": "CHK_FILING_STATUS", "expression": "FILING_STATUS IN ('SINGLE','MARRIED_JOINT','MARRIED_SEPARATE','HEAD_OF_HOUSEHOLD')"}
+      ]
+    },
+    {
+      "name": "EMPLOYEE_TAX_INFO",
+      "schema": "HRMS",
+      "source_file": "schema/tables/02_payroll_tables.sql",
+      "columns": [
+        {"name": "TAX_INFO_ID",         "type": "NUMBER(10)",   "nullable": false, "default": null,  "notes": "PK"},
+        {"name": "EMP_ID",              "type": "NUMBER(10)",   "nullable": false, "default": null,  "notes": "FK to EMPLOYEES"},
+        {"name": "TAX_YEAR",            "type": "NUMBER(4)",    "nullable": false, "default": null,  "notes": null},
+        {"name": "FILING_STATUS",       "type": "VARCHAR2(30)", "nullable": false, "default": null,  "notes": "W-4 filing status"},
+        {"name": "FEDERAL_ALLOWANCES",  "type": "NUMBER(3)",    "nullable": true,  "default": "0",   "notes": "From W-4"},
+        {"name": "STATE_ALLOWANCES",    "type": "NUMBER(3)",    "nullable": true,  "default": "0",   "notes": null},
+        {"name": "ADDITIONAL_FED_WH",   "type": "NUMBER(12,2)", "nullable": true,  "default": "0",   "notes": "Additional per-period federal withholding"},
+        {"name": "ADDITIONAL_STATE_WH", "type": "NUMBER(12,2)", "nullable": true,  "default": "0",   "notes": null},
+        {"name": "EXEMPT_FLAG",         "type": "CHAR(1)",      "nullable": true,  "default": "'N'", "notes": "Tax-exempt employee"},
+        {"name": "STATE_CODE",          "type": "VARCHAR2(3)",  "nullable": true,  "default": null,  "notes": null},
+        {"name": "W4_RECEIVED_DATE",    "type": "DATE",         "nullable": true,  "default": null,  "notes": null},
+        {"name": "ACTIVE_FLAG",         "type": "CHAR(1)",      "nullable": false, "default": "'Y'", "notes": null},
+        {"name": "CREATED_BY",          "type": "VARCHAR2(30)", "nullable": false, "default": null,  "notes": null},
+        {"name": "CREATED_DATE",        "type": "DATE",         "nullable": false, "default": "SYSDATE","notes": null},
+        {"name": "MODIFIED_BY",         "type": "VARCHAR2(30)", "nullable": true,  "default": null,  "notes": null},
+        {"name": "MODIFIED_DATE",       "type": "DATE",         "nullable": true,  "default": null,  "notes": null}
+      ],
+      "primary_key": {"name": "PK_EMP_TAX_INFO", "columns": ["TAX_INFO_ID"]},
+      "unique_constraints": [{"name": "UK_EMP_TAX_YEAR", "columns": ["EMP_ID", "TAX_YEAR"]}],
+      "foreign_keys": [
+        {"name": "FK_ETI_EMP", "columns": ["EMP_ID"], "references_table": "EMPLOYEES", "references_columns": ["EMP_ID"], "on_delete": "NO ACTION"}
+      ],
+      "check_constraints": []
+    },
+    {
+      "name": "EMPLOYEE_BANK_ACCOUNTS",
+      "schema": "HRMS",
+      "source_file": "schema/tables/02_payroll_tables.sql",
+      "columns": [
+        {"name": "BANK_ACCT_ID",       "type": "NUMBER(10)",   "nullable": false, "default": null,        "notes": "PK"},
+        {"name": "EMP_ID",             "type": "NUMBER(10)",   "nullable": false, "default": null,        "notes": "FK to EMPLOYEES"},
+        {"name": "BANK_NAME",          "type": "VARCHAR2(100)","nullable": true,  "default": null,        "notes": null},
+        {"name": "ROUTING_NUMBER",     "type": "VARCHAR2(20)", "nullable": false, "default": null,        "notes": "PII — stored plain-text"},
+        {"name": "ACCOUNT_NUMBER_ENC", "type": "VARCHAR2(200)","nullable": false, "default": null,        "notes": "PII — AES-256 encrypted account number"},
+        {"name": "ACCOUNT_TYPE",       "type": "VARCHAR2(20)", "nullable": true,  "default": "'CHECKING'","notes": "CHECK constrained"},
+        {"name": "DEPOSIT_TYPE",       "type": "VARCHAR2(20)", "nullable": true,  "default": "'FULL'",    "notes": "CHECK constrained"},
+        {"name": "DEPOSIT_AMOUNT",     "type": "NUMBER(12,2)", "nullable": true,  "default": null,        "notes": null},
+        {"name": "DEPOSIT_PERCENTAGE", "type": "NUMBER(5,2)",  "nullable": true,  "default": null,        "notes": null},
+        {"name": "PRIORITY_ORDER",     "type": "NUMBER(2)",    "nullable": true,  "default": "1",         "notes": "For split-deposit ordering"},
+        {"name": "PRENOTE_SENT",       "type": "CHAR(1)",      "nullable": true,  "default": "'N'",       "notes": "ACH pre-notification sent"},
+        {"name": "PRENOTE_DATE",       "type": "DATE",         "nullable": true,  "default": null,        "notes": null},
+        {"name": "ACTIVE_FLAG",        "type": "CHAR(1)",      "nullable": false, "default": "'Y'",       "notes": null},
+        {"name": "CREATED_BY",         "type": "VARCHAR2(30)", "nullable": false, "default": null,        "notes": null},
+        {"name": "CREATED_DATE",       "type": "DATE",         "nullable": false, "default": "SYSDATE",   "notes": null},
+        {"name": "MODIFIED_BY",        "type": "VARCHAR2(30)", "nullable": true,  "default": null,        "notes": null},
+        {"name": "MODIFIED_DATE",      "type": "DATE",         "nullable": true,  "default": null,        "notes": null}
+      ],
+      "primary_key": {"name": "PK_EMP_BANK_ACCTS", "columns": ["BANK_ACCT_ID"]},
+      "foreign_keys": [
+        {"name": "FK_BA_EMP", "columns": ["EMP_ID"], "references_table": "EMPLOYEES", "references_columns": ["EMP_ID"], "on_delete": "NO ACTION"}
+      ],
+      "check_constraints": [
+        {"name": "CHK_ACCT_TYPE",    "expression": "ACCOUNT_TYPE IN ('CHECKING','SAVINGS')"},
+        {"name": "CHK_DEPOSIT_TYPE", "expression": "DEPOSIT_TYPE IN ('FULL','PARTIAL_AMOUNT','PARTIAL_PERCENT','REMAINDER')"}
+      ]
+    },
+    {
+      "name": "LEAVE_TYPES",
+      "schema": "HRMS",
+      "source_file": "schema/tables/03_leave_tables.sql",
+      "columns": [
+        {"name": "LEAVE_TYPE_ID",    "type": "NUMBER(5)",    "nullable": false, "default": null,   "notes": "PK — SEQ_LEAVE_TYPE"},
+        {"name": "LEAVE_TYPE_CODE",  "type": "VARCHAR2(20)", "nullable": false, "default": null,   "notes": "Business key; UNIQUE"},
+        {"name": "LEAVE_TYPE_NAME",  "type": "VARCHAR2(50)", "nullable": false, "default": null,   "notes": null},
+        {"name": "PAID_FLAG",        "type": "CHAR(1)",      "nullable": true,  "default": "'Y'",  "notes": null},
+        {"name": "ACCRUAL_FLAG",     "type": "CHAR(1)",      "nullable": true,  "default": "'Y'",  "notes": null},
+        {"name": "ACCRUAL_RATE",     "type": "NUMBER(6,2)",  "nullable": true,  "default": null,   "notes": "Days accrued per ACCRUAL_FREQUENCY"},
+        {"name": "ACCRUAL_FREQUENCY","type": "VARCHAR2(20)", "nullable": true,  "default": null,   "notes": "CHECK constrained"},
+        {"name": "MAX_BALANCE",      "type": "NUMBER(6,2)",  "nullable": true,  "default": null,   "notes": "Cap on accrued balance; NULL = no cap"},
+        {"name": "CARRYOVER_MAX",    "type": "NUMBER(6,2)",  "nullable": true,  "default": null,   "notes": "Max days to carry to next year"},
+        {"name": "CARRYOVER_EXPIRY", "type": "NUMBER(3)",    "nullable": true,  "default": null,   "notes": "Months after Jan 1 before carryover expires; NULL = never"},
+        {"name": "MIN_TENURE_DAYS",  "type": "NUMBER(5)",    "nullable": true,  "default": "0",    "notes": "Days employed before leave type is available"},
+        {"name": "REQUIRES_APPROVAL","type": "CHAR(1)",      "nullable": true,  "default": "'Y'",  "notes": null},
+        {"name": "REQUIRES_DOCUMENT","type": "CHAR(1)",      "nullable": true,  "default": "'N'",  "notes": null},
+        {"name": "ACTIVE_FLAG",      "type": "CHAR(1)",      "nullable": false, "default": "'Y'",  "notes": null},
+        {"name": "CREATED_BY",       "type": "VARCHAR2(30)", "nullable": false, "default": null,   "notes": null},
+        {"name": "CREATED_DATE",     "type": "DATE",         "nullable": false, "default": "SYSDATE","notes": null},
+        {"name": "MODIFIED_BY",      "type": "VARCHAR2(30)", "nullable": true,  "default": null,   "notes": null},
+        {"name": "MODIFIED_DATE",    "type": "DATE",         "nullable": true,  "default": null,   "notes": null}
+      ],
+      "primary_key": {"name": "PK_LEAVE_TYPES", "columns": ["LEAVE_TYPE_ID"]},
+      "unique_constraints": [{"name": "UK_LEAVE_TYPE_CODE", "columns": ["LEAVE_TYPE_CODE"]}],
+      "foreign_keys": [],
+      "check_constraints": [
+        {"name": "CHK_ACCRUAL_FREQ", "expression": "ACCRUAL_FREQUENCY IN ('MONTHLY','BIWEEKLY','ANNUAL',NULL)"}
+      ]
+    },
+    {
+      "name": "LEAVE_BALANCES",
+      "schema": "HRMS",
+      "source_file": "schema/tables/03_leave_tables.sql",
+      "columns": [
+        {"name": "BALANCE_ID",         "type": "NUMBER(10)",  "nullable": false, "default": null,      "notes": "PK — SEQ_LEAVE_BALANCE"},
+        {"name": "EMP_ID",             "type": "NUMBER(10)",  "nullable": false, "default": null,      "notes": "FK to EMPLOYEES"},
+        {"name": "LEAVE_TYPE_ID",      "type": "NUMBER(5)",   "nullable": false, "default": null,      "notes": "FK to LEAVE_TYPES"},
+        {"name": "CALENDAR_YEAR",      "type": "NUMBER(4)",   "nullable": false, "default": null,      "notes": null},
+        {"name": "OPENING_BALANCE",    "type": "NUMBER(6,2)", "nullable": true,  "default": "0",       "notes": null},
+        {"name": "ACCRUED",            "type": "NUMBER(6,2)", "nullable": true,  "default": "0",       "notes": null},
+        {"name": "USED",               "type": "NUMBER(6,2)", "nullable": true,  "default": "0",       "notes": null},
+        {"name": "ADJUSTMENT",         "type": "NUMBER(6,2)", "nullable": true,  "default": "0",       "notes": "Manual adjustments by HR"},
+        {"name": "PENDING",            "type": "NUMBER(6,2)", "nullable": true,  "default": "0",       "notes": "Sum of submitted but not-yet-approved requests"},
+        {"name": "AVAILABLE",          "type": "NUMBER(6,2)", "nullable": true,  "default": null,      "notes": "VIRTUAL: OPENING_BALANCE+ACCRUED-USED+ADJUSTMENT-PENDING"},
+        {"name": "CARRYOVER_FROM_PREV","type": "NUMBER(6,2)", "nullable": true,  "default": "0",       "notes": null},
+        {"name": "CARRYOVER_EXPIRY_DT","type": "DATE",        "nullable": true,  "default": null,      "notes": null},
+        {"name": "CREATED_BY",         "type": "VARCHAR2(30)","nullable": false, "default": null,      "notes": null},
+        {"name": "CREATED_DATE",       "type": "DATE",        "nullable": false, "default": "SYSDATE", "notes": null},
+        {"name": "MODIFIED_BY",        "type": "VARCHAR2(30)","nullable": true,  "default": null,      "notes": null},
+        {"name": "MODIFIED_DATE",      "type": "DATE",        "nullable": true,  "default": null,      "notes": null}
+      ],
+      "primary_key": {"name": "PK_LEAVE_BALANCES", "columns": ["BALANCE_ID"]},
+      "unique_constraints": [{"name": "UK_LEAVE_BAL", "columns": ["EMP_ID","LEAVE_TYPE_ID","CALENDAR_YEAR"]}],
+      "foreign_keys": [
+        {"name": "FK_LB_EMP",  "columns": ["EMP_ID"],        "references_table": "EMPLOYEES",   "references_columns": ["EMP_ID"],        "on_delete": "NO ACTION"},
+        {"name": "FK_LB_TYPE", "columns": ["LEAVE_TYPE_ID"], "references_table": "LEAVE_TYPES", "references_columns": ["LEAVE_TYPE_ID"], "on_delete": "NO ACTION"}
+      ],
+      "check_constraints": []
+    },
+    {
+      "name": "LEAVE_REQUESTS",
+      "schema": "HRMS",
+      "source_file": "schema/tables/03_leave_tables.sql",
+      "columns": [
+        {"name": "REQUEST_ID",        "type": "NUMBER(10)",    "nullable": false, "default": null,      "notes": "PK — SEQ_LEAVE_REQUEST"},
+        {"name": "EMP_ID",            "type": "NUMBER(10)",    "nullable": false, "default": null,      "notes": "FK to EMPLOYEES"},
+        {"name": "LEAVE_TYPE_ID",     "type": "NUMBER(5)",     "nullable": false, "default": null,      "notes": "FK to LEAVE_TYPES"},
+        {"name": "START_DATE",        "type": "DATE",          "nullable": false, "default": null,      "notes": null},
+        {"name": "END_DATE",          "type": "DATE",          "nullable": false, "default": null,      "notes": "CHECK END_DATE >= START_DATE"},
+        {"name": "TOTAL_DAYS",        "type": "NUMBER(5,1)",   "nullable": false, "default": null,      "notes": "0.5 for half-day; calculated by PKG_LEAVE"},
+        {"name": "HALF_DAY_FLAG",     "type": "CHAR(1)",       "nullable": true,  "default": "'N'",     "notes": null},
+        {"name": "HALF_DAY_PERIOD",   "type": "VARCHAR2(10)",  "nullable": true,  "default": null,      "notes": "AM or PM; CHECK constrained"},
+        {"name": "STATUS",            "type": "VARCHAR2(20)",  "nullable": true,  "default": "'PENDING'","notes": "CHECK constrained"},
+        {"name": "REASON",            "type": "VARCHAR2(4000)","nullable": true,  "default": null,      "notes": null},
+        {"name": "SUPPORTING_DOC_PATH","type": "VARCHAR2(500)","nullable": true,  "default": null,      "notes": "File path to attached document"},
+        {"name": "APPROVER_EMP_ID",   "type": "NUMBER(10)",    "nullable": true,  "default": null,      "notes": "FK to EMPLOYEES (manager)"},
+        {"name": "APPROVAL_DATE",     "type": "DATE",          "nullable": true,  "default": null,      "notes": null},
+        {"name": "APPROVAL_COMMENTS", "type": "VARCHAR2(4000)","nullable": true,  "default": null,      "notes": null},
+        {"name": "CANCEL_REASON",     "type": "VARCHAR2(4000)","nullable": true,  "default": null,      "notes": null},
+        {"name": "CANCELLED_DATE",    "type": "DATE",          "nullable": true,  "default": null,      "notes": null},
+        {"name": "CREATED_BY",        "type": "VARCHAR2(30)",  "nullable": false, "default": null,      "notes": null},
+        {"name": "CREATED_DATE",      "type": "DATE",          "nullable": false, "default": "SYSDATE", "notes": null},
+        {"name": "MODIFIED_BY",       "type": "VARCHAR2(30)",  "nullable": true,  "default": null,      "notes": null},
+        {"name": "MODIFIED_DATE",     "type": "DATE",          "nullable": true,  "default": null,      "notes": null}
+      ],
+      "primary_key": {"name": "PK_LEAVE_REQUESTS", "columns": ["REQUEST_ID"]},
+      "foreign_keys": [
+        {"name": "FK_LR_EMP",      "columns": ["EMP_ID"],          "references_table": "EMPLOYEES",   "references_columns": ["EMP_ID"],        "on_delete": "NO ACTION"},
+        {"name": "FK_LR_TYPE",     "columns": ["LEAVE_TYPE_ID"],   "references_table": "LEAVE_TYPES", "references_columns": ["LEAVE_TYPE_ID"], "on_delete": "NO ACTION"},
+        {"name": "FK_LR_APPROVER", "columns": ["APPROVER_EMP_ID"], "references_table": "EMPLOYEES",   "references_columns": ["EMP_ID"],        "on_delete": "NO ACTION"}
+      ],
+      "check_constraints": [
+        {"name": "CHK_LR_STATUS",  "expression": "STATUS IN ('PENDING','APPROVED','REJECTED','CANCELLED','TAKEN')"},
+        {"name": "CHK_LR_DATES",   "expression": "END_DATE >= START_DATE"},
+        {"name": "CHK_HALF_DAY",   "expression": "HALF_DAY_PERIOD IN ('AM','PM',NULL)"}
+      ]
+    },
+    {
+      "name": "LEAVE_ACCRUAL_LOG",
+      "schema": "HRMS",
+      "source_file": "schema/tables/03_leave_tables.sql",
+      "columns": [
+        {"name": "ACCRUAL_ID",    "type": "NUMBER(15)",   "nullable": false, "default": null,      "notes": "PK — SEQ_LEAVE_ACCRUAL"},
+        {"name": "EMP_ID",        "type": "NUMBER(10)",   "nullable": false, "default": null,      "notes": "FK to EMPLOYEES"},
+        {"name": "LEAVE_TYPE_ID", "type": "NUMBER(5)",    "nullable": false, "default": null,      "notes": "FK to LEAVE_TYPES"},
+        {"name": "ACCRUAL_DATE",  "type": "DATE",         "nullable": false, "default": null,      "notes": null},
+        {"name": "ACCRUAL_AMOUNT","type": "NUMBER(6,2)",  "nullable": false, "default": null,      "notes": null},
+        {"name": "BALANCE_AFTER", "type": "NUMBER(6,2)",  "nullable": true,  "default": null,      "notes": null},
+        {"name": "RUN_ID",        "type": "NUMBER(10)",   "nullable": true,  "default": null,      "notes": "Soft ref to batch run — no FK defined"},
+        {"name": "CREATED_BY",    "type": "VARCHAR2(30)", "nullable": false, "default": null,      "notes": null},
+        {"name": "CREATED_DATE",  "type": "DATE",         "nullable": false, "default": "SYSDATE", "notes": null}
+      ],
+      "primary_key": {"name": "PK_LEAVE_ACCRUAL_LOG", "columns": ["ACCRUAL_ID"]},
+      "foreign_keys": [
+        {"name": "FK_LAL_EMP",  "columns": ["EMP_ID"],        "references_table": "EMPLOYEES",   "references_columns": ["EMP_ID"],        "on_delete": "NO ACTION"},
+        {"name": "FK_LAL_TYPE", "columns": ["LEAVE_TYPE_ID"], "references_table": "LEAVE_TYPES", "references_columns": ["LEAVE_TYPE_ID"], "on_delete": "NO ACTION"}
+      ],
+      "check_constraints": []
+    },
+    {
+      "name": "HOLIDAYS",
+      "schema": "HRMS",
+      "source_file": "schema/tables/03_leave_tables.sql",
+      "columns": [
+        {"name": "HOLIDAY_ID",   "type": "NUMBER(5)",    "nullable": false, "default": null,      "notes": "PK — SEQ_HOLIDAY"},
+        {"name": "HOLIDAY_DATE", "type": "DATE",         "nullable": false, "default": null,      "notes": null},
+        {"name": "HOLIDAY_NAME", "type": "VARCHAR2(100)","nullable": false, "default": null,      "notes": null},
+        {"name": "LOCATION_CODE","type": "VARCHAR2(10)", "nullable": true,  "default": null,      "notes": "NULL = global/all locations"},
+        {"name": "FLOATING_FLAG","type": "CHAR(1)",      "nullable": true,  "default": "'N'",     "notes": "Floating holiday that employee can use on any day"},
+        {"name": "ACTIVE_FLAG",  "type": "CHAR(1)",      "nullable": false, "default": "'Y'",     "notes": null},
+        {"name": "CREATED_BY",   "type": "VARCHAR2(30)", "nullable": false, "default": null,      "notes": null},
+        {"name": "CREATED_DATE", "type": "DATE",         "nullable": false, "default": "SYSDATE", "notes": null}
+      ],
+      "primary_key": {"name": "PK_HOLIDAYS", "columns": ["HOLIDAY_ID"]},
+      "foreign_keys": [],
+      "check_constraints": [],
+      "seed_data_count": 10
+    },
+    {
+      "name": "REVIEW_CYCLES",
+      "schema": "HRMS",
+      "source_file": "schema/tables/04_performance_tables.sql",
+      "columns": [
+        {"name": "CYCLE_ID",           "type": "NUMBER(10)",   "nullable": false, "default": null,    "notes": "PK — SEQ_REVIEW_CYCLE"},
+        {"name": "CYCLE_NAME",         "type": "VARCHAR2(100)","nullable": false, "default": null,    "notes": null},
+        {"name": "CYCLE_YEAR",         "type": "NUMBER(4)",    "nullable": false, "default": null,    "notes": null},
+        {"name": "START_DATE",         "type": "DATE",         "nullable": false, "default": null,    "notes": null},
+        {"name": "END_DATE",           "type": "DATE",         "nullable": false, "default": null,    "notes": null},
+        {"name": "SELF_REVIEW_DUE",    "type": "DATE",         "nullable": true,  "default": null,    "notes": null},
+        {"name": "MANAGER_REVIEW_DUE", "type": "DATE",         "nullable": true,  "default": null,    "notes": null},
+        {"name": "CALIBRATION_DUE",    "type": "DATE",         "nullable": true,  "default": null,    "notes": null},
+        {"name": "STATUS",             "type": "VARCHAR2(20)", "nullable": true,  "default": "'DRAFT'","notes": "CHECK constrained"},
+        {"name": "CREATED_BY",         "type": "VARCHAR2(30)", "nullable": false, "default": null,    "notes": null},
+        {"name": "CREATED_DATE",       "type": "DATE",         "nullable": false, "default": "SYSDATE","notes": null},
+        {"name": "MODIFIED_BY",        "type": "VARCHAR2(30)", "nullable": true,  "default": null,    "notes": null},
+        {"name": "MODIFIED_DATE",      "type": "DATE",         "nullable": true,  "default": null,    "notes": null}
+      ],
+      "primary_key": {"name": "PK_REVIEW_CYCLES", "columns": ["CYCLE_ID"]},
+      "foreign_keys": [],
+      "check_constraints": [
+        {"name": "CHK_CYCLE_STATUS", "expression": "STATUS IN ('DRAFT','OPEN','IN_PROGRESS','CALIBRATION','CLOSED')"}
+      ]
+    },
+    {
+      "name": "PERFORMANCE_REVIEWS",
+      "schema": "HRMS",
+      "source_file": "schema/tables/04_performance_tables.sql",
+      "columns": [
+        {"name": "REVIEW_ID",             "type": "NUMBER(10)", "nullable": false, "default": null,          "notes": "PK — SEQ_PERF_REVIEW"},
+        {"name": "CYCLE_ID",              "type": "NUMBER(10)", "nullable": false, "default": null,          "notes": "FK to REVIEW_CYCLES"},
+        {"name": "EMP_ID",                "type": "NUMBER(10)", "nullable": false, "default": null,          "notes": "FK to EMPLOYEES (reviewee)"},
+        {"name": "REVIEWER_EMP_ID",       "type": "NUMBER(10)", "nullable": false, "default": null,          "notes": "FK to EMPLOYEES (reviewer/manager)"},
+        {"name": "REVIEW_TYPE",           "type": "VARCHAR2(20)","nullable": true, "default": "'ANNUAL'",    "notes": null},
+        {"name": "STATUS",                "type": "VARCHAR2(20)","nullable": true, "default": "'NOT_STARTED'","notes": "CHECK constrained"},
+        {"name": "OVERALL_RATING",        "type": "NUMBER(2,1)", "nullable": true, "default": null,          "notes": "1.0-5.0; CHECK BETWEEN enforced"},
+        {"name": "RATING_LABEL",          "type": "VARCHAR2(50)","nullable": true, "default": null,          "notes": "Exceptional/Exceeds/Meets/Needs Improvement/Unsatisfactory"},
+        {"name": "SELF_ASSESSMENT",       "type": "CLOB",        "nullable": true, "default": null,          "notes": null},
+        {"name": "MANAGER_ASSESSMENT",    "type": "CLOB",        "nullable": true, "default": null,          "notes": null},
+        {"name": "STRENGTHS",             "type": "CLOB",        "nullable": true, "default": null,          "notes": null},
+        {"name": "AREAS_FOR_IMPROVEMENT", "type": "CLOB",        "nullable": true, "default": null,          "notes": null},
+        {"name": "DEVELOPMENT_PLAN",      "type": "CLOB",        "nullable": true, "default": null,          "notes": null},
+        {"name": "EMPLOYEE_COMMENTS",     "type": "CLOB",        "nullable": true, "default": null,          "notes": null},
+        {"name": "EMPLOYEE_ACK_DATE",     "type": "DATE",        "nullable": true, "default": null,          "notes": null},
+        {"name": "CALIBRATED_RATING",     "type": "NUMBER(2,1)", "nullable": true, "default": null,          "notes": "Post-calibration override rating"},
+        {"name": "CALIBRATION_NOTES",     "type": "VARCHAR2(4000)","nullable": true,"default": null,         "notes": null},
+        {"name": "CREATED_BY",            "type": "VARCHAR2(30)","nullable": false, "default": null,         "notes": null},
+        {"name": "CREATED_DATE",          "type": "DATE",        "nullable": false, "default": "SYSDATE",    "notes": null},
+        {"name": "MODIFIED_BY",           "type": "VARCHAR2(30)","nullable": true,  "default": null,         "notes": null},
+        {"name": "MODIFIED_DATE",         "type": "DATE",        "nullable": true,  "default": null,         "notes": null}
+      ],
+      "primary_key": {"name": "PK_PERFORMANCE_REVIEWS", "columns": ["REVIEW_ID"]},
+      "foreign_keys": [
+        {"name": "FK_PR_CYCLE",    "columns": ["CYCLE_ID"],        "references_table": "REVIEW_CYCLES", "references_columns": ["CYCLE_ID"], "on_delete": "NO ACTION"},
+        {"name": "FK_PR_EMP",      "columns": ["EMP_ID"],          "references_table": "EMPLOYEES",     "references_columns": ["EMP_ID"],   "on_delete": "NO ACTION"},
+        {"name": "FK_PR_REVIEWER", "columns": ["REVIEWER_EMP_ID"], "references_table": "EMPLOYEES",     "references_columns": ["EMP_ID"],   "on_delete": "NO ACTION"}
+      ],
+      "check_constraints": [
+        {"name": "CHK_REVIEW_STATUS", "expression": "STATUS IN ('NOT_STARTED','SELF_REVIEW','MANAGER_REVIEW','MEETING_SCHEDULED','COMPLETED','ACKNOWLEDGED')"},
+        {"name": "CHK_RATING_RANGE",  "expression": "OVERALL_RATING BETWEEN 1.0 AND 5.0"}
+      ]
+    },
+    {
+      "name": "PERFORMANCE_GOALS",
+      "schema": "HRMS",
+      "source_file": "schema/tables/04_performance_tables.sql",
+      "columns": [
+        {"name": "GOAL_ID",          "type": "NUMBER(10)",   "nullable": false, "default": null,         "notes": "PK — SEQ_PERF_GOAL"},
+        {"name": "REVIEW_ID",        "type": "NUMBER(10)",   "nullable": false, "default": null,         "notes": "FK to PERFORMANCE_REVIEWS"},
+        {"name": "EMP_ID",           "type": "NUMBER(10)",   "nullable": false, "default": null,         "notes": "FK to EMPLOYEES"},
+        {"name": "GOAL_TITLE",       "type": "VARCHAR2(200)","nullable": false, "default": null,         "notes": null},
+        {"name": "GOAL_DESCRIPTION", "type": "CLOB",         "nullable": true,  "default": null,         "notes": null},
+        {"name": "GOAL_CATEGORY",    "type": "VARCHAR2(30)", "nullable": true,  "default": null,         "notes": "CHECK constrained"},
+        {"name": "WEIGHT_PCT",       "type": "NUMBER(5,2)",  "nullable": true,  "default": "0",          "notes": "Goal weighting towards overall score"},
+        {"name": "TARGET_DATE",      "type": "DATE",         "nullable": true,  "default": null,         "notes": null},
+        {"name": "STATUS",           "type": "VARCHAR2(20)", "nullable": true,  "default": "'NOT_STARTED'","notes": "CHECK constrained"},
+        {"name": "PROGRESS_PCT",     "type": "NUMBER(5,2)",  "nullable": true,  "default": "0",          "notes": null},
+        {"name": "SELF_RATING",      "type": "NUMBER(2,1)",  "nullable": true,  "default": null,         "notes": null},
+        {"name": "MANAGER_RATING",   "type": "NUMBER(2,1)",  "nullable": true,  "default": null,         "notes": null},
+        {"name": "COMMENTS",         "type": "CLOB",         "nullable": true,  "default": null,         "notes": null},
+        {"name": "CREATED_BY",       "type": "VARCHAR2(30)", "nullable": false, "default": null,         "notes": null},
+        {"name": "CREATED_DATE",     "type": "DATE",         "nullable": false, "default": "SYSDATE",    "notes": null},
+        {"name": "MODIFIED_BY",      "type": "VARCHAR2(30)", "nullable": true,  "default": null,         "notes": null},
+        {"name": "MODIFIED_DATE",    "type": "DATE",         "nullable": true,  "default": null,         "notes": null}
+      ],
+      "primary_key": {"name": "PK_PERF_GOALS", "columns": ["GOAL_ID"]},
+      "foreign_keys": [
+        {"name": "FK_PG_REVIEW", "columns": ["REVIEW_ID"], "references_table": "PERFORMANCE_REVIEWS", "references_columns": ["REVIEW_ID"], "on_delete": "NO ACTION"},
+        {"name": "FK_PG_EMP",    "columns": ["EMP_ID"],    "references_table": "EMPLOYEES",           "references_columns": ["EMP_ID"],    "on_delete": "NO ACTION"}
+      ],
+      "check_constraints": [
+        {"name": "CHK_GOAL_STATUS",    "expression": "STATUS IN ('NOT_STARTED','IN_PROGRESS','COMPLETED','DEFERRED','CANCELLED')"},
+        {"name": "CHK_GOAL_CATEGORY",  "expression": "GOAL_CATEGORY IN ('BUSINESS','DEVELOPMENT','LEADERSHIP','INNOVATION','COMPLIANCE')"}
+      ]
+    },
+    {
+      "name": "AUDIT_LOG",
+      "schema": "HRMS",
+      "source_file": "schema/tables/04_performance_tables.sql",
+      "columns": [
+        {"name": "AUDIT_ID",    "type": "NUMBER(15)",   "nullable": false, "default": null,      "notes": "PK — SEQ_AUDIT (CACHE 100)"},
+        {"name": "TABLE_NAME",  "type": "VARCHAR2(60)", "nullable": false, "default": null,      "notes": "Target table; also 'ERROR_LOG' and 'INFO_LOG' for app logging"},
+        {"name": "RECORD_ID",   "type": "NUMBER(15)",   "nullable": false, "default": null,      "notes": "PK of audited record; 0 for app log entries"},
+        {"name": "ACTION_TYPE", "type": "VARCHAR2(10)", "nullable": false, "default": null,      "notes": "INSERT/UPDATE/DELETE; also STATUS_CHANGE"},
+        {"name": "OLD_VALUES",  "type": "CLOB",         "nullable": true,  "default": null,      "notes": "JSON-format old state"},
+        {"name": "NEW_VALUES",  "type": "CLOB",         "nullable": true,  "default": null,      "notes": "JSON-format new state"},
+        {"name": "CHANGED_BY",  "type": "VARCHAR2(30)", "nullable": false, "default": null,      "notes": null},
+        {"name": "CHANGED_DATE","type": "DATE",         "nullable": false, "default": "SYSDATE", "notes": null},
+        {"name": "IP_ADDRESS",  "type": "VARCHAR2(50)", "nullable": true,  "default": null,      "notes": "From SYS_CONTEXT USERENV.IP_ADDRESS"},
+        {"name": "SESSION_ID",  "type": "VARCHAR2(100)","nullable": true,  "default": null,      "notes": "From SYS_CONTEXT USERENV.SESSIONID"}
+      ],
+      "primary_key": {"name": "PK_AUDIT_LOG", "columns": ["AUDIT_ID"]},
+      "foreign_keys": [],
+      "check_constraints": [
+        {"name": "CHK_AUDIT_ACTION", "expression": "ACTION_TYPE IN ('INSERT','UPDATE','DELETE')"}
+      ]
+    },
+    {
+      "name": "SYSTEM_PARAMETERS",
+      "schema": "HRMS",
+      "source_file": "schema/tables/04_performance_tables.sql",
+      "columns": [
+        {"name": "PARAM_ID",          "type": "NUMBER(5)",     "nullable": false, "default": null,      "notes": "PK — SEQ_SYSTEM_PARAM"},
+        {"name": "PARAM_GROUP",       "type": "VARCHAR2(50)",  "nullable": false, "default": null,      "notes": null},
+        {"name": "PARAM_CODE",        "type": "VARCHAR2(50)",  "nullable": false, "default": null,      "notes": null},
+        {"name": "PARAM_VALUE",       "type": "VARCHAR2(4000)","nullable": false, "default": null,      "notes": null},
+        {"name": "PARAM_DESCRIPTION", "type": "VARCHAR2(200)", "nullable": true,  "default": null,      "notes": null},
+        {"name": "DATA_TYPE",         "type": "VARCHAR2(20)",  "nullable": true,  "default": "'VARCHAR2'","notes": null},
+        {"name": "EDITABLE_FLAG",     "type": "CHAR(1)",       "nullable": true,  "default": "'Y'",     "notes": "Only Y rows can be updated via PKG_COMMON.set_param"},
+        {"name": "CREATED_BY",        "type": "VARCHAR2(30)",  "nullable": false, "default": null,      "notes": null},
+        {"name": "CREATED_DATE",      "type": "DATE",          "nullable": false, "default": "SYSDATE", "notes": null},
+        {"name": "MODIFIED_BY",       "type": "VARCHAR2(30)",  "nullable": true,  "default": null,      "notes": null},
+        {"name": "MODIFIED_DATE",     "type": "DATE",          "nullable": true,  "default": null,      "notes": null}
+      ],
+      "primary_key": {"name": "PK_SYSTEM_PARAMS", "columns": ["PARAM_ID"]},
+      "unique_constraints": [{"name": "UK_PARAM_CODE", "columns": ["PARAM_GROUP","PARAM_CODE"]}],
+      "foreign_keys": [],
+      "check_constraints": []
+    },
+    {
+      "name": "NOTIFICATION_QUEUE",
+      "schema": "HRMS",
+      "source_file": "schema/tables/04_performance_tables.sql",
+      "columns": [
+        {"name": "NOTIFICATION_ID",  "type": "NUMBER(15)",   "nullable": false, "default": null,      "notes": "PK — SEQ_NOTIFICATION"},
+        {"name": "RECIPIENT_EMP_ID", "type": "NUMBER(10)",   "nullable": true,  "default": null,      "notes": "Soft ref to EMPLOYEES; nullable for external recipients"},
+        {"name": "RECIPIENT_EMAIL",  "type": "VARCHAR2(100)","nullable": true,  "default": null,      "notes": "Resolved from EMPLOYEES.EMAIL if not provided"},
+        {"name": "NOTIFICATION_TYPE","type": "VARCHAR2(30)", "nullable": false, "default": null,      "notes": "EMAIL/IN_APP/SMS; CHECK constrained"},
+        {"name": "SUBJECT",          "type": "VARCHAR2(200)","nullable": false, "default": null,      "notes": null},
+        {"name": "BODY",             "type": "CLOB",         "nullable": false, "default": null,      "notes": null},
+        {"name": "STATUS",           "type": "VARCHAR2(20)", "nullable": true,  "default": "'PENDING'","notes": "CHECK constrained"},
+        {"name": "PRIORITY",         "type": "NUMBER(2)",    "nullable": true,  "default": "5",       "notes": "Lower number = higher priority"},
+        {"name": "SENT_DATE",        "type": "DATE",         "nullable": true,  "default": null,      "notes": null},
+        {"name": "ERROR_MESSAGE",    "type": "VARCHAR2(4000)","nullable": true, "default": null,      "notes": null},
+        {"name": "RETRY_COUNT",      "type": "NUMBER(3)",    "nullable": true,  "default": "0",       "notes": "Max 3 retries per PKG_NOTIFICATION.retry_failed"},
+        {"name": "REFERENCE_TABLE",  "type": "VARCHAR2(60)", "nullable": true,  "default": null,      "notes": "Source entity table name"},
+        {"name": "REFERENCE_ID",     "type": "NUMBER(15)",   "nullable": true,  "default": null,      "notes": "Source entity PK"},
+        {"name": "CREATED_BY",       "type": "VARCHAR2(30)", "nullable": false, "default": null,      "notes": null},
+        {"name": "CREATED_DATE",     "type": "DATE",         "nullable": false, "default": "SYSDATE", "notes": null}
+      ],
+      "primary_key": {"name": "PK_NOTIF_QUEUE", "columns": ["NOTIFICATION_ID"]},
+      "foreign_keys": [],
+      "check_constraints": [
+        {"name": "CHK_NOTIF_STATUS", "expression": "STATUS IN ('PENDING','SENT','FAILED','CANCELLED')"},
+        {"name": "CHK_NOTIF_TYPE",   "expression": "NOTIFICATION_TYPE IN ('EMAIL','IN_APP','SMS')"}
+      ]
+    },
+    {
+      "name": "USER_SESSIONS",
+      "schema": "HRMS",
+      "source_file": "schema/tables/04_performance_tables.sql",
+      "columns": [
+        {"name": "SESSION_ID",    "type": "NUMBER(15)",   "nullable": false, "default": null,      "notes": "PK — SEQ_USER_SESSION"},
+        {"name": "EMP_ID",        "type": "NUMBER(10)",   "nullable": false, "default": null,      "notes": "FK to EMPLOYEES"},
+        {"name": "USERNAME",      "type": "VARCHAR2(30)", "nullable": false, "default": null,      "notes": "Equals EMAIL used for login"},
+        {"name": "LOGIN_TIME",    "type": "DATE",         "nullable": false, "default": null,      "notes": null},
+        {"name": "LOGOUT_TIME",   "type": "DATE",         "nullable": true,  "default": null,      "notes": null},
+        {"name": "IP_ADDRESS",    "type": "VARCHAR2(50)", "nullable": true,  "default": null,      "notes": null},
+        {"name": "FORMS_MODULE",  "type": "VARCHAR2(100)","nullable": true,  "default": null,      "notes": "Which Oracle Forms module was open"},
+        {"name": "SESSION_STATUS","type": "VARCHAR2(20)", "nullable": true,  "default": "'ACTIVE'","notes": "ACTIVE/EXPIRED/CLOSED"},
+        {"name": "CREATED_DATE",  "type": "DATE",         "nullable": false, "default": "SYSDATE", "notes": null}
+      ],
+      "primary_key": {"name": "PK_USER_SESSIONS", "columns": ["SESSION_ID"]},
+      "foreign_keys": [
+        {"name": "FK_US_EMP", "columns": ["EMP_ID"], "references_table": "EMPLOYEES", "references_columns": ["EMP_ID"], "on_delete": "NO ACTION"}
+      ],
+      "check_constraints": []
+    },
+    {
+      "name": "USER_CREDENTIALS",
+      "schema": "HRMS",
+      "source_file": "plsql/packages/PKG_SECURITY.pkb (referenced; DDL not found in Tables.sql deep scan)",
+      "extraction_note": "Table DDL not present in recovered schema files. Structure inferred entirely from PKG_SECURITY package body references and comments. Marked INFERRED.",
+      "comment": "Stores per-employee authentication credentials. Separate from EMPLOYEES to isolate credential data. Referenced by PKG_SECURITY.authenticate and PKG_SECURITY.change_password.",
+      "columns": [
+        {"name": "EMP_ID",         "type": "NUMBER(10)",    "nullable": false, "default": null, "notes": "PK and FK to EMPLOYEES.EMP_ID (inferred)"},
+        {"name": "PASSWORD_HASH",  "type": "VARCHAR2(200)", "nullable": false, "default": null, "notes": "MD5 hash of password; produced by PKG_SECURITY.hash_password using DBMS_CRYPTO.HASH_MD5 → RAWTOHEX"},
+        {"name": "CREATED_DATE",   "type": "DATE",          "nullable": false, "default": "SYSDATE", "notes": "Inferred audit column"},
+        {"name": "MODIFIED_DATE",  "type": "DATE",          "nullable": true,  "default": null, "notes": "Updated by PKG_SECURITY.change_password"}
+      ],
+      "primary_key": {"name": "PK_USER_CREDENTIALS (inferred)", "columns": ["EMP_ID"]},
+      "unique_constraints": [],
+      "foreign_keys": [
+        {"name": "FK_UC_EMP (inferred)", "columns": ["EMP_ID"], "references_table": "EMPLOYEES", "references_columns": ["EMP_ID"], "on_delete": "NO ACTION"}
+      ],
+      "check_constraints": [],
+      "missing_columns_noted": [
+        "LOGIN_ATTEMPTS — no failed-attempt counter; brute-force lockout impossible (DQ-023)",
+        "LOCKED_UNTIL — no account lockout timestamp",
+        "PASSWORD_CHANGED_DATE — no password age tracking",
+        "LAST_LOGIN — not tracked here; partial record exists in USER_SESSIONS"
+      ],
+      "security_findings": [
+        "CRITICAL: PASSWORD_HASH uses MD5 (DBMS_CRYPTO.HASH_MD5). MD5 is cryptographically broken for password storage — rainbow tables and pre-image attacks exist. Should be PBKDF2/bcrypt (DQ-010).",
+        "CRITICAL: PKG_SECURITY.authenticate does not query USER_CREDENTIALS to verify the supplied password. Authentication is effectively bypassed — any password is accepted for a valid username (DQ-003).",
+        "HIGH: No failed-attempt counter. Unlimited brute-force login attempts are possible against PKG_SECURITY.authenticate (DQ-023).",
+        "VULNERABILITY: Timing attack — authenticate() raises different exceptions for unknown username vs wrong password, allowing username enumeration.",
+        "NOTE: PKG_SECURITY.change_password calls PKG_AUDIT.log_action('USER_CREDENTIALS', p_emp_id, 'UPDATE', USER) but the actual UPDATE DML is marked as a stub ('NOTE: Actual password update would go to USER_CREDENTIALS table — This is a stub for the legacy system model').",
+        "HIGH: PKG_SECURITY.change_password accepts p_old_password parameter but never verifies it against the stored hash. Any authenticated session can overwrite any employee credential without knowing the current password (DQ-029, BR-044).",
+        "HIGH: If two ACTIVE employees share the same EMAIL, PKG_SECURITY.authenticate silently resolves to MIN(EMP_ID) via TOO_MANY_ROWS handler — second employee cannot log in as themselves (BR-043b).",
+        "MEDIUM: PKG_SECURITY package spec declares e_account_locked (ORA-20302) and e_session_expired (ORA-20303) as named exceptions but neither is raised anywhere in the package body. Callers catching these exceptions will never fire (DQ-030, BR-045)."
+      ],
+      "password_complexity_rules": [
+        "Minimum 8 characters (ORA-20310)",
+        "Must contain at least one uppercase letter A-Z (ORA-20311)",
+        "Must contain at least one digit 0-9 (ORA-20312)",
+        "Enforced by PKG_SECURITY.change_password; NOT enforced at DDL level"
+      ],
+      "audit_integration": "PKG_AUDIT.log_action called on credential UPDATE with table name 'USER_CREDENTIALS', record_id = EMP_ID, action = 'UPDATE', username = built-in USER",
+      "row_count": {"volume": "UNKNOWN", "volume_detail": "DB not connected; one row per ACTIVE employee expected"}
+    },
+    {
+      "name": "LOOKUP_VALUES",
+      "schema": "HRMS",
+      "source_file": "schema/tables/04_performance_tables.sql",
+      "columns": [
+        {"name": "LOOKUP_ID",       "type": "NUMBER(10)",   "nullable": false, "default": null,  "notes": "PK — SEQ_LOOKUP"},
+        {"name": "LOOKUP_TYPE",     "type": "VARCHAR2(50)", "nullable": false, "default": null,  "notes": "Category name e.g. MARITAL_STATUS, TERMINATION_REASON"},
+        {"name": "LOOKUP_CODE",     "type": "VARCHAR2(50)", "nullable": false, "default": null,  "notes": "Code value"},
+        {"name": "LOOKUP_VALUE",    "type": "VARCHAR2(200)","nullable": false, "default": null,  "notes": "Display label"},
+        {"name": "DISPLAY_ORDER",   "type": "NUMBER(5)",    "nullable": true,  "default": "0",   "notes": null},
+        {"name": "PARENT_LOOKUP_ID","type": "NUMBER(10)",   "nullable": true,  "default": null,  "notes": "Self-ref for hierarchical lookups; no FK constraint"},
+        {"name": "ACTIVE_FLAG",     "type": "CHAR(1)",      "nullable": false, "default": "'Y'", "notes": null},
+        {"name": "CREATED_BY",      "type": "VARCHAR2(30)", "nullable": false, "default": null,  "notes": null},
+        {"name": "CREATED_DATE",    "type": "DATE",         "nullable": false, "default": "SYSDATE","notes": null}
+      ],
+      "primary_key": {"name": "PK_LOOKUP_VALUES", "columns": ["LOOKUP_ID"]},
+      "unique_constraints": [{"name": "UK_LOOKUP", "columns": ["LOOKUP_TYPE","LOOKUP_CODE"]}],
+      "foreign_keys": [],
+      "check_constraints": []
+    }
   ],
-  "views": ["VW_ACTIVE_EMPLOYEES", "VW_ORG_HIERARCHY", "VW_EMPLOYEE_COMPENSATION", "VW_LEAVE_SUMMARY", "VW_PAYROLL_LATEST", "VW_PENDING_APPROVALS"],
-  "triggers": ["TRG_SALARY_AUDIT (SALARY_RECORDS)", "TRG_LEAVE_REQUEST_AUDIT (LEAVE_REQUESTS)", "TRG_DEPARTMENT_AUDIT (DEPARTMENTS)", "TRG_EMP_BEFORE_INSERT (EMPLOYEES)", "TRG_EMP_BEFORE_UPDATE (EMPLOYEES)", "TRG_EMP_INSTEAD_OF_DELETE (EMPLOYEES, actually BEFORE DELETE — misnamed)"],
-  "packages": ["PKG_AUDIT", "PKG_COMMON", "PKG_EMPLOYEE", "PKG_INTEGRATION", "PKG_LEAVE", "PKG_NOTIFICATION", "PKG_PAYROLL", "PKG_PERFORMANCE", "PKG_REPORTING", "PKG_SECURITY", "PKG_VALIDATION"],
-  "documentation_vs_code_discrepancy": {
-    "summary": "README.md's architecture diagram claims 42 tables / 15 views / 200+ triggers / 12 packages / 18 forms; the shipped codebase actually contains 30 tables / 6 views / 6 triggers / 11 packages / 6 form XML exports. PKG_DEPARTMENT and HRMS_DEPARTMENT / HRMS_REPORTS / HRMS_ADMIN / HRMS_LOV / HRMS_TOOLBAR are named in README/menu but do not exist as source files in this repo.",
-    "evidence_hierarchy_ruling": "Code wins over docs per Evidence Strength Hierarchy — README describes an idealized/larger reference system; all counts in this catalogue are drawn from actual DDL/package/trigger/view files, not the README."
-  }
+  "sequences": [
+    {"name": "SEQ_DEPARTMENT",    "start_with": 100,   "increment_by": 1, "cache": "NOCACHE", "used_by": "DEPARTMENTS.DEPT_ID"},
+    {"name": "SEQ_LOCATION",      "start_with": 100,   "increment_by": 1, "cache": "NOCACHE", "used_by": "LOCATIONS (no trigger found; implied)"},
+    {"name": "SEQ_JOB_GRADE",     "start_with": 100,   "increment_by": 1, "cache": "NOCACHE", "used_by": "JOB_GRADES.GRADE_ID"},
+    {"name": "SEQ_JOB_TITLE",     "start_with": 100,   "increment_by": 1, "cache": "NOCACHE", "used_by": "JOB_TITLES.JOB_ID"},
+    {"name": "SEQ_EMPLOYEE",      "start_with": 10000, "increment_by": 1, "cache": "NOCACHE", "used_by": "EMPLOYEES.EMP_ID"},
+    {"name": "SEQ_EMP_HISTORY",   "start_with": 1,     "increment_by": 1, "cache": "NOCACHE", "used_by": "EMPLOYEE_HISTORY.HIST_ID"},
+    {"name": "SEQ_DEPENDENT",     "start_with": 1,     "increment_by": 1, "cache": "NOCACHE", "used_by": "EMPLOYEE_DEPENDENTS.DEPENDENT_ID"},
+    {"name": "SEQ_EMERGENCY_CONTACT","start_with": 1,  "increment_by": 1, "cache": "NOCACHE", "used_by": "EMERGENCY_CONTACTS.CONTACT_ID"},
+    {"name": "SEQ_EMP_NUMBER",    "start_with": 1000,  "increment_by": 1, "cache": "NOCACHE", "used_by": "EMP_NUMBER generation — RACE CONDITION BUG: PKG_EMPLOYEE uses MAX()+1 instead"},
+    {"name": "SEQ_SALARY",        "start_with": 1,     "increment_by": 1, "cache": "NOCACHE", "used_by": "SALARY_RECORDS.SALARY_ID"},
+    {"name": "SEQ_PAY_ELEMENT",   "start_with": 1,     "increment_by": 1, "cache": "NOCACHE", "used_by": "PAY_ELEMENTS.ELEMENT_ID"},
+    {"name": "SEQ_EMP_PAY_ELEMENT","start_with": 1,    "increment_by": 1, "cache": "NOCACHE", "used_by": "EMPLOYEE_PAY_ELEMENTS.EMP_ELEMENT_ID"},
+    {"name": "SEQ_PAY_PERIOD",    "start_with": 1,     "increment_by": 1, "cache": "NOCACHE", "used_by": "PAY_PERIODS.PERIOD_ID"},
+    {"name": "SEQ_PAYROLL_RUN",   "start_with": 1,     "increment_by": 1, "cache": "NOCACHE", "used_by": "PAYROLL_RUNS.RUN_ID"},
+    {"name": "SEQ_PAYROLL_DETAIL","start_with": 1,     "increment_by": 1, "cache": "NOCACHE", "used_by": "PAYROLL_DETAILS.DETAIL_ID"},
+    {"name": "SEQ_TAX_BRACKET",   "start_with": 1,     "increment_by": 1, "cache": "NOCACHE", "used_by": "TAX_BRACKETS.BRACKET_ID"},
+    {"name": "SEQ_LEAVE_TYPE",    "start_with": 1,     "increment_by": 1, "cache": "NOCACHE", "used_by": "LEAVE_TYPES.LEAVE_TYPE_ID"},
+    {"name": "SEQ_LEAVE_BALANCE", "start_with": 1,     "increment_by": 1, "cache": "NOCACHE", "used_by": "LEAVE_BALANCES.BALANCE_ID"},
+    {"name": "SEQ_LEAVE_REQUEST", "start_with": 1,     "increment_by": 1, "cache": "NOCACHE", "used_by": "LEAVE_REQUESTS.REQUEST_ID"},
+    {"name": "SEQ_LEAVE_ACCRUAL", "start_with": 1,     "increment_by": 1, "cache": "NOCACHE", "used_by": "LEAVE_ACCRUAL_LOG.ACCRUAL_ID"},
+    {"name": "SEQ_HOLIDAY",       "start_with": 1,     "increment_by": 1, "cache": "NOCACHE", "used_by": "HOLIDAYS.HOLIDAY_ID"},
+    {"name": "SEQ_REVIEW_CYCLE",  "start_with": 1,     "increment_by": 1, "cache": "NOCACHE", "used_by": "REVIEW_CYCLES.CYCLE_ID"},
+    {"name": "SEQ_PERF_REVIEW",   "start_with": 1,     "increment_by": 1, "cache": "NOCACHE", "used_by": "PERFORMANCE_REVIEWS.REVIEW_ID"},
+    {"name": "SEQ_PERF_GOAL",     "start_with": 1,     "increment_by": 1, "cache": "NOCACHE", "used_by": "PERFORMANCE_GOALS.GOAL_ID"},
+    {"name": "SEQ_AUDIT",         "start_with": 1,     "increment_by": 1, "cache": "CACHE 100", "used_by": "AUDIT_LOG.AUDIT_ID — only cached sequence"},
+    {"name": "SEQ_NOTIFICATION",  "start_with": 1,     "increment_by": 1, "cache": "NOCACHE", "used_by": "NOTIFICATION_QUEUE.NOTIFICATION_ID"},
+    {"name": "SEQ_USER_SESSION",  "start_with": 1,     "increment_by": 1, "cache": "NOCACHE", "used_by": "USER_SESSIONS.SESSION_ID"},
+    {"name": "SEQ_SYSTEM_PARAM",  "start_with": 1,     "increment_by": 1, "cache": "NOCACHE", "used_by": "SYSTEM_PARAMETERS.PARAM_ID"},
+    {"name": "SEQ_LOOKUP",        "start_with": 1,     "increment_by": 1, "cache": "NOCACHE", "used_by": "LOOKUP_VALUES.LOOKUP_ID"}
+  ],
+  "inferred_tables": {
+    "extraction_note": "The following 7 tables are implied by the comment inside PKG_REPORTING.refresh_reporting_tables: 'In production, this truncates and repopulates RPT_* tables'. Their DDL was NOT found in Tables.sql. Column shapes are inferred from the SELECT lists of the 7 PKG_REPORTING report procedures. All are marked INFERRED.",
+    "tables": [
+      {
+        "name": "RPT_HEADCOUNT",
+        "schema": "HRMS",
+        "status": "INFERRED",
+        "source": "PKG_REPORTING.headcount_report SELECT list + refresh_reporting_tables comment",
+        "comment": "Denormalized snapshot of headcount by department and location, refreshed nightly. Mirrors headcount_report cursor output.",
+        "inferred_columns": [
+          {"name": "DEPT_NAME",       "type": "VARCHAR2(100)", "notes": "From DEPARTMENTS.DEPT_NAME"},
+          {"name": "COST_CENTER",      "type": "VARCHAR2(20)",  "notes": "From DEPARTMENTS.COST_CENTER"},
+          {"name": "LOCATION_NAME",    "type": "VARCHAR2(100)", "notes": "From LOCATIONS.LOCATION_NAME"},
+          {"name": "CITY",             "type": "VARCHAR2(100)", "notes": "From LOCATIONS.CITY"},
+          {"name": "STATE_PROVINCE",   "type": "VARCHAR2(100)", "notes": "From LOCATIONS.STATE_PROVINCE"},
+          {"name": "HEADCOUNT",        "type": "NUMBER",        "notes": "COUNT(*) of ACTIVE employees as-of snapshot date"},
+          {"name": "FT_COUNT",         "type": "NUMBER",        "notes": "FULL_TIME employees"},
+          {"name": "PT_COUNT",         "type": "NUMBER",        "notes": "PART_TIME employees"},
+          {"name": "CONTRACT_COUNT",   "type": "NUMBER",        "notes": "CONTRACT employees"},
+          {"name": "MALE_COUNT",       "type": "NUMBER",        "notes": "GENDER='M'"},
+          {"name": "FEMALE_COUNT",     "type": "NUMBER",        "notes": "GENDER='F'"},
+          {"name": "AVG_TENURE_YEARS", "type": "NUMBER(6,1)",   "notes": "ROUND(AVG(MONTHS_BETWEEN(snap_date, HIRE_DATE)/12), 1)"},
+          {"name": "SNAPSHOT_DATE",    "type": "DATE",          "notes": "As-of date — inferred required column for a snapshot table"},
+          {"name": "LOAD_TIMESTAMP",   "type": "DATE",          "notes": "Refresh timestamp — inferred required column"}
+        ],
+        "source_procedure": "PKG_REPORTING.headcount_report",
+        "source_tables": ["EMPLOYEES", "DEPARTMENTS", "LOCATIONS"]
+      },
+      {
+        "name": "RPT_COMPENSATION",
+        "schema": "HRMS",
+        "status": "INFERRED",
+        "source": "PKG_REPORTING.compensation_summary SELECT list + refresh_reporting_tables comment",
+        "comment": "Denormalized compensation summary by department, grade, and job title.",
+        "inferred_columns": [
+          {"name": "DEPT_NAME",      "type": "VARCHAR2(100)", "notes": "From DEPARTMENTS.DEPT_NAME"},
+          {"name": "GRADE_NAME",     "type": "VARCHAR2(100)", "notes": "From JOB_GRADES.GRADE_NAME"},
+          {"name": "JOB_TITLE",      "type": "VARCHAR2(100)", "notes": "From JOB_TITLES.JOB_TITLE"},
+          {"name": "EMP_COUNT",      "type": "NUMBER",        "notes": "Employees in this dept/grade/title"},
+          {"name": "GRADE_MIN",      "type": "NUMBER(12,2)",  "notes": "JOB_GRADES.MIN_SALARY"},
+          {"name": "GRADE_MAX",      "type": "NUMBER(12,2)",  "notes": "JOB_GRADES.MAX_SALARY"},
+          {"name": "ACTUAL_MIN",     "type": "NUMBER(12,2)",  "notes": "MIN(SALARY_RECORDS.BASE_SALARY) for this group"},
+          {"name": "ACTUAL_MAX",     "type": "NUMBER(12,2)",  "notes": "MAX(SALARY_RECORDS.BASE_SALARY)"},
+          {"name": "AVG_SALARY",     "type": "NUMBER(12,2)",  "notes": "ROUND(AVG(BASE_SALARY),2)"},
+          {"name": "MEDIAN_SALARY",  "type": "NUMBER(12,2)",  "notes": "ROUND(MEDIAN(BASE_SALARY),2) — Oracle MEDIAN aggregate"},
+          {"name": "COMPA_RATIO",    "type": "NUMBER(6,1)",   "notes": "ROUND(AVG(BASE_SALARY/grade_midpoint)*100,1)"},
+          {"name": "LOAD_TIMESTAMP", "type": "DATE",          "notes": "Refresh timestamp — inferred"}
+        ],
+        "source_procedure": "PKG_REPORTING.compensation_summary",
+        "source_tables": ["EMPLOYEES", "DEPARTMENTS", "JOB_TITLES", "JOB_GRADES", "SALARY_RECORDS"]
+      },
+      {
+        "name": "RPT_TURNOVER",
+        "schema": "HRMS",
+        "status": "INFERRED",
+        "source": "PKG_REPORTING.turnover_report SELECT list + refresh_reporting_tables comment",
+        "comment": "Denormalized turnover metrics by department. Date-range parameterized in the live procedure; snapshot version would require period-boundary columns.",
+        "inferred_columns": [
+          {"name": "DEPT_NAME",          "type": "VARCHAR2(100)", "notes": "From DEPARTMENTS.DEPT_NAME"},
+          {"name": "REPORT_START_DATE",  "type": "DATE",          "notes": "Period start — inferred required for snapshot"},
+          {"name": "REPORT_END_DATE",    "type": "DATE",          "notes": "Period end — inferred required for snapshot"},
+          {"name": "TERMINATIONS",       "type": "NUMBER",        "notes": "Count of terminations in period"},
+          {"name": "CURRENT_HC",         "type": "NUMBER",        "notes": "COUNT of ACTIVE employees at end of period"},
+          {"name": "TURNOVER_PCT",       "type": "NUMBER(6,1)",   "notes": "ROUND(terminations*100/headcount_at_start,1)"},
+          {"name": "VOLUNTARY",          "type": "NUMBER",        "notes": "TERMINATION_REASON='VOLUNTARY'"},
+          {"name": "INVOLUNTARY",        "type": "NUMBER",        "notes": "TERMINATION_REASON != 'VOLUNTARY'"},
+          {"name": "AVG_TENURE_AT_EXIT", "type": "NUMBER(6,1)",   "notes": "AVG tenure at termination date"},
+          {"name": "LOAD_TIMESTAMP",     "type": "DATE",          "notes": "Refresh timestamp — inferred"}
+        ],
+        "source_procedure": "PKG_REPORTING.turnover_report",
+        "source_tables": ["EMPLOYEES", "DEPARTMENTS"]
+      },
+      {
+        "name": "RPT_NEW_HIRES",
+        "schema": "HRMS",
+        "status": "INFERRED",
+        "source": "PKG_REPORTING.new_hires_report SELECT list + refresh_reporting_tables comment",
+        "comment": "Denormalized new hire details. Row-level (one row per new hire), not aggregated.",
+        "inferred_columns": [
+          {"name": "EMP_NUMBER",        "type": "VARCHAR2(20)",  "notes": "EMPLOYEES.EMP_NUMBER"},
+          {"name": "EMP_NAME",          "type": "VARCHAR2(101)", "notes": "FIRST_NAME || ' ' || LAST_NAME"},
+          {"name": "HIRE_DATE",         "type": "DATE",          "notes": "EMPLOYEES.HIRE_DATE"},
+          {"name": "DEPT_NAME",         "type": "VARCHAR2(100)", "notes": "From DEPARTMENTS"},
+          {"name": "JOB_TITLE",         "type": "VARCHAR2(100)", "notes": "From JOB_TITLES"},
+          {"name": "LOCATION_NAME",     "type": "VARCHAR2(100)", "notes": "From LOCATIONS"},
+          {"name": "EMPLOYMENT_TYPE",   "type": "VARCHAR2(20)",  "notes": "FULL_TIME / PART_TIME / CONTRACT / INTERN"},
+          {"name": "BASE_SALARY",       "type": "NUMBER(12,2)",  "notes": "From SALARY_RECORDS (active)"},
+          {"name": "MANAGER_EMP_ID",    "type": "NUMBER(10)",    "notes": "EMPLOYEES.MANAGER_EMP_ID"},
+          {"name": "MANAGER_NAME",      "type": "VARCHAR2(101)", "notes": "Manager FIRST_NAME || ' ' || LAST_NAME"},
+          {"name": "REPORT_START_DATE", "type": "DATE",          "notes": "Window start — inferred for snapshot"},
+          {"name": "REPORT_END_DATE",   "type": "DATE",          "notes": "Window end — inferred for snapshot"},
+          {"name": "LOAD_TIMESTAMP",    "type": "DATE",          "notes": "Refresh timestamp — inferred"}
+        ],
+        "source_procedure": "PKG_REPORTING.new_hires_report",
+        "source_tables": ["EMPLOYEES", "DEPARTMENTS", "JOB_TITLES", "LOCATIONS", "SALARY_RECORDS"]
+      },
+      {
+        "name": "RPT_LEAVE_UTILIZATION",
+        "schema": "HRMS",
+        "status": "INFERRED",
+        "source": "PKG_REPORTING.leave_utilization_report SELECT list + refresh_reporting_tables comment",
+        "comment": "Denormalized leave utilization summary by department and leave type for a calendar year.",
+        "inferred_columns": [
+          {"name": "DEPT_NAME",        "type": "VARCHAR2(100)", "notes": "From DEPARTMENTS.DEPT_NAME"},
+          {"name": "LEAVE_TYPE_NAME",  "type": "VARCHAR2(100)", "notes": "From LEAVE_TYPES.LEAVE_TYPE_NAME"},
+          {"name": "CALENDAR_YEAR",    "type": "NUMBER(4)",     "notes": "LEAVE_BALANCES.CALENDAR_YEAR"},
+          {"name": "EMP_COUNT",        "type": "NUMBER",        "notes": "COUNT(DISTINCT EMP_ID) with balances"},
+          {"name": "AVG_ENTITLED",     "type": "NUMBER(6,1)",   "notes": "AVG(OPENING_BALANCE + ACCRUED)"},
+          {"name": "AVG_USED",         "type": "NUMBER(6,1)",   "notes": "AVG(USED)"},
+          {"name": "AVG_REMAINING",    "type": "NUMBER(6,1)",   "notes": "AVG(OPENING+ACCRUED-USED+ADJUSTMENT)"},
+          {"name": "UTILIZATION_PCT",  "type": "NUMBER(6,1)",   "notes": "AVG(USED)*100 / AVG(OPENING+ACCRUED)"},
+          {"name": "LOAD_TIMESTAMP",   "type": "DATE",          "notes": "Refresh timestamp — inferred"}
+        ],
+        "source_procedure": "PKG_REPORTING.leave_utilization_report",
+        "source_tables": ["LEAVE_BALANCES", "EMPLOYEES", "DEPARTMENTS", "LEAVE_TYPES"]
+      },
+      {
+        "name": "RPT_PAYROLL_SUMMARY",
+        "schema": "HRMS",
+        "status": "INFERRED",
+        "source": "PKG_REPORTING.payroll_summary_report SELECT list + refresh_reporting_tables comment",
+        "comment": "Denormalized payroll summary by department for a pay period.",
+        "inferred_columns": [
+          {"name": "DEPT_NAME",        "type": "VARCHAR2(100)", "notes": "From DEPARTMENTS.DEPT_NAME"},
+          {"name": "PERIOD_ID",        "type": "NUMBER(10)",    "notes": "FK to PAY_PERIODS — inferred"},
+          {"name": "EMP_COUNT",        "type": "NUMBER",        "notes": "COUNT(DISTINCT EMP_ID) in run"},
+          {"name": "TOTAL_GROSS",      "type": "NUMBER(15,2)",  "notes": "SUM where ELEMENT_TYPE='EARNING'"},
+          {"name": "TOTAL_FED_TAX",    "type": "NUMBER(15,2)",  "notes": "SUM where ELEMENT_ID=100"},
+          {"name": "TOTAL_STATE_TAX",  "type": "NUMBER(15,2)",  "notes": "SUM where ELEMENT_ID=101"},
+          {"name": "TOTAL_SS",         "type": "NUMBER(15,2)",  "notes": "SUM where ELEMENT_ID=102"},
+          {"name": "TOTAL_MEDICARE",   "type": "NUMBER(15,2)",  "notes": "SUM where ELEMENT_ID=103"},
+          {"name": "TOTAL_DEDUCTIONS", "type": "NUMBER(15,2)",  "notes": "SUM where ELEMENT_TYPE IN ('DEDUCTION','BENEFIT')"},
+          {"name": "TOTAL_NET",        "type": "NUMBER(15,2)",  "notes": "SUM of all PAYROLL_DETAILS.AMOUNT"},
+          {"name": "LOAD_TIMESTAMP",   "type": "DATE",          "notes": "Refresh timestamp — inferred"}
+        ],
+        "source_procedure": "PKG_REPORTING.payroll_summary_report",
+        "source_tables": ["PAYROLL_DETAILS", "PAYROLL_RUNS", "EMPLOYEES", "DEPARTMENTS"]
+      },
+      {
+        "name": "RPT_EEO_COMPLIANCE",
+        "schema": "HRMS",
+        "status": "INFERRED",
+        "source": "PKG_REPORTING.eeo_compliance_report SELECT list + refresh_reporting_tables comment",
+        "comment": "Denormalized EEO workforce composition by job EEO category. Used for EEOC filings.",
+        "inferred_columns": [
+          {"name": "EEO_CATEGORY",    "type": "VARCHAR2(100)", "notes": "JOB_TITLES.EEO_CATEGORY"},
+          {"name": "TOTAL",           "type": "NUMBER",        "notes": "Total active employees in category"},
+          {"name": "MALE",            "type": "NUMBER",        "notes": "GENDER='M'"},
+          {"name": "FEMALE",          "type": "NUMBER",        "notes": "GENDER='F'"},
+          {"name": "OTHER_GENDER",    "type": "NUMBER",        "notes": "GENDER='O'"},
+          {"name": "NOT_DISCLOSED",   "type": "NUMBER",        "notes": "GENDER IS NULL"},
+          {"name": "FEMALE_PCT",      "type": "NUMBER(5,1)",   "notes": "ROUND(FEMALE*100.0/TOTAL,1)"},
+          {"name": "SNAPSHOT_DATE",   "type": "DATE",          "notes": "As-of date — inferred"},
+          {"name": "LOAD_TIMESTAMP",  "type": "DATE",          "notes": "Refresh timestamp — inferred"}
+        ],
+        "source_procedure": "PKG_REPORTING.eeo_compliance_report",
+        "source_tables": ["EMPLOYEES", "JOB_TITLES"]
+      },
+      {
+        "name": "TIME_ATTENDANCE_RECORDS",
+        "schema": "HRMS",
+        "status": "IMPLIED",
+        "source": "PKG_INTEGRATION.import_time_attendance — TODO comment; CSV parse comment: 'emp_number,date,hours_regular,hours_overtime'",
+        "comment": "Implied destination for time and attendance CSV imports. No DDL exists. Procedure body is a stub with no DML.",
+        "inferred_columns": [
+          {"name": "EMP_NUMBER",     "type": "VARCHAR2(20)", "notes": "CSV column 1 — business key matching EMPLOYEES.EMP_NUMBER"},
+          {"name": "ATTENDANCE_DATE","type": "DATE",         "notes": "CSV column 2 — work date"},
+          {"name": "HOURS_REGULAR",  "type": "NUMBER",       "notes": "CSV column 3 — regular hours worked"},
+          {"name": "HOURS_OVERTIME", "type": "NUMBER",       "notes": "CSV column 4 — overtime hours"},
+          {"name": "SOURCE_FILE",    "type": "VARCHAR2(100)","notes": "Audit column — import filename (inferred)"},
+          {"name": "IMPORT_DATE",    "type": "DATE",         "notes": "Audit column — import timestamp (inferred)"},
+          {"name": "STATUS",         "type": "VARCHAR2(20)", "notes": "Staging status PENDING/PROCESSED/ERROR (inferred)"}
+        ],
+        "import_procedure": "PKG_INTEGRATION.import_time_attendance",
+        "input_directory": "TIME_ATTENDANCE_IN",
+        "input_format": "CSV",
+        "file_naming_pattern": "p_file_name parameter (caller-supplied)",
+        "skip_rules": ["Lines starting with '#' (comment marker)", "Empty lines (IS NOT NULL guard)"],
+        "error_handling": "Per-line EXCEPTION WHEN OTHERS — errors counted, import continues (no rollback)",
+        "missing_link": "No DML connecting imported rows to PAYROLL_DETAILS or PAYROLL_RUNS — unimplemented",
+        "migration_note": "No production data to migrate. Integration pattern (UTL_FILE + Oracle directory) must be redesigned for non-Oracle target."
+      }
+    ]
+  },
+  "views": [
+    {"name": "VW_ACTIVE_EMPLOYEES",    "schema": "HRMS", "source_file": "schema/views/hrms_views.sql"},
+    {"name": "VW_ORG_HIERARCHY",       "schema": "HRMS", "source_file": "schema/views/hrms_views.sql", "notes": "CONNECT BY — degrades >500 employees"},
+    {"name": "VW_EMPLOYEE_COMPENSATION","schema": "HRMS","source_file": "schema/views/hrms_views.sql"},
+    {"name": "VW_LEAVE_SUMMARY",       "schema": "HRMS", "source_file": "schema/views/hrms_views.sql", "notes": "AVAILABLE formula omits PENDING unlike virtual column"},
+    {"name": "VW_PAYROLL_LATEST",      "schema": "HRMS", "source_file": "schema/views/hrms_views.sql"},
+    {"name": "VW_PENDING_APPROVALS",   "schema": "HRMS", "source_file": "schema/views/hrms_views.sql"}
+  ],
+  "triggers": [
+    {"name": "TRG_SALARY_AUDIT",         "on_table": "SALARY_RECORDS",  "timing": "AFTER",  "event": "INSERT OR UPDATE OR DELETE"},
+    {"name": "TRG_LEAVE_REQUEST_AUDIT",  "on_table": "LEAVE_REQUESTS",  "timing": "AFTER",  "event": "UPDATE OF STATUS"},
+    {"name": "TRG_DEPARTMENT_AUDIT",     "on_table": "DEPARTMENTS",     "timing": "AFTER",  "event": "INSERT OR UPDATE OR DELETE"},
+    {"name": "TRG_EMP_BEFORE_INSERT",    "on_table": "EMPLOYEES",       "timing": "BEFORE", "event": "INSERT"},
+    {"name": "TRG_EMP_BEFORE_UPDATE",    "on_table": "EMPLOYEES",       "timing": "BEFORE", "event": "UPDATE"},
+    {"name": "TRG_EMP_INSTEAD_OF_DELETE","on_table": "EMPLOYEES",       "timing": "BEFORE", "event": "DELETE", "notes": "Blocks all deletes; forces termination process"}
+  ]
 }

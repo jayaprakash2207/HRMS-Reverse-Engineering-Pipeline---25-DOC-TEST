@@ -1,22 +1,24 @@
-=== FILE: ts-plsql-oracle-forms-hrms-main/plsql/packages/PKG_SECURITY.pks ===
+=== FILE: ts-plsql-oracle-forms-hrms/ts-plsql-oracle-forms-hrms-main/plsql/packages/PKG_SECURITY.pks ===
 
 **Package:** HRMS.PKG_SECURITY
 **Schema:** HRMS
-**Type:** Package Specification
+**Type:** Package Specification (header only; body not provided)
 
-**Purpose:** Authentication & Authorization — login, session management, role-based access, encryption.
+**Purpose:** Authentication, authorization, session management, role-based access, encryption.
 
 **Dependencies:**
 - PKG_COMMON (referenced in comments)
 - PKG_AUDIT (referenced in comments)
 
-**Called by:** HRMS_LOGIN form, all forms (session validation)
+**Called By:**
+- HRMS_LOGIN form
+- All forms (session validation)
 
 ---
 
-**Known Issues (documented in comments):**
+**Known Issues / Constraints (from inline comments):**
 - Password stored as MD5 hash (should be bcrypt/scrypt)
-- Session timeout check uses DB server time, not app server time
+- Session timeout check uses DB server time, not application server time
 - No account lockout after failed attempts
 - DBMS_CRYPTO key hard-coded in package body
 
@@ -24,55 +26,57 @@
 
 **Custom Exceptions:**
 
-| Exception Name         | Error Code | PRAGMA EXCEPTION_INIT |
-|------------------------|------------|-----------------------|
-| e_invalid_credentials  | -20301     | Yes                   |
-| e_account_locked       | -20302     | Yes                   |
-| e_session_expired      | -20303     | Yes                   |
-| e_insufficient_priv    | -20304     | Yes                   |
+| Exception Name          | Error Code | PRAGMA Init |
+|-------------------------|------------|-------------|
+| e_invalid_credentials   | -20301     | Yes         |
+| e_account_locked        | -20302     | Yes         |
+| e_session_expired       | -20303     | Yes         |
+| e_insufficient_priv     | -20304     | Yes         |
 
 ---
 
-**Function/Procedure Signatures:**
+**Functions and Procedures:**
 
 1. `FUNCTION authenticate(p_username IN VARCHAR2, p_password IN VARCHAR2, p_ip_address IN VARCHAR2 DEFAULT NULL) RETURN NUMBER`
-   - Returns: NUMBER (session ID or similar numeric token)
-   - p_ip_address is optional (DEFAULT NULL)
+   - Authenticates user by username/password; optionally records IP address; returns a session identifier (NUMBER)
 
 2. `PROCEDURE logout(p_session_id IN NUMBER)`
-   - Ends a session by session ID
+   - Terminates the session identified by p_session_id
 
 3. `FUNCTION is_session_valid(p_session_id IN NUMBER) RETURN BOOLEAN`
-   - Returns: BOOLEAN indicating session validity
+   - Returns TRUE if the given session is still active/not expired
 
 4. `FUNCTION has_permission(p_emp_id IN NUMBER, p_module IN VARCHAR2, p_action IN VARCHAR2 DEFAULT 'VIEW') RETURN BOOLEAN`
-   - Returns: BOOLEAN
-   - p_action defaults to 'VIEW'
+   - Returns TRUE if the employee has the requested permission on the given module
+   - Default action is 'VIEW'
 
 5. `FUNCTION encrypt_ssn(p_ssn IN VARCHAR2) RETURN VARCHAR2`
-   - Returns: encrypted SSN as VARCHAR2
+   - Encrypts a plain-text SSN; returns encrypted VARCHAR2
 
 6. `FUNCTION decrypt_ssn(p_encrypted IN VARCHAR2) RETURN VARCHAR2`
-   - Returns: plaintext SSN as VARCHAR2
+   - Decrypts an encrypted SSN; returns plain-text VARCHAR2
 
 7. `FUNCTION hash_password(p_password IN VARCHAR2) RETURN VARCHAR2`
-   - Returns: hashed password as VARCHAR2 (MD5 per known issues)
+   - Returns a hash (MD5 per known issue) of the plain-text password
 
 8. `PROCEDURE change_password(p_emp_id IN NUMBER, p_old_password IN VARCHAR2, p_new_password IN VARCHAR2)`
-   - Changes password; validates old password before setting new
+   - Changes the employee's password after verifying the old password
 
 ---
 
-**External Services / Built-in Packages Referenced (in body, noted in spec):**
-- DBMS_CRYPTO (key hard-coded in body per known issues)
+**External Packages Referenced:**
+- DBMS_CRYPTO (body; key hard-coded)
 
 ---
 
-=== FILE: ts-plsql-oracle-forms-hrms-main/plsql/packages/PKG_VALIDATION.pkb ===
+=== FILE: ts-plsql-oracle-forms-hrms/ts-plsql-oracle-forms-hrms-main/plsql/packages/PKG_VALIDATION.pkb ===
 
 **Package:** HRMS.PKG_VALIDATION
-**Schema:** HRMS
 **Type:** Package Body
+
+**Dependencies:**
+- PKG_COMMON (called for email/phone validation)
+- Tables: JOB_GRADES, EMPLOYEES, HOLIDAYS
 
 ---
 
@@ -80,8 +84,11 @@
 ```
 FUNCTION validate_date_range(p_start_date IN DATE, p_end_date IN DATE) RETURN BOOLEAN
 ```
-- **Logic:** Returns FALSE if either p_start_date or p_end_date IS NULL. Returns TRUE if p_end_date >= p_start_date; otherwise FALSE (implied by the >= check returning a boolean).
-- **Business Rule:** End date must be >= start date. Both dates are required (NULL → FALSE).
+Logic:
+- IF p_start_date IS NULL OR p_end_date IS NULL → RETURN FALSE
+- RETURN p_end_date >= p_start_date
+
+Business Rule: Both dates required; end date must be on or after start date.
 
 ---
 
@@ -89,16 +96,19 @@ FUNCTION validate_date_range(p_start_date IN DATE, p_end_date IN DATE) RETURN BO
 ```
 FUNCTION validate_salary_for_grade(p_salary IN NUMBER, p_grade_id IN NUMBER) RETURN VARCHAR2
 ```
-- **Returns:** NULL if valid; error message string if invalid.
-- **Logic:**
-  - If p_salary IS NULL OR p_grade_id IS NULL → returns `'Salary and grade are required'`
-  - Queries table JOB_GRADES WHERE GRADE_ID = p_grade_id; selects MIN_SALARY, MAX_SALARY, GRADE_NAME into local variables v_min, v_max, v_grade_name.
-  - If p_salary < v_min → returns `'Salary ' || TO_CHAR(p_salary, 'FM$999,999,990.00') || ' is below minimum for grade ' || v_grade_name || ' (' || TO_CHAR(v_min, 'FM$999,999,990.00') || ')'`
-  - If p_salary > v_max → returns `'Salary ' || TO_CHAR(p_salary, 'FM$999,999,990.00') || ' exceeds maximum for grade ' || v_grade_name || ' (' || TO_CHAR(v_max, 'FM$999,999,990.00') || ')'`
-  - If within range → returns NULL (valid)
-  - EXCEPTION WHEN NO_DATA_FOUND → returns `'Invalid grade ID: ' || p_grade_id`
-- **Tables Referenced:** JOB_GRADES (columns: GRADE_ID, MIN_SALARY, MAX_SALARY, GRADE_NAME)
-- **Number Format Mask:** `'FM$999,999,990.00'` (used for both salary and grade bounds in messages)
+Logic:
+- IF p_salary IS NULL OR p_grade_id IS NULL → RETURN 'Salary and grade are required'
+- SELECT MIN_SALARY, MAX_SALARY, GRADE_NAME FROM JOB_GRADES WHERE GRADE_ID = p_grade_id
+- IF p_salary < v_min → RETURN 'Salary ' || formatted_salary || ' is below minimum for grade ' || v_grade_name || ' (' || formatted_min || ')'
+- ELSIF p_salary > v_max → RETURN 'Salary ' || formatted_salary || ' exceeds maximum for grade ' || v_grade_name || ' (' || formatted_max || ')'
+- RETURN NULL (valid)
+- EXCEPTION WHEN NO_DATA_FOUND → RETURN 'Invalid grade ID: ' || p_grade_id
+
+Number format mask used: `'FM$999,999,990.00'`
+
+Tables accessed: JOB_GRADES (columns: MIN_SALARY, MAX_SALARY, GRADE_NAME, GRADE_ID)
+
+Business Rule: Salary must be within the min/max band defined in JOB_GRADES for the given grade.
 
 ---
 
@@ -106,8 +116,7 @@ FUNCTION validate_salary_for_grade(p_salary IN NUMBER, p_grade_id IN NUMBER) RET
 ```
 FUNCTION validate_email_format(p_email IN VARCHAR2) RETURN BOOLEAN
 ```
-- **Logic:** Delegates entirely to `PKG_COMMON.is_valid_email(p_email)`; returns its result.
-- **Dependency:** PKG_COMMON.is_valid_email
+Logic: Delegates entirely to PKG_COMMON.is_valid_email(p_email)
 
 ---
 
@@ -115,8 +124,7 @@ FUNCTION validate_email_format(p_email IN VARCHAR2) RETURN BOOLEAN
 ```
 FUNCTION validate_phone_format(p_phone IN VARCHAR2) RETURN BOOLEAN
 ```
-- **Logic:** Delegates entirely to `PKG_COMMON.is_valid_phone(p_phone)`; returns its result.
-- **Dependency:** PKG_COMMON.is_valid_phone
+Logic: Delegates entirely to PKG_COMMON.is_valid_phone(p_phone)
 
 ---
 
@@ -124,8 +132,9 @@ FUNCTION validate_phone_format(p_phone IN VARCHAR2) RETURN BOOLEAN
 ```
 FUNCTION validate_emp_number_format(p_emp_number IN VARCHAR2) RETURN BOOLEAN
 ```
-- **Logic:** Returns `REGEXP_LIKE(p_emp_number, '^EMP-\d{6}$')`
-- **Business Rule / Format Constraint:** Employee number must match the pattern `EMP-` followed by exactly 6 digits. Example valid: `EMP-001234`.
+Logic: RETURN REGEXP_LIKE(p_emp_number, '^EMP-\d{6}$')
+
+Business Rule: Employee number must exactly match the pattern `EMP-` followed by exactly 6 digits. Example valid value: `EMP-001234`.
 
 ---
 
@@ -133,8 +142,9 @@ FUNCTION validate_emp_number_format(p_emp_number IN VARCHAR2) RETURN BOOLEAN
 ```
 FUNCTION is_future_date(p_date IN DATE) RETURN BOOLEAN
 ```
-- **Logic:** Returns `TRUNC(p_date) > TRUNC(SYSDATE)`
-- **Business Rule:** A date is considered "future" only if its truncated (date-only) value is strictly greater than today's truncated date. Same-day is NOT considered future.
+Logic: RETURN TRUNC(p_date) > TRUNC(SYSDATE)
+
+Business Rule: A date is "future" only if its truncated (time-stripped) value is strictly greater than today.
 
 ---
 
@@ -142,16 +152,18 @@ FUNCTION is_future_date(p_date IN DATE) RETURN BOOLEAN
 ```
 FUNCTION is_business_day(p_date IN DATE, p_location_code IN VARCHAR2 DEFAULT NULL) RETURN BOOLEAN
 ```
-- **Logic:**
-  1. v_day := TO_CHAR(p_date, 'DY', 'NLS_DATE_LANGUAGE=AMERICAN')
-  2. If v_day IN ('SAT', 'SUN') → RETURN FALSE
-  3. SELECT COUNT(*) INTO v_holiday_count FROM HOLIDAYS WHERE HOLIDAY_DATE = TRUNC(p_date) AND ACTIVE_FLAG = 'Y' AND (LOCATION_CODE IS NULL OR LOCATION_CODE = p_location_code)
-  4. RETURN v_holiday_count = 0 (TRUE if no holiday found, FALSE if holiday exists)
-- **Business Rules:**
-  - Saturday and Sunday are never business days.
-  - Any date matching an active holiday record (global or matching location) is not a business day.
-  - p_location_code = NULL matches global holidays only; a supplied code matches global AND location-specific holidays.
-- **Tables Referenced:** HOLIDAYS (columns: HOLIDAY_DATE, ACTIVE_FLAG, LOCATION_CODE)
+Logic:
+1. v_day := TO_CHAR(p_date, 'DY', 'NLS_DATE_LANGUAGE=AMERICAN')
+2. IF v_day IN ('SAT', 'SUN') → RETURN FALSE
+3. SELECT COUNT(*) FROM HOLIDAYS WHERE HOLIDAY_DATE = TRUNC(p_date) AND ACTIVE_FLAG = 'Y' AND (LOCATION_CODE IS NULL OR LOCATION_CODE = p_location_code)
+4. RETURN v_holiday_count = 0
+
+Tables accessed: HOLIDAYS (columns: HOLIDAY_DATE, ACTIVE_FLAG, LOCATION_CODE)
+
+Business Rules:
+- Saturday and Sunday are never business days.
+- Any active holiday matching the date (either global or matching the provided location code) is not a business day.
+- Location-specific holidays override nothing — both global (LOCATION_CODE IS NULL) and location-specific holidays are checked.
 
 ---
 
@@ -159,41 +171,40 @@ FUNCTION is_business_day(p_date IN DATE, p_location_code IN VARCHAR2 DEFAULT NUL
 ```
 FUNCTION validate_required_fields(p_table_name IN VARCHAR2, p_record_id IN NUMBER) RETURN VARCHAR2
 ```
-- **Returns:** NULL if all required fields are populated; error message string if not; `'Record not found'` if the record does not exist.
-- **Logic (only for p_table_name = 'EMPLOYEES'):**
-  - SELECTs * INTO v_rec (EMPLOYEES%ROWTYPE) FROM EMPLOYEES WHERE EMP_ID = p_record_id
-  - Checks in order:
-    - IF v_rec.FIRST_NAME IS NULL → RETURN `'First Name is required'`
-    - IF v_rec.LAST_NAME IS NULL → RETURN `'Last Name is required'`
-    - IF v_rec.HIRE_DATE IS NULL → RETURN `'Hire Date is required'`
-    - IF v_rec.DEPT_ID IS NULL → RETURN `'Department is required'`
-    - IF v_rec.JOB_ID IS NULL → RETURN `'Job Title is required'`
-  - EXCEPTION WHEN NO_DATA_FOUND → RETURN `'Record not found'`
-- **Note:** Comment states this is simplified; in production would use data dictionary to check NOT NULL columns. Only 'EMPLOYEES' table is handled; other table names fall through to RETURN NULL.
-- **Tables Referenced:** EMPLOYEES (columns: FIRST_NAME, LAST_NAME, HIRE_DATE, DEPT_ID, JOB_ID)
-- **Required Fields for EMPLOYEES:** FIRST_NAME, LAST_NAME, HIRE_DATE, DEPT_ID, JOB_ID
+Logic (for p_table_name = 'EMPLOYEES'):
+- SELECT * FROM EMPLOYEES WHERE EMP_ID = p_record_id into v_rec
+- IF v_rec.FIRST_NAME IS NULL → RETURN 'First Name is required'
+- IF v_rec.LAST_NAME IS NULL → RETURN 'Last Name is required'
+- IF v_rec.HIRE_DATE IS NULL → RETURN 'Hire Date is required'
+- IF v_rec.DEPT_ID IS NULL → RETURN 'Department is required'
+- IF v_rec.JOB_ID IS NULL → RETURN 'Job Title is required'
+- EXCEPTION WHEN NO_DATA_FOUND → RETURN 'Record not found'
+- RETURN NULL (all required fields populated)
+
+Comment: "Simplified validation — in production would use data dictionary to check NOT NULL columns"
+Only the EMPLOYEES table case is currently implemented.
+
+Tables accessed: EMPLOYEES (columns: EMP_ID, FIRST_NAME, LAST_NAME, HIRE_DATE, DEPT_ID, JOB_ID)
+
+Business Rules for EMPLOYEES required fields: FIRST_NAME, LAST_NAME, HIRE_DATE, DEPT_ID, JOB_ID are all mandatory.
 
 ---
 
-=== FILE: ts-plsql-oracle-forms-hrms-main/plsql/packages/PKG_VALIDATION.pks ===
+=== FILE: ts-plsql-oracle-forms-hrms/ts-plsql-oracle-forms-hrms-main/plsql/packages/PKG_VALIDATION.pks ===
 
 **Package:** HRMS.PKG_VALIDATION
-**Schema:** HRMS
 **Type:** Package Specification
 
-**Purpose:** Centralized validation shared between Forms triggers and PL/SQL packages.
-
 **Dependencies:** PKG_COMMON
-**Called by:** All forms (WHEN-VALIDATE-ITEM triggers), PKG_EMPLOYEE, PKG_PAYROLL
 
----
+**Called By:** All forms (WHEN-VALIDATE-ITEM triggers), PKG_EMPLOYEE, PKG_PAYROLL
 
-**Public Function/Procedure Signatures:**
+**Functions Declared:**
 
 1. `FUNCTION validate_date_range(p_start_date IN DATE, p_end_date IN DATE) RETURN BOOLEAN`
 
 2. `FUNCTION validate_salary_for_grade(p_salary IN NUMBER, p_grade_id IN NUMBER) RETURN VARCHAR2`
-   - Comment: Returns NULL if valid, error message if invalid
+   - Returns NULL if valid; error message string if invalid
 
 3. `FUNCTION validate_email_format(p_email IN VARCHAR2) RETURN BOOLEAN`
 
@@ -206,324 +217,329 @@ FUNCTION validate_required_fields(p_table_name IN VARCHAR2, p_record_id IN NUMBE
 7. `FUNCTION is_business_day(p_date IN DATE, p_location_code IN VARCHAR2 DEFAULT NULL) RETURN BOOLEAN`
 
 8. `FUNCTION validate_required_fields(p_table_name IN VARCHAR2, p_record_id IN NUMBER) RETURN VARCHAR2`
-   - Comment: Returns NULL if all required fields populated
+   - Returns NULL if all required fields populated; error message otherwise
 
 ---
 
-=== FILE: ts-plsql-oracle-forms-hrms-main/plsql/triggers/trg_audit.sql ===
+=== FILE: ts-plsql-oracle-forms-hrms/ts-plsql-oracle-forms-hrms-main/plsql/triggers/trg_audit.sql ===
 
-**Schema:** HRMS
-**Type:** Database Triggers (3 triggers)
+**File Type:** Database Triggers (3 triggers)
 
 ---
 
-**Trigger 1: TRG_SALARY_AUDIT**
+**Trigger: TRG_SALARY_AUDIT**
+```
+CREATE OR REPLACE TRIGGER HRMS.TRG_SALARY_AUDIT
+AFTER INSERT OR UPDATE OR DELETE ON HRMS.SALARY_RECORDS
+FOR EACH ROW
+```
+Firing: After INSERT, UPDATE, or DELETE on HRMS.SALARY_RECORDS, for each row.
 
-- **Table:** HRMS.SALARY_RECORDS
-- **Timing/Event:** AFTER INSERT OR UPDATE OR DELETE
-- **For Each Row:** Yes
-- **Purpose:** Tracks all salary record changes for compliance.
-
-**Logic:**
-- Declares: v_action VARCHAR2(10), v_old_json CLOB, v_new_json CLOB
-- IF INSERTING:
+Logic:
+- INSERTING:
   - v_action := 'INSERT'
-  - v_new_json := `'{"emp_id":' || :NEW.EMP_ID || ',"salary":' || :NEW.BASE_SALARY || ',"effective":"' || TO_CHAR(:NEW.EFFECTIVE_DATE, 'YYYY-MM-DD') || '"}'`
-- ELSIF UPDATING:
+  - v_new_json := `{"emp_id":<:NEW.EMP_ID>,"salary":<:NEW.BASE_SALARY>,"effective":"<:NEW.EFFECTIVE_DATE YYYY-MM-DD>"}`
+- UPDATING:
   - v_action := 'UPDATE'
-  - v_old_json := `'{"salary":' || :OLD.BASE_SALARY || ',"active":"' || :OLD.ACTIVE_FLAG || '"}'`
-  - v_new_json := `'{"salary":' || :NEW.BASE_SALARY || ',"active":"' || :NEW.ACTIVE_FLAG || '"}'`
-- ELSIF DELETING:
+  - v_old_json := `{"salary":<:OLD.BASE_SALARY>,"active":"<:OLD.ACTIVE_FLAG>"}`
+  - v_new_json := `{"salary":<:NEW.BASE_SALARY>,"active":"<:NEW.ACTIVE_FLAG>"}`
+- DELETING:
   - v_action := 'DELETE'
-  - v_old_json := `'{"emp_id":' || :OLD.EMP_ID || ',"salary":' || :OLD.BASE_SALARY || '}'`
-- Calls: `PKG_AUDIT.log_action('SALARY_RECORDS', NVL(:NEW.SALARY_ID, :OLD.SALARY_ID), v_action, NVL(:NEW.MODIFIED_BY, USER), v_old_json, v_new_json)`
-- **Columns Referenced (SALARY_RECORDS):** EMP_ID, BASE_SALARY, EFFECTIVE_DATE, ACTIVE_FLAG, SALARY_ID, MODIFIED_BY
-- **Date Format Used:** 'YYYY-MM-DD'
-- **Dependencies:** PKG_AUDIT.log_action
+  - v_old_json := `{"emp_id":<:OLD.EMP_ID>,"salary":<:OLD.BASE_SALARY>}`
+- Calls: PKG_AUDIT.log_action('SALARY_RECORDS', NVL(:NEW.SALARY_ID, :OLD.SALARY_ID), v_action, NVL(:NEW.MODIFIED_BY, USER), v_old_json, v_new_json)
+
+Tables: HRMS.SALARY_RECORDS (columns referenced: EMP_ID, SALARY_ID, BASE_SALARY, EFFECTIVE_DATE, ACTIVE_FLAG, MODIFIED_BY)
+
+External Package Called: PKG_AUDIT.log_action
+
+Business Rule: All salary record changes (insert, update, delete) are captured in JSON format for compliance audit trail.
 
 ---
 
-**Trigger 2: TRG_LEAVE_REQUEST_AUDIT**
+**Trigger: TRG_LEAVE_REQUEST_AUDIT**
+```
+CREATE OR REPLACE TRIGGER HRMS.TRG_LEAVE_REQUEST_AUDIT
+AFTER UPDATE OF STATUS ON HRMS.LEAVE_REQUESTS
+FOR EACH ROW
+```
+Firing: After UPDATE of STATUS column only on HRMS.LEAVE_REQUESTS, for each row.
 
-- **Table:** HRMS.LEAVE_REQUESTS
-- **Timing/Event:** AFTER UPDATE OF STATUS
-- **For Each Row:** Yes
-- **Purpose:** Tracks leave request status changes only.
+Logic:
+- Calls PKG_AUDIT.log_action('LEAVE_REQUESTS', :NEW.REQUEST_ID, 'STATUS_CHANGE', NVL(:NEW.MODIFIED_BY, USER), '{"status":"<:OLD.STATUS>"}', '{"status":"<:NEW.STATUS>"}')
 
-**Logic:**
-- Calls: `PKG_AUDIT.log_action('LEAVE_REQUESTS', :NEW.REQUEST_ID, 'STATUS_CHANGE', NVL(:NEW.MODIFIED_BY, USER), '{"status":"' || :OLD.STATUS || '"}', '{"status":"' || :NEW.STATUS || '"}')`
-- **Columns Referenced (LEAVE_REQUESTS):** REQUEST_ID, MODIFIED_BY, STATUS
-- **Action Type Logged:** 'STATUS_CHANGE' (hardcoded)
-- **Dependencies:** PKG_AUDIT.log_action
+Tables: HRMS.LEAVE_REQUESTS (columns: REQUEST_ID, STATUS, MODIFIED_BY)
 
----
+External Package Called: PKG_AUDIT.log_action
 
-**Trigger 3: TRG_DEPARTMENT_AUDIT**
-
-- **Table:** HRMS.DEPARTMENTS
-- **Timing/Event:** AFTER INSERT OR UPDATE OR DELETE
-- **For Each Row:** Yes
-- **Purpose:** Tracks department structure changes.
-
-**Logic:**
-- Declares: v_action VARCHAR2(10)
-- IF INSERTING: v_action := 'INSERT'
-- ELSIF UPDATING: v_action := 'UPDATE'
-- ELSIF DELETING: v_action := 'DELETE'
-- Calls: `PKG_AUDIT.log_action('DEPARTMENTS', NVL(:NEW.DEPT_ID, :OLD.DEPT_ID), v_action, USER)`
-- Note: No old/new JSON passed (4-argument form of PKG_AUDIT.log_action).
-- **Columns Referenced (DEPARTMENTS):** DEPT_ID
-- **Dependencies:** PKG_AUDIT.log_action
+Business Rule: All leave request status changes are audited.
 
 ---
 
-=== FILE: ts-plsql-oracle-forms-hrms-main/plsql/triggers/trg_employees.sql ===
+**Trigger: TRG_DEPARTMENT_AUDIT**
+```
+CREATE OR REPLACE TRIGGER HRMS.TRG_DEPARTMENT_AUDIT
+AFTER INSERT OR UPDATE OR DELETE ON HRMS.DEPARTMENTS
+FOR EACH ROW
+```
+Firing: After INSERT, UPDATE, or DELETE on HRMS.DEPARTMENTS, for each row.
 
-**Schema:** HRMS
-**Type:** Database Triggers (3 triggers on HRMS.EMPLOYEES)
+Logic:
+- INSERTING → v_action := 'INSERT'
+- UPDATING → v_action := 'UPDATE'
+- DELETING → v_action := 'DELETE'
+- Calls PKG_AUDIT.log_action('DEPARTMENTS', NVL(:NEW.DEPT_ID, :OLD.DEPT_ID), v_action, USER)
+  - Note: no old/new JSON values passed; only USER (not MODIFIED_BY) is used as the changed_by
 
-**Note (documented in file):** Business logic is duplicated between these triggers and PKG_EMPLOYEE and Forms triggers — described as a common anti-pattern in legacy Oracle Forms applications.
+Tables: HRMS.DEPARTMENTS (columns: DEPT_ID)
+
+External Package Called: PKG_AUDIT.log_action
+
+Business Rule: All department structure changes are audited.
 
 ---
 
-**Trigger 1: TRG_EMP_BEFORE_INSERT**
+=== FILE: ts-plsql-oracle-forms-hrms/ts-plsql-oracle-forms-hrms-main/plsql/triggers/trg_employees.sql ===
 
-- **Table:** HRMS.EMPLOYEES
-- **Timing/Event:** BEFORE INSERT
-- **For Each Row:** Yes
-- **Purpose:** Sets audit columns and validates required fields before insert.
+**File Type:** Database Triggers (3 triggers on HRMS.EMPLOYEES)
 
-**Logic:**
+**Comment:** Logic here duplicates PKG_EMPLOYEE and Forms triggers — noted as a common anti-pattern in legacy Oracle Forms applications.
+
+---
+
+**Trigger: TRG_EMP_BEFORE_INSERT**
+```
+CREATE OR REPLACE TRIGGER HRMS.TRG_EMP_BEFORE_INSERT
+BEFORE INSERT ON HRMS.EMPLOYEES
+FOR EACH ROW
+```
+Firing: Before each INSERT on HRMS.EMPLOYEES.
+
+Logic:
 1. IF :NEW.CREATED_BY IS NULL → :NEW.CREATED_BY := USER
 2. IF :NEW.CREATED_DATE IS NULL → :NEW.CREATED_DATE := SYSDATE
 3. IF :NEW.ACTIVE_FLAG IS NULL → :NEW.ACTIVE_FLAG := 'Y'
 4. IF :NEW.EMPLOYMENT_STATUS IS NULL → :NEW.EMPLOYMENT_STATUS := 'ACTIVE'
-5. Hire date future limit check:
-   - IF :NEW.HIRE_DATE > SYSDATE + **180** → RAISE_APPLICATION_ERROR(-20501, `'Hire date cannot be more than 180 days in the future'`)
-   - **Business Rule:** Hire date cannot be more than 180 days in the future.
-6. Email uniqueness check (inline DECLARE block):
-   - SELECT COUNT(*) INTO v_count FROM EMPLOYEES WHERE UPPER(EMAIL) = UPPER(:NEW.EMAIL) AND ACTIVE_FLAG = 'Y'
-   - IF v_count > 0 → RAISE_APPLICATION_ERROR(-20502, `'Email address already in use: ' || :NEW.EMAIL`)
-   - **Business Rule:** Email must be unique among active employees (case-insensitive comparison).
-   - Note: Also enforced by unique constraint, but trigger provides a better error message.
+5. IF :NEW.HIRE_DATE > SYSDATE + 180 → RAISE_APPLICATION_ERROR(-20501, 'Hire date cannot be more than 180 days in the future')
+6. Uniqueness check:
+   - SELECT COUNT(*) FROM EMPLOYEES WHERE UPPER(EMAIL) = UPPER(:NEW.EMAIL) AND ACTIVE_FLAG = 'Y'
+   - IF v_count > 0 → RAISE_APPLICATION_ERROR(-20502, 'Email address already in use: ' || :NEW.EMAIL)
 
-**Columns Set/Validated:** CREATED_BY, CREATED_DATE, ACTIVE_FLAG, EMPLOYMENT_STATUS, HIRE_DATE, EMAIL
+Business Rules:
+- CREATED_BY defaults to current DB user (USER).
+- CREATED_DATE defaults to SYSDATE.
+- ACTIVE_FLAG defaults to 'Y'.
+- EMPLOYMENT_STATUS defaults to 'ACTIVE'.
+- Hire date may not be more than **180 days** in the future (error code -20501).
+- Email address must be unique among active employees (case-insensitive; error code -20502). Note: also enforced by a UNIQUE constraint, but trigger gives a better message.
 
-**Error Codes:**
-- -20501: Hire date more than 180 days in the future
-- -20502: Email address already in use
+Tables accessed: HRMS.EMPLOYEES (SELECT for email uniqueness check; columns: EMAIL, ACTIVE_FLAG)
+
+Custom Exceptions:
+| Code   | Message                                                              |
+|--------|----------------------------------------------------------------------|
+| -20501 | Hire date cannot be more than 180 days in the future                |
+| -20502 | Email address already in use: \<email\>                             |
 
 ---
 
-**Trigger 2: TRG_EMP_BEFORE_UPDATE**
+**Trigger: TRG_EMP_BEFORE_UPDATE**
+```
+CREATE OR REPLACE TRIGGER HRMS.TRG_EMP_BEFORE_UPDATE
+BEFORE UPDATE ON HRMS.EMPLOYEES
+FOR EACH ROW
+```
+Firing: Before each UPDATE on HRMS.EMPLOYEES.
 
-- **Table:** HRMS.EMPLOYEES
-- **Timing/Event:** BEFORE UPDATE
-- **For Each Row:** Yes
-- **Purpose:** Sets modification audit columns and validates state transitions; logs history.
-
-**Logic:**
+Logic:
 1. :NEW.MODIFIED_BY := NVL(:NEW.MODIFIED_BY, USER)
 2. :NEW.MODIFIED_DATE := SYSDATE
-3. **Reactivation prevention:**
-   - IF :OLD.EMPLOYMENT_STATUS = 'TERMINATED' AND :NEW.EMPLOYMENT_STATUS = 'ACTIVE' → RAISE_APPLICATION_ERROR(-20503, `'Cannot directly reactivate a terminated employee. Use the rehire process.'`)
-   - **Business Rule:** Terminated employees cannot be directly reactivated via UPDATE; must use PKG_EMPLOYEE.rehire_employee.
-4. **Status change history logging:**
-   - IF :OLD.EMPLOYMENT_STATUS != :NEW.EMPLOYMENT_STATUS → INSERT INTO EMPLOYEE_HISTORY:
-     - HISTORY_ID = SEQ_EMP_HISTORY.NEXTVAL
-     - EMP_ID = :NEW.EMP_ID
-     - CHANGE_TYPE = 'STATUS_CHANGE'
-     - CHANGE_DATE = SYSDATE
-     - OLD_VALUE = :OLD.EMPLOYMENT_STATUS
-     - NEW_VALUE = :NEW.EMPLOYMENT_STATUS
-     - CHANGED_BY = NVL(:NEW.MODIFIED_BY, USER)
-     - CHANGE_REASON = `'Triggered by status update'`
-5. **Department transfer history logging:**
-   - IF NVL(:OLD.DEPT_ID, -1) != NVL(:NEW.DEPT_ID, -1) → INSERT INTO EMPLOYEE_HISTORY:
-     - HISTORY_ID = SEQ_EMP_HISTORY.NEXTVAL
-     - EMP_ID = :NEW.EMP_ID
-     - CHANGE_TYPE = 'DEPARTMENT_CHANGE'
-     - CHANGE_DATE = SYSDATE
-     - OLD_VALUE = TO_CHAR(:OLD.DEPT_ID)
-     - NEW_VALUE = TO_CHAR(:NEW.DEPT_ID)
-     - CHANGED_BY = NVL(:NEW.MODIFIED_BY, USER)
-     - CHANGE_REASON = `'Department transfer'`
-6. **Job change history logging:**
-   - IF NVL(:OLD.JOB_ID, -1) != NVL(:NEW.JOB_ID, -1) → INSERT INTO EMPLOYEE_HISTORY:
-     - HISTORY_ID = SEQ_EMP_HISTORY.NEXTVAL
-     - EMP_ID = :NEW.EMP_ID
-     - CHANGE_TYPE = 'JOB_CHANGE'
-     - CHANGE_DATE = SYSDATE
-     - OLD_VALUE = TO_CHAR(:OLD.JOB_ID)
-     - NEW_VALUE = TO_CHAR(:NEW.JOB_ID)
-     - CHANGED_BY = NVL(:NEW.MODIFIED_BY, USER)
-     - CHANGE_REASON = `'Job title change'`
+3. IF :OLD.EMPLOYMENT_STATUS = 'TERMINATED' AND :NEW.EMPLOYMENT_STATUS = 'ACTIVE' →
+   RAISE_APPLICATION_ERROR(-20503, 'Cannot directly reactivate a terminated employee. Use the rehire process.')
+4. IF :OLD.EMPLOYMENT_STATUS != :NEW.EMPLOYMENT_STATUS →
+   INSERT INTO EMPLOYEE_HISTORY (HISTORY_ID, EMP_ID, CHANGE_TYPE, CHANGE_DATE, OLD_VALUE, NEW_VALUE, CHANGED_BY, CHANGE_REASON)
+   VALUES (SEQ_EMP_HISTORY.NEXTVAL, :NEW.EMP_ID, 'STATUS_CHANGE', SYSDATE, :OLD.EMPLOYMENT_STATUS, :NEW.EMPLOYMENT_STATUS, NVL(:NEW.MODIFIED_BY, USER), 'Triggered by status update')
+5. IF NVL(:OLD.DEPT_ID, -1) != NVL(:NEW.DEPT_ID, -1) →
+   INSERT INTO EMPLOYEE_HISTORY (HISTORY_ID, EMP_ID, CHANGE_TYPE, CHANGE_DATE, OLD_VALUE, NEW_VALUE, CHANGED_BY, CHANGE_REASON)
+   VALUES (SEQ_EMP_HISTORY.NEXTVAL, :NEW.EMP_ID, 'DEPARTMENT_CHANGE', SYSDATE, TO_CHAR(:OLD.DEPT_ID), TO_CHAR(:NEW.DEPT_ID), NVL(:NEW.MODIFIED_BY, USER), 'Department transfer')
+6. IF NVL(:OLD.JOB_ID, -1) != NVL(:NEW.JOB_ID, -1) →
+   INSERT INTO EMPLOYEE_HISTORY (HISTORY_ID, EMP_ID, CHANGE_TYPE, CHANGE_DATE, OLD_VALUE, NEW_VALUE, CHANGED_BY, CHANGE_REASON)
+   VALUES (SEQ_EMP_HISTORY.NEXTVAL, :NEW.EMP_ID, 'JOB_CHANGE', SYSDATE, TO_CHAR(:OLD.JOB_ID), TO_CHAR(:NEW.JOB_ID), NVL(:NEW.MODIFIED_BY, USER), 'Job title change')
 
-**Null sentinel for change detection:** -1 (used for DEPT_ID and JOB_ID NULL comparison via NVL)
+Business Rules:
+- MODIFIED_BY and MODIFIED_DATE are auto-stamped on every update.
+- Direct reactivation of a TERMINATED employee to ACTIVE via UPDATE is blocked (error -20503); must use rehire process.
+- Any change to EMPLOYMENT_STATUS writes a 'STATUS_CHANGE' history record to EMPLOYEE_HISTORY.
+- Any change to DEPT_ID writes a 'DEPARTMENT_CHANGE' history record to EMPLOYEE_HISTORY.
+- Any change to JOB_ID writes a 'JOB_CHANGE' history record to EMPLOYEE_HISTORY.
+- NULL DEPT_ID and NULL JOB_ID are compared using sentinel value -1 (i.e., NVL(col, -1)) to treat NULL→NULL as no change.
 
-**Sequences Used:** SEQ_EMP_HISTORY.NEXTVAL
+Tables accessed / written:
+- HRMS.EMPLOYEES (read :OLD/:NEW values)
+- HRMS.EMPLOYEE_HISTORY (INSERT; columns: HISTORY_ID, EMP_ID, CHANGE_TYPE, CHANGE_DATE, OLD_VALUE, NEW_VALUE, CHANGED_BY, CHANGE_REASON)
 
-**Tables Written:** EMPLOYEE_HISTORY (columns: HISTORY_ID, EMP_ID, CHANGE_TYPE, CHANGE_DATE, OLD_VALUE, NEW_VALUE, CHANGED_BY, CHANGE_REASON)
+Sequences used: SEQ_EMP_HISTORY.NEXTVAL
 
-**Error Codes:**
-- -20503: Direct reactivation of terminated employee attempted
+Custom Exceptions:
+| Code   | Message                                                                                      |
+|--------|----------------------------------------------------------------------------------------------|
+| -20503 | Cannot directly reactivate a terminated employee. Use the rehire process.                   |
 
 ---
 
-**Trigger 3: TRG_EMP_INSTEAD_OF_DELETE (named "TRG_EMP_BEFORE_DELETE" in comment but BEFORE DELETE in DDL)**
+**Trigger: TRG_EMP_INSTEAD_OF_DELETE (named TRG_EMP_BEFORE_DELETE in comments)**
+```
+CREATE OR REPLACE TRIGGER HRMS.TRG_EMP_INSTEAD_OF_DELETE
+BEFORE DELETE ON HRMS.EMPLOYEES
+FOR EACH ROW
+```
+Firing: Before each DELETE on HRMS.EMPLOYEES.
 
-- **Table:** HRMS.EMPLOYEES
-- **Timing/Event:** BEFORE DELETE (named TRG_EMP_INSTEAD_OF_DELETE)
-- **For Each Row:** Yes
-- **Purpose:** Prevents direct deletion; enforces soft-delete pattern.
+Logic:
+- Unconditionally: RAISE_APPLICATION_ERROR(-20504, 'Direct deletion not allowed. Use termination process or set ACTIVE_FLAG to N.')
 
-**Logic:**
-- Unconditionally raises: RAISE_APPLICATION_ERROR(-20504, `'Direct deletion not allowed. Use termination process or set ACTIVE_FLAG to N.'`)
+Business Rule: Direct physical deletion of EMPLOYEES rows is prohibited; all "deletes" must go through the termination process or set ACTIVE_FLAG = 'N' (soft delete pattern).
 
-**Known Bug (documented):** Trigger prevents deletion entirely. Forms expects DELETE to succeed. Workaround in Forms: set ACTIVE_FLAG = 'N' then CLEAR_RECORD instead of DELETE_RECORD.
+Known Bug (from inline comment): Trigger is declared as BEFORE DELETE (not INSTEAD OF), which prevents any DELETEs; Oracle Forms workaround is to set ACTIVE_FLAG = 'N' then CLEAR_RECORD instead of DELETE_RECORD.
 
-**Error Codes:**
-- -20504: Direct deletion not allowed
-
----
-
-=== FILE: ts-plsql-oracle-forms-hrms-main/README.md ===
-
-**Application:** HRMS — HR Management System
-**Technology:** Oracle Forms 12c, Oracle Database 19c, Oracle WebLogic 12c
-
-**History:**
-- Originally built: Oracle Forms 6i, circa 2002
-- Upgraded to: Forms 11g, 2012
-- Current: Forms 12c with Oracle Database 19c
-
-**Scale:** ~200 concurrent users, 3 regional offices
+Custom Exceptions:
+| Code   | Message                                                                          |
+|--------|----------------------------------------------------------------------------------|
+| -20504 | Direct deletion not allowed. Use termination process or set ACTIVE_FLAG to N.  |
 
 ---
 
-**Architecture Layers:**
+=== FILE: ts-plsql-oracle-forms-hrms/ts-plsql-oracle-forms-hrms-main/README.md ===
+
+**Application Name:** HR Management System (HRMS)
+**Platform:** Oracle Forms 12c / Oracle WebLogic 12c / Oracle Database 19c
+**Schema:** HRMS
+**Concurrent Users:** approximately 200 across 3 regional offices
+
+**Module List:**
+- Employee Records — hire, transfer, terminate, personal details, job history
+- Department & Organization — department hierarchy, cost centers, reporting lines
+- Payroll Processing — salary calculations, deductions, tax withholding, pay runs
+- Leave Management — leave requests, approvals, balance tracking, accrual rules
+- Performance Reviews — annual review cycles, ratings, goal tracking
+- Reporting — headcount, compensation analysis, turnover, compliance
+
+**Version History:**
+- Originally Oracle Forms 6i, circa 2002
+- Upgraded to Forms 11g in 2012
+- Currently Forms 12c on Oracle Database 19c
+
+**Architecture (from diagram):**
 - Oracle Forms 12c Application Server
 - Oracle WebLogic 12c Server
-- Forms Modules (.fmb/.fmx): 18 forms
-- PL/SQL Packages & Procedures: 12 packages
-- Oracle Reports (.rdf/.rep): 8 reports
+- Three artifact layers: Forms Modules (.fmb/.fmx) — 18 forms; PL/SQL Packages & Procedures — 12 packages; Oracle Reports (.rdf/.rep) — 8 reports
 - Oracle Database 19c (HRMS schema): 42 tables, 15 views, 200+ triggers
 
----
-
-**Forms (18 total):**
-- HRMS_EMPLOYEE.xml — Employee maintenance
-- HRMS_DEPARTMENT.xml — Department management
-- HRMS_PAYROLL.xml — Payroll processing
-- HRMS_LEAVE.xml — Leave request and approval
-- HRMS_PERFORMANCE.xml — Performance review
-- HRMS_LOGIN.xml — Login and authentication
-- HRMS_MENU.xml — Main menu navigation
-- HRMS_REPORTS.xml — Report parameter and launcher
+**Forms Files (xml-exports):**
+- HRMS_EMPLOYEE.xml — Employee maintenance form
+- HRMS_DEPARTMENT.xml — Department management form
+- HRMS_PAYROLL.xml — Payroll processing form
+- HRMS_LEAVE.xml — Leave request and approval form
+- HRMS_PERFORMANCE.xml — Performance review form
+- HRMS_LOGIN.xml — Login and authentication form
+- HRMS_MENU.xml — Main menu navigation form
+- HRMS_REPORTS.xml — Report parameter and launcher form
 - HRMS_LOV.xml — Shared List of Values library
 - HRMS_TOOLBAR.xml — Shared toolbar object library
 
-**PL/SQL Packages (12 total):**
-- PKG_EMPLOYEE (.pks/.pkb)
-- PKG_DEPARTMENT (.pks/.pkb)
-- PKG_PAYROLL (.pks/.pkb)
-- PKG_LEAVE (.pks/.pkb)
-- PKG_PERFORMANCE (.pks/.pkb)
-- PKG_SECURITY (.pks/.pkb)
-- PKG_AUDIT (.pks/.pkb)
-- PKG_NOTIFICATION (.pks/.pkb)
-- PKG_REPORTING (.pks/.pkb)
-- PKG_COMMON (.pks/.pkb)
-- PKG_VALIDATION (.pks/.pkb)
-- PKG_INTEGRATION (.pks/.pkb)
+**PL/SQL Packages:**
+- PKG_EMPLOYEE.pks/.pkb
+- PKG_DEPARTMENT.pks/.pkb
+- PKG_PAYROLL.pks/.pkb
+- PKG_LEAVE.pks/.pkb
+- PKG_PERFORMANCE.pks/.pkb
+- PKG_SECURITY.pks/.pkb
+- PKG_AUDIT.pks/.pkb
+- PKG_NOTIFICATION.pks/.pkb
+- PKG_REPORTING.pks/.pkb
+- PKG_COMMON.pks/.pkb
+- PKG_VALIDATION.pks/.pkb
+- PKG_INTEGRATION.pks/.pkb
 
----
+**Oracle Forms Technical Characteristics:**
+- Triggers: WHEN-NEW-FORM-INSTANCE, WHEN-VALIDATE-ITEM, WHEN-BUTTON-PRESSED, POST-QUERY, PRE-INSERT, PRE-UPDATE
+- LOV (List of Values): Record groups with dynamic WHERE clauses
+- Canvas/block architecture: Multiple data blocks per form, master-detail relationships
+- PLL libraries: Shared PL/SQL libraries attached to all forms
+- Menu modules (.mmb): Role-based menu system with security
 
-**Modules (functional areas):**
-1. Employee Records — hire, transfer, terminate, personal details, job history
-2. Department & Organization — department hierarchy, cost centers, reporting lines
-3. Payroll Processing — salary calculations, deductions, tax withholding, pay runs
-4. Leave Management — leave requests, approvals, balance tracking, accrual rules
-5. Performance Reviews — annual review cycles, ratings, goal tracking
-6. Reporting — headcount, compensation analysis, turnover, compliance
-
----
-
-**Key Oracle Forms Trigger Types Used:**
-- WHEN-NEW-FORM-INSTANCE
-- WHEN-VALIDATE-ITEM
-- WHEN-BUTTON-PRESSED
-- POST-QUERY
-- PRE-INSERT
-- PRE-UPDATE
-
-**PL/SQL Built-in Packages Used:** DBMS_OUTPUT, UTL_FILE, UTL_MAIL
-
-**Custom Error Code Range:** -20000 to -20999
+**PL/SQL Patterns:**
+- Heavy use of DBMS_OUTPUT, UTL_FILE, UTL_MAIL built-in packages
+- Cursor-based processing (row-by-row) for batch operations
+- Exception handling with custom error codes (-20000 to -20999)
+- Dynamic SQL via EXECUTE IMMEDIATE
+- Global package variables for session state management
+- Implicit cursors and %ROWTYPE / %TYPE declarations
 
 **Database Patterns:**
 - Surrogate keys via sequences + BEFORE INSERT triggers
 - Soft deletes (ACTIVE_FLAG CHAR(1) DEFAULT 'Y')
-- Audit columns on every table: CREATED_BY, CREATED_DATE, MODIFIED_BY, MODIFIED_DATE
+- Audit columns on every table (CREATED_BY, CREATED_DATE, MODIFIED_BY, MODIFIED_DATE)
 - History tables (_HIST suffix) for change tracking
 - Denormalized reporting tables refreshed nightly by batch jobs
 
 **Known Technical Debt:**
-- No unit tests (all testing is manual via Forms)
-- Business logic split between Forms triggers and database packages
+- No unit tests; all testing is manual via Forms
+- Business logic split between Forms triggers and database packages with no clear boundary
 - Several packages exceed 3,000 lines
 - Hard-coded configuration values in package bodies
 - VARCHAR2(4000) used as catch-all for text fields
-- Mixed naming conventions (CAMELCASE and UNDERSCORE_CASE)
-- Dead code from decommissioned modules
-- Circular package dependency between PKG_EMPLOYEE and PKG_PAYROLL
+- Mixed naming conventions (some CAMELCASE, some UNDERSCORE_CASE)
+- Dead code from decommissioned modules still present
+- Circular package dependencies between PKG_EMPLOYEE and PKG_PAYROLL
 
 ---
 
-=== FILE: ts-plsql-oracle-forms-hrms-main/schema/sequences/hrms_sequences.sql ===
+=== FILE: ts-plsql-oracle-forms-hrms/ts-plsql-oracle-forms-hrms-main/schema/sequences/hrms_sequences.sql ===
 
 **Schema:** HRMS
-**Type:** Sequence Definitions
+**All sequences use NOCACHE unless noted.**
 
-**Note:** Uses simple incrementing sequences (no UUID/GUID), typical for Oracle Forms applications of this era. NOCACHE on most sequences means gaps can occur.
+**Known Bug:** SEQ_EMP_NUMBER uses NOCACHE causing gaps, but PKG_EMPLOYEE.generate_emp_number uses MAX()+1 instead, creating a race condition.
 
-**Known Bug:** SEQ_EMP_NUMBER is NOCACHE, but PKG_EMPLOYEE.generate_emp_number uses MAX()+1 instead of the sequence, creating a race condition.
+**Complete Sequence List:**
 
-| Sequence Name          | Start With | Increment By | Cache  | Purpose                                              |
-|------------------------|------------|--------------|--------|------------------------------------------------------|
-| SEQ_DEPARTMENT         | 100        | 1            | NOCACHE| Surrogate key for DEPARTMENTS                        |
-| SEQ_LOCATION           | 100        | 1            | NOCACHE| Surrogate key for LOCATIONS                          |
-| SEQ_JOB_GRADE          | 100        | 1            | NOCACHE| Surrogate key for JOB_GRADES                         |
-| SEQ_JOB_TITLE          | 100        | 1            | NOCACHE| Surrogate key for JOB_TITLES                         |
-| SEQ_EMPLOYEE           | 10000      | 1            | NOCACHE| Surrogate key for EMPLOYEES                          |
-| SEQ_EMP_HISTORY        | 1          | 1            | NOCACHE| Surrogate key for EMPLOYEE_HISTORY                   |
-| SEQ_DEPENDENT          | 1          | 1            | NOCACHE| Surrogate key for EMPLOYEE_DEPENDENTS                |
-| SEQ_EMERGENCY_CONTACT  | 1          | 1            | NOCACHE| Surrogate key for EMERGENCY_CONTACTS                 |
-| SEQ_EMP_NUMBER         | 1000       | 1            | NOCACHE| Generates EMP-XXXXXX format (not used correctly — see bug) |
-| SEQ_SALARY             | 1          | 1            | NOCACHE| Surrogate key for SALARY_RECORDS                     |
-| SEQ_PAY_ELEMENT        | 1          | 1            | NOCACHE| Surrogate key for PAY_ELEMENTS                       |
-| SEQ_EMP_PAY_ELEMENT    | 1          | 1            | NOCACHE| Surrogate key for EMPLOYEE_PAY_ELEMENTS              |
-| SEQ_PAY_PERIOD         | 1          | 1            | NOCACHE| Surrogate key for PAY_PERIODS                        |
-| SEQ_PAYROLL_RUN        | 1          | 1            | NOCACHE| Surrogate key for PAYROLL_RUNS                       |
-| SEQ_PAYROLL_DETAIL     | 1          | 1            | NOCACHE| Surrogate key for PAYROLL_DETAILS                    |
-| SEQ_TAX_BRACKET        | 1          | 1            | NOCACHE| Surrogate key for TAX_BRACKETS                       |
-| SEQ_LEAVE_TYPE         | 1          | 1            | NOCACHE| Surrogate key for LEAVE_TYPES                        |
-| SEQ_LEAVE_BALANCE      | 1          | 1            | NOCACHE| Surrogate key for LEAVE_BALANCES                     |
-| SEQ_LEAVE_REQUEST      | 1          | 1            | NOCACHE| Surrogate key for LEAVE_REQUESTS                     |
-| SEQ_LEAVE_ACCRUAL      | 1          | 1            | NOCACHE| Surrogate key for LEAVE_ACCRUAL_LOG                  |
-| SEQ_HOLIDAY            | 1          | 1            | NOCACHE| Surrogate key for HOLIDAYS                           |
-| SEQ_REVIEW_CYCLE       | 1          | 1            | NOCACHE| Surrogate key for REVIEW_CYCLES                      |
-| SEQ_PERF_REVIEW        | 1          | 1            | NOCACHE| Surrogate key for PERFORMANCE_REVIEWS                |
-| SEQ_PERF_GOAL          | 1          | 1            | NOCACHE| Surrogate key for PERFORMANCE_GOALS                  |
-| SEQ_AUDIT              | 1          | 1            | CACHE 100 | Surrogate key for AUDIT_LOG (only sequence with cache) |
-| SEQ_NOTIFICATION       | 1          | 1            | NOCACHE| Surrogate key for NOTIFICATION_QUEUE                 |
-| SEQ_USER_SESSION       | 1          | 1            | NOCACHE| Surrogate key for USER_SESSIONS                      |
-| SEQ_SYSTEM_PARAM       | 1          | 1            | NOCACHE| Surrogate key for SYSTEM_PARAMETERS                  |
-| SEQ_LOOKUP             | 1          | 1            | NOCACHE| Surrogate key for LOOKUP_VALUES                      |
+| Sequence Name            | Start With | Increment By | Cache   | Purpose                                              |
+|--------------------------|------------|--------------|---------|------------------------------------------------------|
+| SEQ_DEPARTMENT           | 100        | 1            | NOCACHE | DEPARTMENTS surrogate key                            |
+| SEQ_LOCATION             | 100        | 1            | NOCACHE | LOCATIONS surrogate key                              |
+| SEQ_JOB_GRADE            | 100        | 1            | NOCACHE | JOB_GRADES surrogate key                             |
+| SEQ_JOB_TITLE            | 100        | 1            | NOCACHE | JOB_TITLES surrogate key                             |
+| SEQ_EMPLOYEE             | 10000      | 1            | NOCACHE | EMPLOYEES surrogate key                              |
+| SEQ_EMP_HISTORY          | 1          | 1            | NOCACHE | EMPLOYEE_HISTORY surrogate key                       |
+| SEQ_DEPENDENT            | 1          | 1            | NOCACHE | EMPLOYEE_DEPENDENTS surrogate key                    |
+| SEQ_EMERGENCY_CONTACT    | 1          | 1            | NOCACHE | EMERGENCY_CONTACTS surrogate key                     |
+| SEQ_EMP_NUMBER           | 1000       | 1            | NOCACHE | Employee number generation (EMP-XXXXXX format); has race condition bug |
+| SEQ_SALARY               | 1          | 1            | NOCACHE | SALARY_RECORDS surrogate key                         |
+| SEQ_PAY_ELEMENT          | 1          | 1            | NOCACHE | PAY_ELEMENTS surrogate key                           |
+| SEQ_EMP_PAY_ELEMENT      | 1          | 1            | NOCACHE | EMPLOYEE_PAY_ELEMENTS surrogate key                  |
+| SEQ_PAY_PERIOD           | 1          | 1            | NOCACHE | PAY_PERIODS surrogate key                            |
+| SEQ_PAYROLL_RUN          | 1          | 1            | NOCACHE | PAYROLL_RUNS surrogate key                           |
+| SEQ_PAYROLL_DETAIL       | 1          | 1            | NOCACHE | PAYROLL_DETAILS surrogate key                        |
+| SEQ_TAX_BRACKET          | 1          | 1            | NOCACHE | TAX_BRACKETS surrogate key                           |
+| SEQ_LEAVE_TYPE           | 1          | 1            | NOCACHE | LEAVE_TYPES surrogate key                            |
+| SEQ_LEAVE_BALANCE        | 1          | 1            | NOCACHE | LEAVE_BALANCES surrogate key                         |
+| SEQ_LEAVE_REQUEST        | 1          | 1            | NOCACHE | LEAVE_REQUESTS surrogate key                         |
+| SEQ_LEAVE_ACCRUAL        | 1          | 1            | NOCACHE | LEAVE_ACCRUAL_LOG surrogate key                      |
+| SEQ_HOLIDAY              | 1          | 1            | NOCACHE | HOLIDAYS surrogate key                               |
+| SEQ_REVIEW_CYCLE         | 1          | 1            | NOCACHE | REVIEW_CYCLES surrogate key                          |
+| SEQ_PERF_REVIEW          | 1          | 1            | NOCACHE | PERFORMANCE_REVIEWS surrogate key                    |
+| SEQ_PERF_GOAL            | 1          | 1            | NOCACHE | PERFORMANCE_GOALS surrogate key                      |
+| SEQ_AUDIT                | 1          | 1            | CACHE 100 | AUDIT_LOG surrogate key (only cached sequence)     |
+| SEQ_NOTIFICATION         | 1          | 1            | NOCACHE | NOTIFICATION_QUEUE surrogate key                     |
+| SEQ_USER_SESSION         | 1          | 1            | NOCACHE | USER_SESSIONS surrogate key                          |
+| SEQ_SYSTEM_PARAM         | 1          | 1            | NOCACHE | SYSTEM_PARAMETERS surrogate key                      |
+| SEQ_LOOKUP               | 1          | 1            | NOCACHE | LOOKUP_VALUES surrogate key                          |
+
+**Total sequences:** 29
 
 ---
 
-=== FILE: ts-plsql-oracle-forms-hrms-main/schema/tables/01_core_tables.sql ===
+=== FILE: ts-plsql-oracle-forms-hrms/ts-plsql-oracle-forms-hrms-main/schema/tables/01_core_tables.sql ===
 
 **Schema:** HRMS
 **Database:** Oracle 19c
@@ -532,239 +548,230 @@ FUNCTION validate_required_fields(p_table_name IN VARCHAR2, p_record_id IN NUMBE
 
 **Table: HRMS.DEPARTMENTS**
 
-| Column           | Data Type       | Nullable | Default  | Notes                                    |
-|------------------|-----------------|----------|----------|------------------------------------------|
-| DEPT_ID          | NUMBER(10)      | NOT NULL |          | PK                                       |
-| DEPT_CODE        | VARCHAR2(20)    | NOT NULL |          | UK                                       |
-| DEPT_NAME        | VARCHAR2(100)   | NOT NULL |          |                                          |
-| PARENT_DEPT_ID   | NUMBER(10)      | NULL     |          | Self-referencing FK for hierarchy        |
-| COST_CENTER      | VARCHAR2(20)    | NULL     |          | Financial cost center code for GL        |
-| MANAGER_EMP_ID   | NUMBER(10)      | NULL     |          |                                          |
-| LOCATION_CODE    | VARCHAR2(10)    | NULL     |          |                                          |
-| ACTIVE_FLAG      | CHAR(1)         | NOT NULL | 'Y'      | CHECK IN ('Y','N')                       |
-| CREATED_BY       | VARCHAR2(30)    | NOT NULL |          |                                          |
-| CREATED_DATE     | DATE            | NOT NULL | SYSDATE  |                                          |
-| MODIFIED_BY      | VARCHAR2(30)    | NULL     |          |                                          |
-| MODIFIED_DATE    | DATE            | NULL     |          |                                          |
+| Column           | Data Type       | Constraints / Default       | Notes                                    |
+|------------------|-----------------|------------------------------|------------------------------------------|
+| DEPT_ID          | NUMBER(10)      | NOT NULL, PK                |                                          |
+| DEPT_CODE        | VARCHAR2(20)    | NOT NULL, UNIQUE (UK_DEPT_CODE) |                                       |
+| DEPT_NAME        | VARCHAR2(100)   | NOT NULL                    |                                          |
+| PARENT_DEPT_ID   | NUMBER(10)      | nullable                    | Self-referencing FK for dept hierarchy   |
+| COST_CENTER      | VARCHAR2(20)    | nullable                    | Financial cost center code for GL integration |
+| MANAGER_EMP_ID   | NUMBER(10)      | nullable                    |                                          |
+| LOCATION_CODE    | VARCHAR2(10)    | nullable                    |                                          |
+| ACTIVE_FLAG      | CHAR(1)         | NOT NULL, DEFAULT 'Y', CHECK IN ('Y','N') |                            |
+| CREATED_BY       | VARCHAR2(30)    | NOT NULL                    |                                          |
+| CREATED_DATE     | DATE            | NOT NULL, DEFAULT SYSDATE   |                                          |
+| MODIFIED_BY      | VARCHAR2(30)    | nullable                    |                                          |
+| MODIFIED_DATE    | DATE            | nullable                    |                                          |
 
-**Constraints:**
-- PK_DEPARTMENTS: PRIMARY KEY (DEPT_ID)
-- UK_DEPT_CODE: UNIQUE (DEPT_CODE)
-- CHK_DEPT_ACTIVE: CHECK (ACTIVE_FLAG IN ('Y', 'N'))
+Constraints: PK_DEPARTMENTS (DEPT_ID), UK_DEPT_CODE (DEPT_CODE), CHK_DEPT_ACTIVE (ACTIVE_FLAG IN ('Y','N'))
 
-**Comments:** Table: 'Organization departments and cost centers'; PARENT_DEPT_ID: 'Self-referencing FK for department hierarchy'; COST_CENTER: 'Financial cost center code for GL integration'
+Table comment: 'Organization departments and cost centers'
+Column comments: PARENT_DEPT_ID — 'Self-referencing FK for department hierarchy'; COST_CENTER — 'Financial cost center code for GL integration'
 
 ---
 
 **Table: HRMS.LOCATIONS**
 
-| Column          | Data Type       | Nullable | Default              | Notes     |
-|-----------------|-----------------|----------|----------------------|-----------|
-| LOCATION_CODE   | VARCHAR2(10)    | NOT NULL |                      | PK        |
-| LOCATION_NAME   | VARCHAR2(100)   | NOT NULL |                      |           |
-| ADDRESS_LINE1   | VARCHAR2(200)   | NULL     |                      |           |
-| ADDRESS_LINE2   | VARCHAR2(200)   | NULL     |                      |           |
-| CITY            | VARCHAR2(100)   | NULL     |                      |           |
-| STATE_PROVINCE  | VARCHAR2(100)   | NULL     |                      |           |
-| POSTAL_CODE     | VARCHAR2(20)    | NULL     |                      |           |
-| COUNTRY_CODE    | VARCHAR2(3)     | NULL     |                      |           |
-| PHONE_NUMBER    | VARCHAR2(30)    | NULL     |                      |           |
-| TIMEZONE        | VARCHAR2(50)    | NULL     | 'America/New_York'   | Default timezone |
-| ACTIVE_FLAG     | CHAR(1)         | NOT NULL | 'Y'                  |           |
-| CREATED_BY      | VARCHAR2(30)    | NOT NULL |                      |           |
-| CREATED_DATE    | DATE            | NOT NULL | SYSDATE              |           |
-| MODIFIED_BY     | VARCHAR2(30)    | NULL     |                      |           |
-| MODIFIED_DATE   | DATE            | NULL     |                      |           |
+| Column           | Data Type       | Constraints / Default         |
+|------------------|-----------------|-------------------------------|
+| LOCATION_CODE    | VARCHAR2(10)    | NOT NULL, PK                  |
+| LOCATION_NAME    | VARCHAR2(100)   | NOT NULL                      |
+| ADDRESS_LINE1    | VARCHAR2(200)   | nullable                      |
+| ADDRESS_LINE2    | VARCHAR2(200)   | nullable                      |
+| CITY             | VARCHAR2(100)   | nullable                      |
+| STATE_PROVINCE   | VARCHAR2(100)   | nullable                      |
+| POSTAL_CODE      | VARCHAR2(20)    | nullable                      |
+| COUNTRY_CODE     | VARCHAR2(3)     | nullable                      |
+| PHONE_NUMBER     | VARCHAR2(30)    | nullable                      |
+| TIMEZONE         | VARCHAR2(50)    | DEFAULT 'America/New_York'    |
+| ACTIVE_FLAG      | CHAR(1)         | NOT NULL, DEFAULT 'Y'         |
+| CREATED_BY       | VARCHAR2(30)    | NOT NULL                      |
+| CREATED_DATE     | DATE            | NOT NULL, DEFAULT SYSDATE     |
+| MODIFIED_BY      | VARCHAR2(30)    | nullable                      |
+| MODIFIED_DATE    | DATE            | nullable                      |
 
-**Constraints:**
-- PK_LOCATIONS: PRIMARY KEY (LOCATION_CODE)
+Constraints: PK_LOCATIONS (LOCATION_CODE)
 
 ---
 
 **Table: HRMS.JOB_GRADES**
 
-| Column            | Data Type     | Nullable | Default | Notes                            |
-|-------------------|---------------|----------|---------|----------------------------------|
-| GRADE_ID          | NUMBER(5)     | NOT NULL |         | PK                               |
-| GRADE_CODE        | VARCHAR2(10)  | NOT NULL |         | UK                               |
-| GRADE_NAME        | VARCHAR2(50)  | NOT NULL |         |                                  |
-| MIN_SALARY        | NUMBER(12,2)  | NOT NULL |         |                                  |
-| MAX_SALARY        | NUMBER(12,2)  | NOT NULL |         |                                  |
-| OVERTIME_ELIGIBLE | CHAR(1)       | NULL     | 'N'     |                                  |
-| ACTIVE_FLAG       | CHAR(1)       | NOT NULL | 'Y'     |                                  |
-| CREATED_BY        | VARCHAR2(30)  | NOT NULL |         |                                  |
-| CREATED_DATE      | DATE          | NOT NULL | SYSDATE |                                  |
-| MODIFIED_BY       | VARCHAR2(30)  | NULL     |         |                                  |
-| MODIFIED_DATE     | DATE          | NULL     |         |                                  |
+| Column           | Data Type       | Constraints / Default                     |
+|------------------|-----------------|-------------------------------------------|
+| GRADE_ID         | NUMBER(5)       | NOT NULL, PK                              |
+| GRADE_CODE       | VARCHAR2(10)    | NOT NULL, UNIQUE (UK_GRADE_CODE)          |
+| GRADE_NAME       | VARCHAR2(50)    | NOT NULL                                  |
+| MIN_SALARY       | NUMBER(12,2)    | NOT NULL                                  |
+| MAX_SALARY       | NUMBER(12,2)    | NOT NULL                                  |
+| OVERTIME_ELIGIBLE| CHAR(1)         | DEFAULT 'N'                               |
+| ACTIVE_FLAG      | CHAR(1)         | NOT NULL, DEFAULT 'Y'                     |
+| CREATED_BY       | VARCHAR2(30)    | NOT NULL                                  |
+| CREATED_DATE     | DATE            | NOT NULL, DEFAULT SYSDATE                 |
+| MODIFIED_BY      | VARCHAR2(30)    | nullable                                  |
+| MODIFIED_DATE    | DATE            | nullable                                  |
 
-**Constraints:**
-- PK_JOB_GRADES: PRIMARY KEY (GRADE_ID)
-- UK_GRADE_CODE: UNIQUE (GRADE_CODE)
-- CHK_SALARY_RANGE: CHECK (MAX_SALARY >= MIN_SALARY)
+Constraints: PK_JOB_GRADES (GRADE_ID), UK_GRADE_CODE (GRADE_CODE), CHK_SALARY_RANGE (MAX_SALARY >= MIN_SALARY)
+
+Business Rule: Maximum salary must be greater than or equal to minimum salary (CHECK constraint CHK_SALARY_RANGE).
 
 ---
 
 **Table: HRMS.JOB_TITLES**
 
-| Column       | Data Type     | Nullable | Default   | Notes                    |
-|--------------|---------------|----------|-----------|--------------------------|
-| JOB_ID       | NUMBER(10)    | NOT NULL |           | PK                       |
-| JOB_CODE     | VARCHAR2(20)  | NOT NULL |           | UK                       |
-| JOB_TITLE    | VARCHAR2(100) | NOT NULL |           |                          |
-| JOB_FAMILY   | VARCHAR2(50)  | NULL     |           |                          |
-| GRADE_ID     | NUMBER(5)     | NOT NULL |           | FK → JOB_GRADES(GRADE_ID)|
-| EEO_CATEGORY | VARCHAR2(10)  | NULL     |           |                          |
-| FLSA_STATUS  | VARCHAR2(10)  | NULL     | 'EXEMPT'  |                          |
-| ACTIVE_FLAG  | CHAR(1)       | NOT NULL | 'Y'       |                          |
-| CREATED_BY   | VARCHAR2(30)  | NOT NULL |           |                          |
-| CREATED_DATE | DATE          | NOT NULL | SYSDATE   |                          |
-| MODIFIED_BY  | VARCHAR2(30)  | NULL     |           |                          |
-| MODIFIED_DATE| DATE          | NULL     |           |                          |
+| Column           | Data Type       | Constraints / Default                        |
+|------------------|-----------------|----------------------------------------------|
+| JOB_ID           | NUMBER(10)      | NOT NULL, PK                                 |
+| JOB_CODE         | VARCHAR2(20)    | NOT NULL, UNIQUE (UK_JOB_CODE)               |
+| JOB_TITLE        | VARCHAR2(100)   | NOT NULL                                     |
+| JOB_FAMILY       | VARCHAR2(50)    | nullable                                     |
+| GRADE_ID         | NUMBER(5)       | NOT NULL, FK → JOB_GRADES(GRADE_ID)          |
+| EEO_CATEGORY     | VARCHAR2(10)    | nullable                                     |
+| FLSA_STATUS      | VARCHAR2(10)    | DEFAULT 'EXEMPT'                             |
+| ACTIVE_FLAG      | CHAR(1)         | NOT NULL, DEFAULT 'Y'                        |
+| CREATED_BY       | VARCHAR2(30)    | NOT NULL                                     |
+| CREATED_DATE     | DATE            | NOT NULL, DEFAULT SYSDATE                    |
+| MODIFIED_BY      | VARCHAR2(30)    | nullable                                     |
+| MODIFIED_DATE    | DATE            | nullable                                     |
 
-**Constraints:**
-- PK_JOB_TITLES: PRIMARY KEY (JOB_ID)
-- UK_JOB_CODE: UNIQUE (JOB_CODE)
-- FK_JOB_GRADE: FOREIGN KEY (GRADE_ID) REFERENCES HRMS.JOB_GRADES(GRADE_ID)
+Constraints: PK_JOB_TITLES (JOB_ID), UK_JOB_CODE (JOB_CODE), FK_JOB_GRADE (GRADE_ID → JOB_GRADES.GRADE_ID)
 
 ---
 
 **Table: HRMS.EMPLOYEES**
 
-| Column             | Data Type      | Nullable | Default      | Notes                                                |
-|--------------------|----------------|----------|--------------|------------------------------------------------------|
-| EMP_ID             | NUMBER(10)     | NOT NULL |              | PK                                                   |
-| EMP_NUMBER         | VARCHAR2(20)   | NOT NULL |              | UK                                                   |
-| FIRST_NAME         | VARCHAR2(50)   | NOT NULL |              |                                                      |
-| MIDDLE_NAME        | VARCHAR2(50)   | NULL     |              |                                                      |
-| LAST_NAME          | VARCHAR2(50)   | NOT NULL |              |                                                      |
-| DATE_OF_BIRTH      | DATE           | NULL     |              |                                                      |
-| GENDER             | CHAR(1)        | NULL     |              | CHECK IN ('M','F','O')                               |
-| MARITAL_STATUS     | VARCHAR2(10)   | NULL     |              |                                                      |
-| NATIONALITY        | VARCHAR2(50)   | NULL     |              |                                                      |
-| SSN_ENCRYPTED      | VARCHAR2(200)  | NULL     |              | AES-256 encrypted; decrypted only in PKG_SECURITY    |
-| EMAIL              | VARCHAR2(100)  | NULL     |              |                                                      |
-| PHONE_WORK         | VARCHAR2(30)   | NULL     |              |                                                      |
-| PHONE_MOBILE       | VARCHAR2(30)   | NULL     |              |                                                      |
-| ADDRESS_LINE1      | VARCHAR2(200)  | NULL     |              |                                                      |
-| ADDRESS_LINE2      | VARCHAR2(200)  | NULL     |              |                                                      |
-| CITY               | VARCHAR2(100)  | NULL     |              |                                                      |
-| STATE_PROVINCE     | VARCHAR2(100)  | NULL     |              |                                                      |
-| POSTAL_CODE        | VARCHAR2(20)   | NULL     |              |                                                      |
-| COUNTRY_CODE       | VARCHAR2(3)    | NULL     |              |                                                      |
-| HIRE_DATE          | DATE           | NOT NULL |              |                                                      |
-| TERMINATION_DATE   | DATE           | NULL     |              |                                                      |
-| TERMINATION_REASON | VARCHAR2(50)   | NULL     |              |                                                      |
-| DEPT_ID            | NUMBER(10)     | NOT NULL |              | FK → DEPARTMENTS(DEPT_ID)                            |
-| JOB_ID             | NUMBER(10)     | NOT NULL |              | FK → JOB_TITLES(JOB_ID)                              |
-| MANAGER_EMP_ID     | NUMBER(10)     | NULL     |              | Self-referencing FK → EMPLOYEES(EMP_ID)              |
-| LOCATION_CODE      | VARCHAR2(10)   | NULL     |              | FK → LOCATIONS(LOCATION_CODE)                        |
-| EMPLOYMENT_TYPE    | VARCHAR2(20)   | NULL     | 'FULL_TIME'  | CHECK IN ('FULL_TIME','PART_TIME','CONTRACT','INTERN')|
-| EMPLOYMENT_STATUS  | VARCHAR2(20)   | NULL     | 'ACTIVE'     | CHECK IN ('ACTIVE','ON_LEAVE','SUSPENDED','TERMINATED')|
-| PHOTO_BLOB         | BLOB           | NULL     |              |                                                      |
-| NOTES              | CLOB           | NULL     |              |                                                      |
-| ACTIVE_FLAG        | CHAR(1)        | NOT NULL | 'Y'          |                                                      |
-| CREATED_BY         | VARCHAR2(30)   | NOT NULL |              |                                                      |
-| CREATED_DATE       | DATE           | NOT NULL | SYSDATE      |                                                      |
-| MODIFIED_BY        | VARCHAR2(30)   | NULL     |              |                                                      |
-| MODIFIED_DATE      | DATE           | NULL     |              |                                                      |
+| Column              | Data Type       | Constraints / Default                                                                     |
+|---------------------|-----------------|-------------------------------------------------------------------------------------------|
+| EMP_ID              | NUMBER(10)      | NOT NULL, PK                                                                              |
+| EMP_NUMBER          | VARCHAR2(20)    | NOT NULL, UNIQUE (UK_EMP_NUMBER)                                                          |
+| FIRST_NAME          | VARCHAR2(50)    | NOT NULL                                                                                  |
+| MIDDLE_NAME         | VARCHAR2(50)    | nullable                                                                                  |
+| LAST_NAME           | VARCHAR2(50)    | NOT NULL                                                                                  |
+| DATE_OF_BIRTH       | DATE            | nullable                                                                                  |
+| GENDER              | CHAR(1)         | nullable, CHECK IN ('M','F','O')                                                          |
+| MARITAL_STATUS      | VARCHAR2(10)    | nullable                                                                                  |
+| NATIONALITY         | VARCHAR2(50)    | nullable                                                                                  |
+| SSN_ENCRYPTED       | VARCHAR2(200)   | nullable; AES-256 encrypted SSN, decrypted only in PKG_SECURITY                          |
+| EMAIL               | VARCHAR2(100)   | nullable                                                                                  |
+| PHONE_WORK          | VARCHAR2(30)    | nullable                                                                                  |
+| PHONE_MOBILE        | VARCHAR2(30)    | nullable                                                                                  |
+| ADDRESS_LINE1       | VARCHAR2(200)   | nullable                                                                                  |
+| ADDRESS_LINE2       | VARCHAR2(200)   | nullable                                                                                  |
+| CITY                | VARCHAR2(100)   | nullable                                                                                  |
+| STATE_PROVINCE      | VARCHAR2(100)   | nullable                                                                                  |
+| POSTAL_CODE         | VARCHAR2(20)    | nullable                                                                                  |
+| COUNTRY_CODE        | VARCHAR2(3)     | nullable                                                                                  |
+| HIRE_DATE           | DATE            | NOT NULL                                                                                  |
+| TERMINATION_DATE    | DATE            | nullable                                                                                  |
+| TERMINATION_REASON  | VARCHAR2(50)    | nullable                                                                                  |
+| DEPT_ID             | NUMBER(10)      | NOT NULL, FK → DEPARTMENTS(DEPT_ID)                                                      |
+| JOB_ID              | NUMBER(10)      | NOT NULL, FK → JOB_TITLES(JOB_ID)                                                        |
+| MANAGER_EMP_ID      | NUMBER(10)      | nullable, FK → EMPLOYEES(EMP_ID) (self-referencing)                                      |
+| LOCATION_CODE       | VARCHAR2(10)    | nullable, FK → LOCATIONS(LOCATION_CODE)                                                   |
+| EMPLOYMENT_TYPE     | VARCHAR2(20)    | DEFAULT 'FULL_TIME', CHECK IN ('FULL_TIME','PART_TIME','CONTRACT','INTERN')               |
+| EMPLOYMENT_STATUS   | VARCHAR2(20)    | DEFAULT 'ACTIVE', CHECK IN ('ACTIVE','ON_LEAVE','SUSPENDED','TERMINATED')                 |
+| PHOTO_BLOB          | BLOB            | nullable                                                                                  |
+| NOTES               | CLOB            | nullable                                                                                  |
+| ACTIVE_FLAG         | CHAR(1)         | NOT NULL, DEFAULT 'Y'                                                                     |
+| CREATED_BY          | VARCHAR2(30)    | NOT NULL                                                                                  |
+| CREATED_DATE        | DATE            | NOT NULL, DEFAULT SYSDATE                                                                 |
+| MODIFIED_BY         | VARCHAR2(30)    | nullable                                                                                  |
+| MODIFIED_DATE       | DATE            | nullable                                                                                  |
 
-**Constraints:**
-- PK_EMPLOYEES: PRIMARY KEY (EMP_ID)
-- UK_EMP_NUMBER: UNIQUE (EMP_NUMBER)
-- FK_EMP_DEPT: FOREIGN KEY (DEPT_ID) REFERENCES HRMS.DEPARTMENTS(DEPT_ID)
-- FK_EMP_JOB: FOREIGN KEY (JOB_ID) REFERENCES HRMS.JOB_TITLES(JOB_ID)
-- FK_EMP_MANAGER: FOREIGN KEY (MANAGER_EMP_ID) REFERENCES HRMS.EMPLOYEES(EMP_ID)
-- FK_EMP_LOCATION: FOREIGN KEY (LOCATION_CODE) REFERENCES HRMS.LOCATIONS(LOCATION_CODE)
-- CHK_EMP_STATUS: CHECK (EMPLOYMENT_STATUS IN ('ACTIVE', 'ON_LEAVE', 'SUSPENDED', 'TERMINATED'))
-- CHK_EMP_TYPE: CHECK (EMPLOYMENT_TYPE IN ('FULL_TIME', 'PART_TIME', 'CONTRACT', 'INTERN'))
-- CHK_EMP_GENDER: CHECK (GENDER IN ('M', 'F', 'O'))
+Constraints:
+- PK_EMPLOYEES (EMP_ID)
+- UK_EMP_NUMBER (EMP_NUMBER)
+- FK_EMP_DEPT → DEPARTMENTS(DEPT_ID)
+- FK_EMP_JOB → JOB_TITLES(JOB_ID)
+- FK_EMP_MANAGER → EMPLOYEES(EMP_ID)
+- FK_EMP_LOCATION → LOCATIONS(LOCATION_CODE)
+- CHK_EMP_STATUS: EMPLOYMENT_STATUS IN ('ACTIVE','ON_LEAVE','SUSPENDED','TERMINATED')
+- CHK_EMP_TYPE: EMPLOYMENT_TYPE IN ('FULL_TIME','PART_TIME','CONTRACT','INTERN')
+- CHK_EMP_GENDER: GENDER IN ('M','F','O')
 
-**Comments:** Table: 'Master employee records - core entity of the HRMS system'; SSN_ENCRYPTED: 'AES-256 encrypted SSN - decrypted only in PKG_SECURITY'; EMPLOYMENT_STATUS: 'Current status: ACTIVE, ON_LEAVE, SUSPENDED, TERMINATED'
+Table comment: 'Master employee records - core entity of the HRMS system'
+Column comments:
+- SSN_ENCRYPTED: 'AES-256 encrypted SSN - decrypted only in PKG_SECURITY'
+- EMPLOYMENT_STATUS: 'Current status: ACTIVE, ON_LEAVE, SUSPENDED, TERMINATED'
 
 ---
 
 **Table: HRMS.EMPLOYEE_HISTORY**
 
-| Column         | Data Type     | Nullable | Default  | Notes                                       |
-|----------------|---------------|----------|----------|---------------------------------------------|
-| HIST_ID        | NUMBER(15)    | NOT NULL |          | PK                                          |
-| EMP_ID         | NUMBER(10)    | NOT NULL |          | FK → EMPLOYEES(EMP_ID)                      |
-| CHANGE_TYPE    | VARCHAR2(30)  | NOT NULL |          | CHECK (see allowed values below)            |
-| EFFECTIVE_DATE | DATE          | NOT NULL |          |                                             |
-| OLD_DEPT_ID    | NUMBER(10)    | NULL     |          |                                             |
-| NEW_DEPT_ID    | NUMBER(10)    | NULL     |          |                                             |
-| OLD_JOB_ID     | NUMBER(10)    | NULL     |          |                                             |
-| NEW_JOB_ID     | NUMBER(10)    | NULL     |          |                                             |
-| OLD_MANAGER_ID | NUMBER(10)    | NULL     |          |                                             |
-| NEW_MANAGER_ID | NUMBER(10)    | NULL     |          |                                             |
-| OLD_SALARY     | NUMBER(12,2)  | NULL     |          |                                             |
-| NEW_SALARY     | NUMBER(12,2)  | NULL     |          |                                             |
-| OLD_LOCATION   | VARCHAR2(10)  | NULL     |          |                                             |
-| NEW_LOCATION   | VARCHAR2(10)  | NULL     |          |                                             |
-| REASON_CODE    | VARCHAR2(30)  | NULL     |          |                                             |
-| COMMENTS       | VARCHAR2(4000)| NULL     |          |                                             |
-| CREATED_BY     | VARCHAR2(30)  | NOT NULL |          |                                             |
-| CREATED_DATE   | DATE          | NOT NULL | SYSDATE  |                                             |
+| Column           | Data Type       | Constraints / Default                                                                                |
+|------------------|-----------------|------------------------------------------------------------------------------------------------------|
+| HIST_ID          | NUMBER(15)      | NOT NULL, PK                                                                                         |
+| EMP_ID           | NUMBER(10)      | NOT NULL, FK → EMPLOYEES(EMP_ID)                                                                     |
+| CHANGE_TYPE      | VARCHAR2(30)    | NOT NULL, CHECK IN ('HIRE','TRANSFER','PROMOTION','DEMOTION','SALARY_CHANGE','TERMINATION','REHIRE','LEAVE_START','LEAVE_END','STATUS_CHANGE') |
+| EFFECTIVE_DATE   | DATE            | NOT NULL                                                                                             |
+| OLD_DEPT_ID      | NUMBER(10)      | nullable                                                                                             |
+| NEW_DEPT_ID      | NUMBER(10)      | nullable                                                                                             |
+| OLD_JOB_ID       | NUMBER(10)      | nullable                                                                                             |
+| NEW_JOB_ID       | NUMBER(10)      | nullable                                                                                             |
+| OLD_MANAGER_ID   | NUMBER(10)      | nullable                                                                                             |
+| NEW_MANAGER_ID   | NUMBER(10)      | nullable                                                                                             |
+| OLD_SALARY       | NUMBER(12,2)    | nullable                                                                                             |
+| NEW_SALARY       | NUMBER(12,2)    | nullable                                                                                             |
+| OLD_LOCATION     | VARCHAR2(10)    | nullable                                                                                             |
+| NEW_LOCATION     | VARCHAR2(10)    | nullable                                                                                             |
+| REASON_CODE      | VARCHAR2(30)    | nullable                                                                                             |
+| COMMENTS         | VARCHAR2(4000)  | nullable                                                                                             |
+| CREATED_BY       | VARCHAR2(30)    | NOT NULL                                                                                             |
+| CREATED_DATE     | DATE            | NOT NULL, DEFAULT SYSDATE                                                                            |
 
-**Constraints:**
-- PK_EMP_HISTORY: PRIMARY KEY (HIST_ID)
-- FK_HIST_EMP: FOREIGN KEY (EMP_ID) REFERENCES HRMS.EMPLOYEES(EMP_ID)
-- CHK_CHANGE_TYPE: CHECK (CHANGE_TYPE IN ('HIRE', 'TRANSFER', 'PROMOTION', 'DEMOTION', 'SALARY_CHANGE', 'TERMINATION', 'REHIRE', 'LEAVE_START', 'LEAVE_END', 'STATUS_CHANGE'))
+Constraints:
+- PK_EMP_HISTORY (HIST_ID)
+- FK_HIST_EMP → EMPLOYEES(EMP_ID)
+- CHK_CHANGE_TYPE: CHANGE_TYPE IN ('HIRE','TRANSFER','PROMOTION','DEMOTION','SALARY_CHANGE','TERMINATION','REHIRE','LEAVE_START','LEAVE_END','STATUS_CHANGE')
 
-**Note:** The trigger TRG_EMP_BEFORE_UPDATE uses a different column set (HISTORY_ID, CHANGE_DATE, OLD_VALUE, NEW_VALUE, CHANGED_BY, CHANGE_REASON) from what is defined in this DDL (HIST_ID, EFFECTIVE_DATE, OLD_DEPT_ID, etc.) — this is a discrepancy in the codebase.
+Note: The trigger TRG_EMP_BEFORE_UPDATE uses a column named CHANGE_DATE (not EFFECTIVE_DATE) and writes to OLD_VALUE/NEW_VALUE (VARCHAR2) — but the DDL here has EFFECTIVE_DATE and typed old/new columns. This is a discrepancy between the trigger and the DDL (the trigger appears to be inserting into a differently-structured version of the table or columns are aliases).
 
 ---
 
 **Table: HRMS.EMPLOYEE_DEPENDENTS**
 
-| Column           | Data Type     | Nullable | Default | Notes                                        |
-|------------------|---------------|----------|---------|----------------------------------------------|
-| DEPENDENT_ID     | NUMBER(10)    | NOT NULL |         | PK                                           |
-| EMP_ID           | NUMBER(10)    | NOT NULL |         | FK → EMPLOYEES(EMP_ID)                       |
-| FIRST_NAME       | VARCHAR2(50)  | NOT NULL |         |                                              |
-| LAST_NAME        | VARCHAR2(50)  | NOT NULL |         |                                              |
-| RELATIONSHIP     | VARCHAR2(20)  | NOT NULL |         | CHECK IN ('SPOUSE','CHILD','PARENT','DOMESTIC_PARTNER','OTHER') |
-| DATE_OF_BIRTH    | DATE          | NULL     |         |                                              |
-| SSN_ENCRYPTED    | VARCHAR2(200) | NULL     |         |                                              |
-| BENEFITS_ENROLLED| CHAR(1)       | NULL     | 'N'     |                                              |
-| ACTIVE_FLAG      | CHAR(1)       | NOT NULL | 'Y'     |                                              |
-| CREATED_BY       | VARCHAR2(30)  | NOT NULL |         |                                              |
-| CREATED_DATE     | DATE          | NOT NULL | SYSDATE |                                              |
-| MODIFIED_BY      | VARCHAR2(30)  | NULL     |         |                                              |
-| MODIFIED_DATE    | DATE          | NULL     |         |                                              |
+| Column           | Data Type       | Constraints / Default                                                       |
+|------------------|-----------------|-----------------------------------------------------------------------------|
+| DEPENDENT_ID     | NUMBER(10)      | NOT NULL, PK                                                                |
+| EMP_ID           | NUMBER(10)      | NOT NULL, FK → EMPLOYEES(EMP_ID)                                            |
+| FIRST_NAME       | VARCHAR2(50)    | NOT NULL                                                                    |
+| LAST_NAME        | VARCHAR2(50)    | NOT NULL                                                                    |
+| RELATIONSHIP     | VARCHAR2(20)    | NOT NULL, CHECK IN ('SPOUSE','CHILD','PARENT','DOMESTIC_PARTNER','OTHER')   |
+| DATE_OF_BIRTH    | DATE            | nullable                                                                    |
+| SSN_ENCRYPTED    | VARCHAR2(200)   | nullable                                                                    |
+| BENEFITS_ENROLLED| CHAR(1)         | DEFAULT 'N'                                                                 |
+| ACTIVE_FLAG      | CHAR(1)         | NOT NULL, DEFAULT 'Y'                                                       |
+| CREATED_BY       | VARCHAR2(30)    | NOT NULL                                                                    |
+| CREATED_DATE     | DATE            | NOT NULL, DEFAULT SYSDATE                                                   |
+| MODIFIED_BY      | VARCHAR2(30)    | nullable                                                                    |
+| MODIFIED_DATE    | DATE            | nullable                                                                    |
 
-**Constraints:**
-- PK_EMP_DEPENDENTS: PRIMARY KEY (DEPENDENT_ID)
-- FK_DEP_EMP: FOREIGN KEY (EMP_ID) REFERENCES HRMS.EMPLOYEES(EMP_ID)
-- CHK_RELATIONSHIP: CHECK (RELATIONSHIP IN ('SPOUSE', 'CHILD', 'PARENT', 'DOMESTIC_PARTNER', 'OTHER'))
+Constraints: PK_EMP_DEPENDENTS (DEPENDENT_ID), FK_DEP_EMP → EMPLOYEES(EMP_ID), CHK_RELATIONSHIP (RELATIONSHIP IN ('SPOUSE','CHILD','PARENT','DOMESTIC_PARTNER','OTHER'))
 
 ---
 
 **Table: HRMS.EMERGENCY_CONTACTS**
 
-| Column           | Data Type     | Nullable | Default | Notes                    |
-|------------------|---------------|----------|---------|--------------------------|
-| CONTACT_ID       | NUMBER(10)    | NOT NULL |         | PK                       |
-| EMP_ID           | NUMBER(10)    | NOT NULL |         | FK → EMPLOYEES(EMP_ID)   |
-| CONTACT_NAME     | VARCHAR2(100) | NOT NULL |         |                          |
-| RELATIONSHIP     | VARCHAR2(30)  | NULL     |         |                          |
-| PHONE_PRIMARY    | VARCHAR2(30)  | NOT NULL |         |                          |
-| PHONE_SECONDARY  | VARCHAR2(30)  | NULL     |         |                          |
-| EMAIL            | VARCHAR2(100) | NULL     |         |                          |
-| PRIORITY_ORDER   | NUMBER(2)     | NULL     | 1       |                          |
-| ACTIVE_FLAG      | CHAR(1)       | NOT NULL | 'Y'     |                          |
-| CREATED_BY       | VARCHAR2(30)  | NOT NULL |         |                          |
-| CREATED_DATE     | DATE          | NOT NULL | SYSDATE |                          |
-| MODIFIED_BY      | VARCHAR2(30)  | NULL     |         |                          |
-| MODIFIED_DATE    | DATE          | NULL     |         |                          |
+| Column           | Data Type       | Constraints / Default                    |
+|------------------|-----------------|------------------------------------------|
+| CONTACT_ID       | NUMBER(10)      | NOT NULL, PK                             |
+| EMP_ID           | NUMBER(10)      | NOT NULL, FK → EMPLOYEES(EMP_ID)         |
+| CONTACT_NAME     | VARCHAR2(100)   | NOT NULL                                 |
+| RELATIONSHIP     | VARCHAR2(30)    | nullable                                 |
+| PHONE_PRIMARY    | VARCHAR2(30)    | NOT NULL                                 |
+| PHONE_SECONDARY  | VARCHAR2(30)    | nullable                                 |
+| EMAIL            | VARCHAR2(100)   | nullable                                 |
+| PRIORITY_ORDER   | NUMBER(2)       | DEFAULT 1                                |
+| ACTIVE_FLAG      | CHAR(1)         | NOT NULL, DEFAULT 'Y'                    |
+| CREATED_BY       | VARCHAR2(30)    | NOT NULL                                 |
+| CREATED_DATE     | DATE            | NOT NULL, DEFAULT SYSDATE                |
+| MODIFIED_BY      | VARCHAR2(30)    | nullable                                 |
+| MODIFIED_DATE    | DATE            | nullable                                 |
 
-**Constraints:**
-- PK_EMERGENCY_CONTACTS: PRIMARY KEY (CONTACT_ID)
-- FK_EC_EMP: FOREIGN KEY (EMP_ID) REFERENCES HRMS.EMPLOYEES(EMP_ID)
+Constraints: PK_EMERGENCY_CONTACTS (CONTACT_ID), FK_EC_EMP → EMPLOYEES(EMP_ID)
 
 ---
 
-=== FILE: ts-plsql-oracle-forms-hrms-main/schema/tables/02_payroll_tables.sql ===
+=== FILE: ts-plsql-oracle-forms-hrms/ts-plsql-oracle-forms-hrms-main/schema/tables/02_payroll_tables.sql ===
 
 **Schema:** HRMS
 **Database:** Oracle 19c
@@ -773,252 +780,224 @@ FUNCTION validate_required_fields(p_table_name IN VARCHAR2, p_record_id IN NUMBE
 
 **Table: HRMS.SALARY_RECORDS**
 
-| Column          | Data Type     | Nullable | Default    | Notes                                               |
-|-----------------|---------------|----------|------------|-----------------------------------------------------|
-| SALARY_ID       | NUMBER(10)    | NOT NULL |            | PK                                                  |
-| EMP_ID          | NUMBER(10)    | NOT NULL |            | FK → EMPLOYEES(EMP_ID)                              |
-| EFFECTIVE_DATE  | DATE          | NOT NULL |            |                                                     |
-| END_DATE        | DATE          | NULL     |            |                                                     |
-| BASE_SALARY     | NUMBER(12,2)  | NOT NULL |            |                                                     |
-| CURRENCY_CODE   | VARCHAR2(3)   | NULL     | 'USD'      |                                                     |
-| PAY_FREQUENCY   | VARCHAR2(20)  | NULL     | 'MONTHLY'  | CHECK IN ('WEEKLY','BIWEEKLY','SEMIMONTHLY','MONTHLY') |
-| SALARY_BASIS    | VARCHAR2(20)  | NULL     | 'ANNUAL'   | CHECK IN ('ANNUAL','HOURLY')                        |
-| CHANGE_REASON   | VARCHAR2(50)  | NULL     |            |                                                     |
-| CHANGE_PCT      | NUMBER(5,2)   | NULL     |            |                                                     |
-| APPROVED_BY     | NUMBER(10)    | NULL     |            |                                                     |
-| APPROVAL_DATE   | DATE          | NULL     |            |                                                     |
-| ACTIVE_FLAG     | CHAR(1)       | NOT NULL | 'Y'        |                                                     |
-| CREATED_BY      | VARCHAR2(30)  | NOT NULL |            |                                                     |
-| CREATED_DATE    | DATE          | NOT NULL | SYSDATE    |                                                     |
-| MODIFIED_BY     | VARCHAR2(30)  | NULL     |            |                                                     |
-| MODIFIED_DATE   | DATE          | NULL     |            |                                                     |
+| Column           | Data Type       | Constraints / Default                                                            |
+|------------------|-----------------|----------------------------------------------------------------------------------|
+| SALARY_ID        | NUMBER(10)      | NOT NULL, PK                                                                     |
+| EMP_ID           | NUMBER(10)      | NOT NULL, FK → EMPLOYEES(EMP_ID)                                                 |
+| EFFECTIVE_DATE   | DATE            | NOT NULL                                                                         |
+| END_DATE         | DATE            | nullable                                                                         |
+| BASE_SALARY      | NUMBER(12,2)    | NOT NULL                                                                         |
+| CURRENCY_CODE    | VARCHAR2(3)     | DEFAULT 'USD'                                                                    |
+| PAY_FREQUENCY    | VARCHAR2(20)    | DEFAULT 'MONTHLY', CHECK IN ('WEEKLY','BIWEEKLY','SEMIMONTHLY','MONTHLY')        |
+| SALARY_BASIS     | VARCHAR2(20)    | DEFAULT 'ANNUAL', CHECK IN ('ANNUAL','HOURLY')                                   |
+| CHANGE_REASON    | VARCHAR2(50)    | nullable                                                                         |
+| CHANGE_PCT       | NUMBER(5,2)     | nullable                                                                         |
+| APPROVED_BY      | NUMBER(10)      | nullable                                                                         |
+| APPROVAL_DATE    | DATE            | nullable                                                                         |
+| ACTIVE_FLAG      | CHAR(1)         | NOT NULL, DEFAULT 'Y'                                                            |
+| CREATED_BY       | VARCHAR2(30)    | NOT NULL                                                                         |
+| CREATED_DATE     | DATE            | NOT NULL, DEFAULT SYSDATE                                                        |
+| MODIFIED_BY      | VARCHAR2(30)    | nullable                                                                         |
+| MODIFIED_DATE    | DATE            | nullable                                                                         |
 
-**Constraints:**
-- PK_SALARY_RECORDS: PRIMARY KEY (SALARY_ID)
-- FK_SAL_EMP: FOREIGN KEY (EMP_ID) REFERENCES HRMS.EMPLOYEES(EMP_ID)
-- CHK_PAY_FREQ: CHECK (PAY_FREQUENCY IN ('WEEKLY', 'BIWEEKLY', 'SEMIMONTHLY', 'MONTHLY'))
-- CHK_SAL_BASIS: CHECK (SALARY_BASIS IN ('ANNUAL', 'HOURLY'))
+Constraints: PK_SALARY_RECORDS (SALARY_ID), FK_SAL_EMP → EMPLOYEES(EMP_ID), CHK_PAY_FREQ, CHK_SAL_BASIS
 
 ---
 
 **Table: HRMS.PAY_ELEMENTS**
 
-| Column              | Data Type     | Nullable | Default | Notes                                                    |
-|---------------------|---------------|----------|---------|----------------------------------------------------------|
-| ELEMENT_ID          | NUMBER(10)    | NOT NULL |         | PK                                                       |
-| ELEMENT_CODE        | VARCHAR2(30)  | NOT NULL |         | UK                                                       |
-| ELEMENT_NAME        | VARCHAR2(100) | NOT NULL |         |                                                          |
-| ELEMENT_TYPE        | VARCHAR2(20)  | NOT NULL |         | CHECK IN ('EARNING','DEDUCTION','TAX','BENEFIT','REIMBURSEMENT') |
-| CALCULATION_TYPE    | VARCHAR2(20)  | NOT NULL |         | CHECK IN ('FLAT','PERCENTAGE','HOURS','FORMULA')         |
-| DEFAULT_AMOUNT      | NUMBER(12,2)  | NULL     |         |                                                          |
-| DEFAULT_PERCENTAGE  | NUMBER(5,2)   | NULL     |         |                                                          |
-| TAXABLE_FLAG        | CHAR(1)       | NULL     | 'Y'     |                                                          |
-| PRETAX_FLAG         | CHAR(1)       | NULL     | 'N'     |                                                          |
-| EMPLOYER_PAID       | CHAR(1)       | NULL     | 'N'     |                                                          |
-| GL_ACCOUNT_CODE     | VARCHAR2(30)  | NULL     |         |                                                          |
-| PRIORITY_ORDER      | NUMBER(5)     | NULL     | 100     |                                                          |
-| ACTIVE_FLAG         | CHAR(1)       | NOT NULL | 'Y'     |                                                          |
-| CREATED_BY          | VARCHAR2(30)  | NOT NULL |         |                                                          |
-| CREATED_DATE        | DATE          | NOT NULL | SYSDATE |                                                          |
-| MODIFIED_BY         | VARCHAR2(30)  | NULL     |         |                                                          |
-| MODIFIED_DATE       | DATE          | NULL     |         |                                                          |
+| Column             | Data Type       | Constraints / Default                                                                     |
+|--------------------|-----------------|-------------------------------------------------------------------------------------------|
+| ELEMENT_ID         | NUMBER(10)      | NOT NULL, PK                                                                              |
+| ELEMENT_CODE       | VARCHAR2(30)    | NOT NULL, UNIQUE (UK_PAY_ELEM_CODE)                                                       |
+| ELEMENT_NAME       | VARCHAR2(100)   | NOT NULL                                                                                  |
+| ELEMENT_TYPE       | VARCHAR2(20)    | NOT NULL, CHECK IN ('EARNING','DEDUCTION','TAX','BENEFIT','REIMBURSEMENT')                |
+| CALCULATION_TYPE   | VARCHAR2(20)    | NOT NULL, CHECK IN ('FLAT','PERCENTAGE','HOURS','FORMULA')                                |
+| DEFAULT_AMOUNT     | NUMBER(12,2)    | nullable                                                                                  |
+| DEFAULT_PERCENTAGE | NUMBER(5,2)     | nullable                                                                                  |
+| TAXABLE_FLAG       | CHAR(1)         | DEFAULT 'Y'                                                                               |
+| PRETAX_FLAG        | CHAR(1)         | DEFAULT 'N'                                                                               |
+| EMPLOYER_PAID      | CHAR(1)         | DEFAULT 'N'                                                                               |
+| GL_ACCOUNT_CODE    | VARCHAR2(30)    | nullable                                                                                  |
+| PRIORITY_ORDER     | NUMBER(5)       | DEFAULT 100                                                                               |
+| ACTIVE_FLAG        | CHAR(1)         | NOT NULL, DEFAULT 'Y'                                                                     |
+| CREATED_BY         | VARCHAR2(30)    | NOT NULL                                                                                  |
+| CREATED_DATE       | DATE            | NOT NULL, DEFAULT SYSDATE                                                                 |
+| MODIFIED_BY        | VARCHAR2(30)    | nullable                                                                                  |
+| MODIFIED_DATE      | DATE            | nullable                                                                                  |
 
-**Constraints:**
-- PK_PAY_ELEMENTS: PRIMARY KEY (ELEMENT_ID)
-- UK_PAY_ELEM_CODE: UNIQUE (ELEMENT_CODE)
-- CHK_ELEM_TYPE: CHECK (ELEMENT_TYPE IN ('EARNING', 'DEDUCTION', 'TAX', 'BENEFIT', 'REIMBURSEMENT'))
-- CHK_CALC_TYPE: CHECK (CALCULATION_TYPE IN ('FLAT', 'PERCENTAGE', 'HOURS', 'FORMULA'))
+Constraints: PK_PAY_ELEMENTS (ELEMENT_ID), UK_PAY_ELEM_CODE (ELEMENT_CODE), CHK_ELEM_TYPE, CHK_CALC_TYPE
 
 ---
 
 **Table: HRMS.EMPLOYEE_PAY_ELEMENTS**
 
-| Column          | Data Type    | Nullable | Default | Notes                              |
-|-----------------|--------------|----------|---------|------------------------------------|
-| EMP_ELEMENT_ID  | NUMBER(10)   | NOT NULL |         | PK                                 |
-| EMP_ID          | NUMBER(10)   | NOT NULL |         | FK → EMPLOYEES(EMP_ID)             |
-| ELEMENT_ID      | NUMBER(10)   | NOT NULL |         | FK → PAY_ELEMENTS(ELEMENT_ID)      |
-| EFFECTIVE_DATE  | DATE         | NOT NULL |         |                                    |
-| END_DATE        | DATE         | NULL     |         |                                    |
-| AMOUNT          | NUMBER(12,2) | NULL     |         |                                    |
-| PERCENTAGE      | NUMBER(5,2)  | NULL     |         |                                    |
-| OVERRIDE_AMOUNT | NUMBER(12,2) | NULL     |         |                                    |
-| ACTIVE_FLAG     | CHAR(1)      | NOT NULL | 'Y'     |                                    |
-| CREATED_BY      | VARCHAR2(30) | NOT NULL |         |                                    |
-| CREATED_DATE    | DATE         | NOT NULL | SYSDATE |                                    |
-| MODIFIED_BY     | VARCHAR2(30) | NULL     |         |                                    |
-| MODIFIED_DATE   | DATE         | NULL     |         |                                    |
+| Column           | Data Type       | Constraints / Default                    |
+|------------------|-----------------|------------------------------------------|
+| EMP_ELEMENT_ID   | NUMBER(10)      | NOT NULL, PK                             |
+| EMP_ID           | NUMBER(10)      | NOT NULL, FK → EMPLOYEES(EMP_ID)         |
+| ELEMENT_ID       | NUMBER(10)      | NOT NULL, FK → PAY_ELEMENTS(ELEMENT_ID)  |
+| EFFECTIVE_DATE   | DATE            | NOT NULL                                 |
+| END_DATE         | DATE            | nullable                                 |
+| AMOUNT           | NUMBER(12,2)    | nullable                                 |
+| PERCENTAGE       | NUMBER(5,2)     | nullable                                 |
+| OVERRIDE_AMOUNT  | NUMBER(12,2)    | nullable                                 |
+| ACTIVE_FLAG      | CHAR(1)         | NOT NULL, DEFAULT 'Y'                    |
+| CREATED_BY       | VARCHAR2(30)    | NOT NULL                                 |
+| CREATED_DATE     | DATE            | NOT NULL, DEFAULT SYSDATE                |
+| MODIFIED_BY      | VARCHAR2(30)    | nullable                                 |
+| MODIFIED_DATE    | DATE            | nullable                                 |
 
-**Constraints:**
-- PK_EMP_PAY_ELEMENTS: PRIMARY KEY (EMP_ELEMENT_ID)
-- FK_EPE_EMP: FOREIGN KEY (EMP_ID) REFERENCES HRMS.EMPLOYEES(EMP_ID)
-- FK_EPE_ELEMENT: FOREIGN KEY (ELEMENT_ID) REFERENCES HRMS.PAY_ELEMENTS(ELEMENT_ID)
+Constraints: PK_EMP_PAY_ELEMENTS (EMP_ELEMENT_ID), FK_EPE_EMP → EMPLOYEES(EMP_ID), FK_EPE_ELEMENT → PAY_ELEMENTS(ELEMENT_ID)
 
 ---
 
 **Table: HRMS.PAY_PERIODS**
 
-| Column             | Data Type     | Nullable | Default       | Notes                                          |
-|--------------------|---------------|----------|---------------|------------------------------------------------|
-| PERIOD_ID          | NUMBER(10)    | NOT NULL |               | PK                                             |
-| PERIOD_NAME        | VARCHAR2(50)  | NOT NULL |               |                                                |
-| PAY_FREQUENCY      | VARCHAR2(20)  | NOT NULL |               |                                                |
-| PERIOD_START_DATE  | DATE          | NOT NULL |               |                                                |
-| PERIOD_END_DATE    | DATE          | NOT NULL |               |                                                |
-| PAY_DATE           | DATE          | NOT NULL |               |                                                |
-| STATUS             | VARCHAR2(20)  | NULL     | 'OPEN'        | CHECK IN ('OPEN','PROCESSING','CLOSED','REVERSED') |
-| CLOSED_BY          | VARCHAR2(30)  | NULL     |               |                                                |
-| CLOSED_DATE        | DATE          | NULL     |               |                                                |
-| CREATED_BY         | VARCHAR2(30)  | NOT NULL |               |                                                |
-| CREATED_DATE       | DATE          | NOT NULL | SYSDATE       |                                                |
-| MODIFIED_BY        | VARCHAR2(30)  | NULL     |               |                                                |
-| MODIFIED_DATE      | DATE          | NULL     |               |                                                |
+| Column             | Data Type       | Constraints / Default                                              |
+|--------------------|-----------------|---------------------------------------------------------------------|
+| PERIOD_ID          | NUMBER(10)      | NOT NULL, PK                                                        |
+| PERIOD_NAME        | VARCHAR2(50)    | NOT NULL                                                            |
+| PAY_FREQUENCY      | VARCHAR2(20)    | NOT NULL                                                            |
+| PERIOD_START_DATE  | DATE            | NOT NULL                                                            |
+| PERIOD_END_DATE    | DATE            | NOT NULL                                                            |
+| PAY_DATE           | DATE            | NOT NULL                                                            |
+| STATUS             | VARCHAR2(20)    | DEFAULT 'OPEN', CHECK IN ('OPEN','PROCESSING','CLOSED','REVERSED') |
+| CLOSED_BY          | VARCHAR2(30)    | nullable                                                            |
+| CLOSED_DATE        | DATE            | nullable                                                            |
+| CREATED_BY         | VARCHAR2(30)    | NOT NULL                                                            |
+| CREATED_DATE       | DATE            | NOT NULL, DEFAULT SYSDATE                                           |
+| MODIFIED_BY        | VARCHAR2(30)    | nullable                                                            |
+| MODIFIED_DATE      | DATE            | nullable                                                            |
 
-**Constraints:**
-- PK_PAY_PERIODS: PRIMARY KEY (PERIOD_ID)
-- CHK_PERIOD_STATUS: CHECK (STATUS IN ('OPEN', 'PROCESSING', 'CLOSED', 'REVERSED'))
+Constraints: PK_PAY_PERIODS (PERIOD_ID), CHK_PERIOD_STATUS
 
 ---
 
 **Table: HRMS.PAYROLL_RUNS**
 
-| Column              | Data Type     | Nullable | Default     | Notes                                                               |
-|---------------------|---------------|----------|-------------|---------------------------------------------------------------------|
-| RUN_ID              | NUMBER(10)    | NOT NULL |             | PK                                                                  |
-| PERIOD_ID           | NUMBER(10)    | NOT NULL |             | FK → PAY_PERIODS(PERIOD_ID)                                         |
-| RUN_TYPE            | VARCHAR2(20)  | NULL     | 'REGULAR'   | CHECK IN ('REGULAR','SUPPLEMENTAL','BONUS','FINAL')                 |
-| RUN_DATE            | DATE          | NOT NULL |             |                                                                     |
-| STATUS              | VARCHAR2(20)  | NULL     | 'PENDING'   | CHECK IN ('PENDING','CALCULATING','CALCULATED','APPROVED','PAID','REVERSED','ERROR') |
-| TOTAL_GROSS         | NUMBER(15,2)  | NULL     |             |                                                                     |
-| TOTAL_DEDUCTIONS    | NUMBER(15,2)  | NULL     |             |                                                                     |
-| TOTAL_NET           | NUMBER(15,2)  | NULL     |             |                                                                     |
-| TOTAL_EMPLOYER_COST | NUMBER(15,2)  | NULL     |             |                                                                     |
-| EMPLOYEE_COUNT      | NUMBER(10)    | NULL     |             |                                                                     |
-| ERROR_COUNT         | NUMBER(10)    | NULL     | 0           |                                                                     |
-| SUBMITTED_BY        | VARCHAR2(30)  | NULL     |             |                                                                     |
-| SUBMITTED_DATE      | DATE          | NULL     |             |                                                                     |
-| APPROVED_BY         | VARCHAR2(30)  | NULL     |             |                                                                     |
-| APPROVED_DATE       | DATE          | NULL     |             |                                                                     |
-| CREATED_BY          | VARCHAR2(30)  | NOT NULL |             |                                                                     |
-| CREATED_DATE        | DATE          | NOT NULL | SYSDATE     |                                                                     |
-| MODIFIED_BY         | VARCHAR2(30)  | NULL     |             |                                                                     |
-| MODIFIED_DATE       | DATE          | NULL     |             |                                                                     |
+| Column              | Data Type       | Constraints / Default                                                              |
+|---------------------|-----------------|------------------------------------------------------------------------------------|
+| RUN_ID              | NUMBER(10)      | NOT NULL, PK                                                                       |
+| PERIOD_ID           | NUMBER(10)      | NOT NULL, FK → PAY_PERIODS(PERIOD_ID)                                              |
+| RUN_TYPE            | VARCHAR2(20)    | DEFAULT 'REGULAR', CHECK IN ('REGULAR','SUPPLEMENTAL','BONUS','FINAL')             |
+| RUN_DATE            | DATE            | NOT NULL                                                                           |
+| STATUS              | VARCHAR2(20)    | DEFAULT 'PENDING', CHECK IN ('PENDING','CALCULATING','CALCULATED','APPROVED','PAID','REVERSED','ERROR') |
+| TOTAL_GROSS         | NUMBER(15,2)    | nullable                                                                           |
+| TOTAL_DEDUCTIONS    | NUMBER(15,2)    | nullable                                                                           |
+| TOTAL_NET           | NUMBER(15,2)    | nullable                                                                           |
+| TOTAL_EMPLOYER_COST | NUMBER(15,2)    | nullable                                                                           |
+| EMPLOYEE_COUNT      | NUMBER(10)      | nullable                                                                           |
+| ERROR_COUNT         | NUMBER(10)      | DEFAULT 0                                                                          |
+| SUBMITTED_BY        | VARCHAR2(30)    | nullable                                                                           |
+| SUBMITTED_DATE      | DATE            | nullable                                                                           |
+| APPROVED_BY         | VARCHAR2(30)    | nullable                                                                           |
+| APPROVED_DATE       | DATE            | nullable                                                                           |
+| CREATED_BY          | VARCHAR2(30)    | NOT NULL                                                                           |
+| CREATED_DATE        | DATE            | NOT NULL, DEFAULT SYSDATE                                                          |
+| MODIFIED_BY         | VARCHAR2(30)    | nullable                                                                           |
+| MODIFIED_DATE       | DATE            | nullable                                                                           |
 
-**Constraints:**
-- PK_PAYROLL_RUNS: PRIMARY KEY (RUN_ID)
-- FK_PR_PERIOD: FOREIGN KEY (PERIOD_ID) REFERENCES HRMS.PAY_PERIODS(PERIOD_ID)
-- CHK_RUN_TYPE: CHECK (RUN_TYPE IN ('REGULAR', 'SUPPLEMENTAL', 'BONUS', 'FINAL'))
-- CHK_RUN_STATUS: CHECK (STATUS IN ('PENDING', 'CALCULATING', 'CALCULATED', 'APPROVED', 'PAID', 'REVERSED', 'ERROR'))
+Constraints: PK_PAYROLL_RUNS (RUN_ID), FK_PR_PERIOD → PAY_PERIODS(PERIOD_ID), CHK_RUN_TYPE, CHK_RUN_STATUS
 
 ---
 
 **Table: HRMS.PAYROLL_DETAILS**
 
-| Column        | Data Type      | Nullable | Default        | Notes                                 |
-|---------------|----------------|----------|----------------|---------------------------------------|
-| DETAIL_ID     | NUMBER(15)     | NOT NULL |                | PK                                    |
-| RUN_ID        | NUMBER(10)     | NOT NULL |                | FK → PAYROLL_RUNS(RUN_ID)             |
-| EMP_ID        | NUMBER(10)     | NOT NULL |                | FK → EMPLOYEES(EMP_ID)                |
-| ELEMENT_ID    | NUMBER(10)     | NOT NULL |                | FK → PAY_ELEMENTS(ELEMENT_ID)         |
-| ELEMENT_TYPE  | VARCHAR2(20)   | NOT NULL |                |                                       |
-| HOURS_WORKED  | NUMBER(6,2)    | NULL     |                |                                       |
-| RATE          | NUMBER(12,4)   | NULL     |                |                                       |
-| AMOUNT        | NUMBER(12,2)   | NOT NULL |                |                                       |
-| YTD_AMOUNT    | NUMBER(15,2)   | NULL     |                |                                       |
-| STATUS        | VARCHAR2(20)   | NULL     | 'CALCULATED'   |                                       |
-| ERROR_MESSAGE | VARCHAR2(4000) | NULL     |                |                                       |
-| CREATED_BY    | VARCHAR2(30)   | NOT NULL |                |                                       |
-| CREATED_DATE  | DATE           | NOT NULL | SYSDATE        |                                       |
+| Column           | Data Type       | Constraints / Default                        |
+|------------------|-----------------|----------------------------------------------|
+| DETAIL_ID        | NUMBER(15)      | NOT NULL, PK                                 |
+| RUN_ID           | NUMBER(10)      | NOT NULL, FK → PAYROLL_RUNS(RUN_ID)          |
+| EMP_ID           | NUMBER(10)      | NOT NULL, FK → EMPLOYEES(EMP_ID)             |
+| ELEMENT_ID       | NUMBER(10)      | NOT NULL, FK → PAY_ELEMENTS(ELEMENT_ID)      |
+| ELEMENT_TYPE     | VARCHAR2(20)    | NOT NULL                                     |
+| HOURS_WORKED     | NUMBER(6,2)     | nullable                                     |
+| RATE             | NUMBER(12,4)    | nullable                                     |
+| AMOUNT           | NUMBER(12,2)    | NOT NULL                                     |
+| YTD_AMOUNT       | NUMBER(15,2)    | nullable                                     |
+| STATUS           | VARCHAR2(20)    | DEFAULT 'CALCULATED'                         |
+| ERROR_MESSAGE    | VARCHAR2(4000)  | nullable                                     |
+| CREATED_BY       | VARCHAR2(30)    | NOT NULL                                     |
+| CREATED_DATE     | DATE            | NOT NULL, DEFAULT SYSDATE                    |
 
-**Constraints:**
-- PK_PAYROLL_DETAILS: PRIMARY KEY (DETAIL_ID)
-- FK_PD_RUN: FOREIGN KEY (RUN_ID) REFERENCES HRMS.PAYROLL_RUNS(RUN_ID)
-- FK_PD_EMP: FOREIGN KEY (EMP_ID) REFERENCES HRMS.EMPLOYEES(EMP_ID)
-- FK_PD_ELEMENT: FOREIGN KEY (ELEMENT_ID) REFERENCES HRMS.PAY_ELEMENTS(ELEMENT_ID)
+Constraints: PK_PAYROLL_DETAILS (DETAIL_ID), FK_PD_RUN → PAYROLL_RUNS(RUN_ID), FK_PD_EMP → EMPLOYEES(EMP_ID), FK_PD_ELEMENT → PAY_ELEMENTS(ELEMENT_ID)
 
 ---
 
 **Table: HRMS.TAX_BRACKETS**
 
-| Column        | Data Type    | Nullable | Default | Notes                                                               |
-|---------------|--------------|----------|---------|---------------------------------------------------------------------|
-| BRACKET_ID    | NUMBER(10)   | NOT NULL |         | PK                                                                  |
-| TAX_YEAR      | NUMBER(4)    | NOT NULL |         |                                                                     |
-| FILING_STATUS | VARCHAR2(30) | NOT NULL |         | CHECK IN ('SINGLE','MARRIED_JOINT','MARRIED_SEPARATE','HEAD_OF_HOUSEHOLD') |
-| BRACKET_MIN   | NUMBER(12,2) | NOT NULL |         |                                                                     |
-| BRACKET_MAX   | NUMBER(12,2) | NULL     |         | NULL = no upper limit (top bracket)                                 |
-| TAX_RATE      | NUMBER(5,4)  | NOT NULL |         |                                                                     |
-| BASE_TAX      | NUMBER(12,2) | NULL     | 0       |                                                                     |
-| STATE_CODE    | VARCHAR2(3)  | NULL     |         | NULL = federal; populated = state-specific                          |
-| ACTIVE_FLAG   | CHAR(1)      | NOT NULL | 'Y'     |                                                                     |
-| CREATED_BY    | VARCHAR2(30) | NOT NULL |         |                                                                     |
-| CREATED_DATE  | DATE         | NOT NULL | SYSDATE |                                                                     |
+| Column         | Data Type       | Constraints / Default                                                                    |
+|----------------|-----------------|------------------------------------------------------------------------------------------|
+| BRACKET_ID     | NUMBER(10)      | NOT NULL, PK                                                                             |
+| TAX_YEAR       | NUMBER(4)       | NOT NULL                                                                                 |
+| FILING_STATUS  | VARCHAR2(30)    | NOT NULL, CHECK IN ('SINGLE','MARRIED_JOINT','MARRIED_SEPARATE','HEAD_OF_HOUSEHOLD')     |
+| BRACKET_MIN    | NUMBER(12,2)    | NOT NULL                                                                                 |
+| BRACKET_MAX    | NUMBER(12,2)    | nullable (NULL = no upper bound, i.e., top bracket)                                      |
+| TAX_RATE       | NUMBER(5,4)     | NOT NULL                                                                                 |
+| BASE_TAX       | NUMBER(12,2)    | DEFAULT 0                                                                                |
+| STATE_CODE     | VARCHAR2(3)     | nullable (NULL = federal)                                                                |
+| ACTIVE_FLAG    | CHAR(1)         | NOT NULL, DEFAULT 'Y'                                                                    |
+| CREATED_BY     | VARCHAR2(30)    | NOT NULL                                                                                 |
+| CREATED_DATE   | DATE            | NOT NULL, DEFAULT SYSDATE                                                                |
 
-**Constraints:**
-- PK_TAX_BRACKETS: PRIMARY KEY (BRACKET_ID)
-- CHK_FILING_STATUS: CHECK (FILING_STATUS IN ('SINGLE', 'MARRIED_JOINT', 'MARRIED_SEPARATE', 'HEAD_OF_HOUSEHOLD'))
+Constraints: PK_TAX_BRACKETS (BRACKET_ID), CHK_FILING_STATUS
+
+Note: TAX_RATE is NUMBER(5,4) — stores rates as decimal fractions (e.g., 0.2200 for 22%). BASE_TAX stores the cumulative tax already owed at the start of this bracket. Actual bracket data is populated via data/seed scripts (not present in this file).
 
 ---
 
 **Table: HRMS.EMPLOYEE_TAX_INFO**
 
-| Column               | Data Type    | Nullable | Default | Notes                                                               |
-|----------------------|--------------|----------|---------|---------------------------------------------------------------------|
-| TAX_INFO_ID          | NUMBER(10)   | NOT NULL |         | PK                                                                  |
-| EMP_ID               | NUMBER(10)   | NOT NULL |         | FK → EMPLOYEES(EMP_ID)                                              |
-| TAX_YEAR             | NUMBER(4)    | NOT NULL |         |                                                                     |
-| FILING_STATUS        | VARCHAR2(30) | NOT NULL |         |                                                                     |
-| FEDERAL_ALLOWANCES   | NUMBER(3)    | NULL     | 0       |                                                                     |
-| STATE_ALLOWANCES     | NUMBER(3)    | NULL     | 0       |                                                                     |
-| ADDITIONAL_FED_WH    | NUMBER(12,2) | NULL     | 0       |                                                                     |
-| ADDITIONAL_STATE_WH  | NUMBER(12,2) | NULL     | 0       |                                                                     |
-| EXEMPT_FLAG          | CHAR(1)      | NULL     | 'N'     |                                                                     |
-| STATE_CODE           | VARCHAR2(3)  | NULL     |         |                                                                     |
-| W4_RECEIVED_DATE     | DATE         | NULL     |         |                                                                     |
-| ACTIVE_FLAG          | CHAR(1)      | NOT NULL | 'Y'     |                                                                     |
-| CREATED_BY           | VARCHAR2(30) | NOT NULL |         |                                                                     |
-| CREATED_DATE         | DATE         | NOT NULL | SYSDATE |                                                                     |
-| MODIFIED_BY          | VARCHAR2(30) | NULL     |         |                                                                     |
-| MODIFIED_DATE        | DATE         | NULL     |         |                                                                     |
+| Column               | Data Type       | Constraints / Default                                                                    |
+|----------------------|-----------------|------------------------------------------------------------------------------------------|
+| TAX_INFO_ID          | NUMBER(10)      | NOT NULL, PK                                                                             |
+| EMP_ID               | NUMBER(10)      | NOT NULL, FK → EMPLOYEES(EMP_ID)                                                         |
+| TAX_YEAR             | NUMBER(4)       | NOT NULL                                                                                 |
+| FILING_STATUS        | VARCHAR2(30)    | NOT NULL                                                                                 |
+| FEDERAL_ALLOWANCES   | NUMBER(3)       | DEFAULT 0                                                                                |
+| STATE_ALLOWANCES     | NUMBER(3)       | DEFAULT 0                                                                                |
+| ADDITIONAL_FED_WH    | NUMBER(12,2)    | DEFAULT 0                                                                                |
+| ADDITIONAL_STATE_WH  | NUMBER(12,2)    | DEFAULT 0                                                                                |
+| EXEMPT_FLAG          | CHAR(1)         | DEFAULT 'N'                                                                              |
+| STATE_CODE           | VARCHAR2(3)     | nullable                                                                                 |
+| W4_RECEIVED_DATE     | DATE            | nullable                                                                                 |
+| ACTIVE_FLAG          | CHAR(1)         | NOT NULL, DEFAULT 'Y'                                                                    |
+| CREATED_BY           | VARCHAR2(30)    | NOT NULL                                                                                 |
+| CREATED_DATE         | DATE            | NOT NULL, DEFAULT SYSDATE                                                                |
+| MODIFIED_BY          | VARCHAR2(30)    | nullable                                                                                 |
+| MODIFIED_DATE        | DATE            | nullable                                                                                 |
 
-**Constraints:**
-- PK_EMP_TAX_INFO: PRIMARY KEY (TAX_INFO_ID)
-- FK_ETI_EMP: FOREIGN KEY (EMP_ID) REFERENCES HRMS.EMPLOYEES(EMP_ID)
-- UK_EMP_TAX_YEAR: UNIQUE (EMP_ID, TAX_YEAR)
+Constraints: PK_EMP_TAX_INFO (TAX_INFO_ID), FK_ETI_EMP → EMPLOYEES(EMP_ID), UK_EMP_TAX_YEAR (EMP_ID, TAX_YEAR) — one tax info record per employee per year.
 
 ---
 
 **Table: HRMS.EMPLOYEE_BANK_ACCOUNTS**
 
-| Column              | Data Type     | Nullable | Default     | Notes                                                     |
-|---------------------|---------------|----------|-------------|-----------------------------------------------------------|
-| BANK_ACCT_ID        | NUMBER(10)    | NOT NULL |             | PK                                                        |
-| EMP_ID              | NUMBER(10)    | NOT NULL |             | FK → EMPLOYEES(EMP_ID)                                    |
-| BANK_NAME           | VARCHAR2(100) | NULL     |             |                                                           |
-| ROUTING_NUMBER      | VARCHAR2(20)  | NOT NULL |             |                                                           |
-| ACCOUNT_NUMBER_ENC  | VARCHAR2(200) | NOT NULL |             | Encrypted                                                 |
-| ACCOUNT_TYPE        | VARCHAR2(20)  | NULL     | 'CHECKING'  | CHECK IN ('CHECKING','SAVINGS')                           |
-| DEPOSIT_TYPE        | VARCHAR2(20)  | NULL     | 'FULL'      | CHECK IN ('FULL','PARTIAL_AMOUNT','PARTIAL_PERCENT','REMAINDER') |
-| DEPOSIT_AMOUNT      | NUMBER(12,2)  | NULL     |             |                                                           |
-| DEPOSIT_PERCENTAGE  | NUMBER(5,2)   | NULL     |             |                                                           |
-| PRIORITY_ORDER      | NUMBER(2)     | NULL     | 1           |                                                           |
-| PRENOTE_SENT        | CHAR(1)       | NULL     | 'N'         |                                                           |
-| PRENOTE_DATE        | DATE          | NULL     |             |                                                           |
-| ACTIVE_FLAG         | CHAR(1)       | NOT NULL | 'Y'         |                                                           |
-| CREATED_BY          | VARCHAR2(30)  | NOT NULL |             |                                                           |
-| CREATED_DATE        | DATE          | NOT NULL | SYSDATE     |                                                           |
-| MODIFIED_BY         | VARCHAR2(30)  | NULL     |             |                                                           |
-| MODIFIED_DATE       | DATE          | NULL     |             |                                                           |
+| Column              | Data Type       | Constraints / Default                                                           |
+|---------------------|-----------------|---------------------------------------------------------------------------------|
+| BANK_ACCT_ID        | NUMBER(10)      | NOT NULL, PK                                                                    |
+| EMP_ID              | NUMBER(10)      | NOT NULL, FK → EMPLOYEES(EMP_ID)                                                |
+| BANK_NAME           | VARCHAR2(100)   | nullable                                                                        |
+| ROUTING_NUMBER      | VARCHAR2(20)    | NOT NULL                                                                        |
+| ACCOUNT_NUMBER_ENC  | VARCHAR2(200)   | NOT NULL (encrypted)                                                            |
+| ACCOUNT_TYPE        | VARCHAR2(20)    | DEFAULT 'CHECKING', CHECK IN ('CHECKING','SAVINGS')                             |
+| DEPOSIT_TYPE        | VARCHAR2(20)    | DEFAULT 'FULL', CHECK IN ('FULL','PARTIAL_AMOUNT','PARTIAL_PERCENT','REMAINDER')|
+| DEPOSIT_AMOUNT      | NUMBER(12,2)    | nullable                                                                        |
+| DEPOSIT_PERCENTAGE  | NUMBER(5,2)     | nullable                                                                        |
+| PRIORITY_ORDER      | NUMBER(2)       | DEFAULT 1                                                                       |
+| PRENOTE_SENT        | CHAR(1)         | DEFAULT 'N'                                                                     |
+| PRENOTE_DATE        | DATE            | nullable                                                                        |
+| ACTIVE_FLAG         | CHAR(1)         | NOT NULL, DEFAULT 'Y'                                                           |
+| CREATED_BY          | VARCHAR2(30)    | NOT NULL                                                                        |
+| CREATED_DATE        | DATE            | NOT NULL, DEFAULT SYSDATE                                                       |
+| MODIFIED_BY         | VARCHAR2(30)    | nullable                                                                        |
+| MODIFIED_DATE       | DATE            | nullable                                                                        |
 
-**Constraints:**
-- PK_EMP_BANK_ACCTS: PRIMARY KEY (BANK_ACCT_ID)
-- FK_BA_EMP: FOREIGN KEY (EMP_ID) REFERENCES HRMS.EMPLOYEES(EMP_ID)
-- CHK_ACCT_TYPE: CHECK (ACCOUNT_TYPE IN ('CHECKING', 'SAVINGS'))
-- CHK_DEPOSIT_TYPE: CHECK (DEPOSIT_TYPE IN ('FULL', 'PARTIAL_AMOUNT', 'PARTIAL_PERCENT', 'REMAINDER'))
+Constraints: PK_EMP_BANK_ACCTS (BANK_ACCT_ID), FK_BA_EMP → EMPLOYEES(EMP_ID), CHK_ACCT_TYPE, CHK_DEPOSIT_TYPE
 
 ---
 
-=== FILE: ts-plsql-oracle-forms-hrms-main/schema/tables/03_leave_tables.sql ===
+=== FILE: ts-plsql-oracle-forms-hrms/ts-plsql-oracle-forms-hrms-main/schema/tables/03_leave_tables.sql ===
 
 **Schema:** HRMS
 **Database:** Oracle 19c
@@ -1027,141 +1006,134 @@ FUNCTION validate_required_fields(p_table_name IN VARCHAR2, p_record_id IN NUMBE
 
 **Table: HRMS.LEAVE_TYPES**
 
-| Column             | Data Type     | Nullable | Default | Notes                                              |
-|--------------------|---------------|----------|---------|----------------------------------------------------|
-| LEAVE_TYPE_ID      | NUMBER(5)     | NOT NULL |         | PK                                                 |
-| LEAVE_TYPE_CODE    | VARCHAR2(20)  | NOT NULL |         | UK                                                 |
-| LEAVE_TYPE_NAME    | VARCHAR2(50)  | NOT NULL |         |                                                    |
-| PAID_FLAG          | CHAR(1)       | NULL     | 'Y'     |                                                    |
-| ACCRUAL_FLAG       | CHAR(1)       | NULL     | 'Y'     |                                                    |
-| ACCRUAL_RATE       | NUMBER(6,2)   | NULL     |         |                                                    |
-| ACCRUAL_FREQUENCY  | VARCHAR2(20)  | NULL     |         | CHECK IN ('MONTHLY','BIWEEKLY','ANNUAL', NULL)     |
-| MAX_BALANCE        | NUMBER(6,2)   | NULL     |         |                                                    |
-| CARRYOVER_MAX      | NUMBER(6,2)   | NULL     |         |                                                    |
-| CARRYOVER_EXPIRY   | NUMBER(3)     | NULL     |         |                                                    |
-| MIN_TENURE_DAYS    | NUMBER(5)     | NULL     | 0       |                                                    |
-| REQUIRES_APPROVAL  | CHAR(1)       | NULL     | 'Y'     |                                                    |
-| REQUIRES_DOCUMENT  | CHAR(1)       | NULL     | 'N'     |                                                    |
-| ACTIVE_FLAG        | CHAR(1)       | NOT NULL | 'Y'     |                                                    |
-| CREATED_BY         | VARCHAR2(30)  | NOT NULL |         |                                                    |
-| CREATED_DATE       | DATE          | NOT NULL | SYSDATE |                                                    |
-| MODIFIED_BY        | VARCHAR2(30)  | NULL     |         |                                                    |
-| MODIFIED_DATE      | DATE          | NULL     |         |                                                    |
+| Column             | Data Type       | Constraints / Default                                                  |
+|--------------------|-----------------|------------------------------------------------------------------------|
+| LEAVE_TYPE_ID      | NUMBER(5)       | NOT NULL, PK                                                           |
+| LEAVE_TYPE_CODE    | VARCHAR2(20)    | NOT NULL, UNIQUE (UK_LEAVE_TYPE_CODE)                                  |
+| LEAVE_TYPE_NAME    | VARCHAR2(50)    | NOT NULL                                                               |
+| PAID_FLAG          | CHAR(1)         | DEFAULT 'Y'                                                            |
+| ACCRUAL_FLAG       | CHAR(1)         | DEFAULT 'Y'                                                            |
+| ACCRUAL_RATE       | NUMBER(6,2)     | nullable                                                               |
+| ACCRUAL_FREQUENCY  | VARCHAR2(20)    | nullable, CHECK IN ('MONTHLY','BIWEEKLY','ANNUAL', NULL)               |
+| MAX_BALANCE        | NUMBER(6,2)     | nullable                                                               |
+| CARRYOVER_MAX      | NUMBER(6,2)     | nullable                                                               |
+| CARRYOVER_EXPIRY   | NUMBER(3)       | nullable (number of days before carryover expires)                     |
+| MIN_TENURE_DAYS    | NUMBER(5)       | DEFAULT 0                                                              |
+| REQUIRES_APPROVAL  | CHAR(1)         | DEFAULT 'Y'                                                            |
+| REQUIRES_DOCUMENT  | CHAR(1)         | DEFAULT 'N'                                                            |
+| ACTIVE_FLAG        | CHAR(1)         | NOT NULL, DEFAULT 'Y'                                                  |
+| CREATED_BY         | VARCHAR2(30)    | NOT NULL                                                               |
+| CREATED_DATE       | DATE            | NOT NULL, DEFAULT SYSDATE                                              |
+| MODIFIED_BY        | VARCHAR2(30)    | nullable                                                               |
+| MODIFIED_DATE      | DATE            | nullable                                                               |
 
-**Constraints:**
-- PK_LEAVE_TYPES: PRIMARY KEY (LEAVE_TYPE_ID)
-- UK_LEAVE_TYPE_CODE: UNIQUE (LEAVE_TYPE_CODE)
-- CHK_ACCRUAL_FREQ: CHECK (ACCRUAL_FREQUENCY IN ('MONTHLY', 'BIWEEKLY', 'ANNUAL', NULL))
+Constraints: PK_LEAVE_TYPES (LEAVE_TYPE_ID), UK_LEAVE_TYPE_CODE (LEAVE_TYPE_CODE), CHK_ACCRUAL_FREQ
+
+Business Rules embedded:
+- MIN_TENURE_DAYS: employee must have been employed at least this many days to use this leave type.
+- CARRYOVER_EXPIRY: number of days after which carried-over leave expires.
+- MAX_BALANCE: cap on accrued leave balance.
+- CARRYOVER_MAX: maximum days allowed to carry over to next year.
 
 ---
 
 **Table: HRMS.LEAVE_BALANCES**
 
-| Column              | Data Type    | Nullable | Default | Notes                                                  |
-|---------------------|--------------|----------|---------|--------------------------------------------------------|
-| BALANCE_ID          | NUMBER(10)   | NOT NULL |         | PK                                                     |
-| EMP_ID              | NUMBER(10)   | NOT NULL |         | FK → EMPLOYEES(EMP_ID)                                 |
-| LEAVE_TYPE_ID       | NUMBER(5)    | NOT NULL |         | FK → LEAVE_TYPES(LEAVE_TYPE_ID)                        |
-| CALENDAR_YEAR       | NUMBER(4)    | NOT NULL |         |                                                        |
-| OPENING_BALANCE     | NUMBER(6,2)  | NULL     | 0       |                                                        |
-| ACCRUED             | NUMBER(6,2)  | NULL     | 0       |                                                        |
-| USED                | NUMBER(6,2)  | NULL     | 0       |                                                        |
-| ADJUSTMENT          | NUMBER(6,2)  | NULL     | 0       |                                                        |
-| PENDING             | NUMBER(6,2)  | NULL     | 0       |                                                        |
-| AVAILABLE           | NUMBER(6,2)  | VIRTUAL  |         | GENERATED ALWAYS AS (OPENING_BALANCE + ACCRUED - USED + ADJUSTMENT - PENDING) |
-| CARRYOVER_FROM_PREV | NUMBER(6,2)  | NULL     | 0       |                                                        |
-| CARRYOVER_EXPIRY_DT | DATE         | NULL     |         |                                                        |
-| CREATED_BY          | VARCHAR2(30) | NOT NULL |         |                                                        |
-| CREATED_DATE        | DATE         | NOT NULL | SYSDATE |                                                        |
-| MODIFIED_BY         | VARCHAR2(30) | NULL     |         |                                                        |
-| MODIFIED_DATE       | DATE         | NULL     |         |                                                        |
+| Column              | Data Type       | Constraints / Default                                                        |
+|---------------------|-----------------|------------------------------------------------------------------------------|
+| BALANCE_ID          | NUMBER(10)      | NOT NULL, PK                                                                 |
+| EMP_ID              | NUMBER(10)      | NOT NULL, FK → EMPLOYEES(EMP_ID)                                             |
+| LEAVE_TYPE_ID       | NUMBER(5)       | NOT NULL, FK → LEAVE_TYPES(LEAVE_TYPE_ID)                                    |
+| CALENDAR_YEAR       | NUMBER(4)       | NOT NULL                                                                     |
+| OPENING_BALANCE     | NUMBER(6,2)     | DEFAULT 0                                                                    |
+| ACCRUED             | NUMBER(6,2)     | DEFAULT 0                                                                    |
+| USED                | NUMBER(6,2)     | DEFAULT 0                                                                    |
+| ADJUSTMENT          | NUMBER(6,2)     | DEFAULT 0                                                                    |
+| PENDING             | NUMBER(6,2)     | DEFAULT 0                                                                    |
+| AVAILABLE           | NUMBER(6,2)     | VIRTUAL: GENERATED ALWAYS AS (OPENING_BALANCE + ACCRUED - USED + ADJUSTMENT - PENDING) |
+| CARRYOVER_FROM_PREV | NUMBER(6,2)     | DEFAULT 0                                                                    |
+| CARRYOVER_EXPIRY_DT | DATE            | nullable                                                                     |
+| CREATED_BY          | VARCHAR2(30)    | NOT NULL                                                                     |
+| CREATED_DATE        | DATE            | NOT NULL, DEFAULT SYSDATE                                                    |
+| MODIFIED_BY         | VARCHAR2(30)    | nullable                                                                     |
+| MODIFIED_DATE       | DATE            | nullable                                                                     |
 
-**Virtual Column Formula:** AVAILABLE = OPENING_BALANCE + ACCRUED - USED + ADJUSTMENT - PENDING
+Constraints: PK_LEAVE_BALANCES (BALANCE_ID), FK_LB_EMP → EMPLOYEES(EMP_ID), FK_LB_TYPE → LEAVE_TYPES(LEAVE_TYPE_ID), UK_LEAVE_BAL (EMP_ID, LEAVE_TYPE_ID, CALENDAR_YEAR)
 
-**Constraints:**
-- PK_LEAVE_BALANCES: PRIMARY KEY (BALANCE_ID)
-- FK_LB_EMP: FOREIGN KEY (EMP_ID) REFERENCES HRMS.EMPLOYEES(EMP_ID)
-- FK_LB_TYPE: FOREIGN KEY (LEAVE_TYPE_ID) REFERENCES HRMS.LEAVE_TYPES(LEAVE_TYPE_ID)
-- UK_LEAVE_BAL: UNIQUE (EMP_ID, LEAVE_TYPE_ID, CALENDAR_YEAR)
+Business Rule (virtual column formula): AVAILABLE = OPENING_BALANCE + ACCRUED - USED + ADJUSTMENT - PENDING
 
 ---
 
 **Table: HRMS.LEAVE_REQUESTS**
 
-| Column              | Data Type      | Nullable | Default    | Notes                                                         |
-|---------------------|----------------|----------|------------|---------------------------------------------------------------|
-| REQUEST_ID          | NUMBER(10)     | NOT NULL |            | PK                                                            |
-| EMP_ID              | NUMBER(10)     | NOT NULL |            | FK → EMPLOYEES(EMP_ID)                                        |
-| LEAVE_TYPE_ID       | NUMBER(5)      | NOT NULL |            | FK → LEAVE_TYPES(LEAVE_TYPE_ID)                               |
-| START_DATE          | DATE           | NOT NULL |            |                                                               |
-| END_DATE            | DATE           | NOT NULL |            |                                                               |
-| TOTAL_DAYS          | NUMBER(5,1)    | NOT NULL |            |                                                               |
-| HALF_DAY_FLAG       | CHAR(1)        | NULL     | 'N'        |                                                               |
-| HALF_DAY_PERIOD     | VARCHAR2(10)   | NULL     |            | CHECK IN ('AM','PM',NULL)                                     |
-| STATUS              | VARCHAR2(20)   | NULL     | 'PENDING'  | CHECK IN ('PENDING','APPROVED','REJECTED','CANCELLED','TAKEN')|
-| REASON              | VARCHAR2(4000) | NULL     |            |                                                               |
-| SUPPORTING_DOC_PATH | VARCHAR2(500)  | NULL     |            |                                                               |
-| APPROVER_EMP_ID     | NUMBER(10)     | NULL     |            | FK → EMPLOYEES(EMP_ID)                                        |
-| APPROVAL_DATE       | DATE           | NULL     |            |                                                               |
-| APPROVAL_COMMENTS   | VARCHAR2(4000) | NULL     |            |                                                               |
-| CANCEL_REASON       | VARCHAR2(4000) | NULL     |            |                                                               |
-| CANCELLED_DATE      | DATE           | NULL     |            |                                                               |
-| CREATED_BY          | VARCHAR2(30)   | NOT NULL |            |                                                               |
-| CREATED_DATE        | DATE           | NOT NULL | SYSDATE    |                                                               |
-| MODIFIED_BY         | VARCHAR2(30)   | NULL     |            |                                                               |
-| MODIFIED_DATE       | DATE           | NULL     |            |                                                               |
+| Column               | Data Type       | Constraints / Default                                                       |
+|----------------------|-----------------|-----------------------------------------------------------------------------|
+| REQUEST_ID           | NUMBER(10)      | NOT NULL, PK                                                                |
+| EMP_ID               | NUMBER(10)      | NOT NULL, FK → EMPLOYEES(EMP_ID)                                            |
+| LEAVE_TYPE_ID        | NUMBER(5)       | NOT NULL, FK → LEAVE_TYPES(LEAVE_TYPE_ID)                                   |
+| START_DATE           | DATE            | NOT NULL                                                                    |
+| END_DATE             | DATE            | NOT NULL                                                                    |
+| TOTAL_DAYS           | NUMBER(5,1)     | NOT NULL                                                                    |
+| HALF_DAY_FLAG        | CHAR(1)         | DEFAULT 'N'                                                                 |
+| HALF_DAY_PERIOD      | VARCHAR2(10)    | nullable, CHECK IN ('AM','PM', NULL)                                        |
+| STATUS               | VARCHAR2(20)    | DEFAULT 'PENDING', CHECK IN ('PENDING','APPROVED','REJECTED','CANCELLED','TAKEN') |
+| REASON               | VARCHAR2(4000)  | nullable                                                                    |
+| SUPPORTING_DOC_PATH  | VARCHAR2(500)   | nullable                                                                    |
+| APPROVER_EMP_ID      | NUMBER(10)      | nullable, FK → EMPLOYEES(EMP_ID)                                            |
+| APPROVAL_DATE        | DATE            | nullable                                                                    |
+| APPROVAL_COMMENTS    | VARCHAR2(4000)  | nullable                                                                    |
+| CANCEL_REASON        | VARCHAR2(4000)  | nullable                                                                    |
+| CANCELLED_DATE       | DATE            | nullable                                                                    |
+| CREATED_BY           | VARCHAR2(30)    | NOT NULL                                                                    |
+| CREATED_DATE         | DATE            | NOT NULL, DEFAULT SYSDATE                                                   |
+| MODIFIED_BY          | VARCHAR2(30)    | nullable                                                                    |
+| MODIFIED_DATE        | DATE            | nullable                                                                    |
 
-**Constraints:**
-- PK_LEAVE_REQUESTS: PRIMARY KEY (REQUEST_ID)
-- FK_LR_EMP: FOREIGN KEY (EMP_ID) REFERENCES HRMS.EMPLOYEES(EMP_ID)
-- FK_LR_TYPE: FOREIGN KEY (LEAVE_TYPE_ID) REFERENCES HRMS.LEAVE_TYPES(LEAVE_TYPE_ID)
-- FK_LR_APPROVER: FOREIGN KEY (APPROVER_EMP_ID) REFERENCES HRMS.EMPLOYEES(EMP_ID)
-- CHK_LR_STATUS: CHECK (STATUS IN ('PENDING', 'APPROVED', 'REJECTED', 'CANCELLED', 'TAKEN'))
-- CHK_LR_DATES: CHECK (END_DATE >= START_DATE)
-- CHK_HALF_DAY: CHECK (HALF_DAY_PERIOD IN ('AM', 'PM', NULL))
+Constraints: PK_LEAVE_REQUESTS (REQUEST_ID), FK_LR_EMP → EMPLOYEES(EMP_ID), FK_LR_TYPE → LEAVE_TYPES(LEAVE_TYPE_ID), FK_LR_APPROVER → EMPLOYEES(EMP_ID), CHK_LR_STATUS, CHK_LR_DATES (END_DATE >= START_DATE), CHK_HALF_DAY (HALF_DAY_PERIOD IN ('AM','PM', NULL))
+
+Business Rules:
+- END_DATE must be >= START_DATE (CHK_LR_DATES).
+- Half-day leave must specify 'AM' or 'PM' period.
+- Valid status lifecycle: PENDING → APPROVED / REJECTED / CANCELLED → TAKEN.
 
 ---
 
 **Table: HRMS.LEAVE_ACCRUAL_LOG**
 
-| Column          | Data Type    | Nullable | Default | Notes                              |
-|-----------------|--------------|----------|---------|------------------------------------|
-| ACCRUAL_ID      | NUMBER(15)   | NOT NULL |         | PK                                 |
-| EMP_ID          | NUMBER(10)   | NOT NULL |         | FK → EMPLOYEES(EMP_ID)             |
-| LEAVE_TYPE_ID   | NUMBER(5)    | NOT NULL |         | FK → LEAVE_TYPES(LEAVE_TYPE_ID)    |
-| ACCRUAL_DATE    | DATE         | NOT NULL |         |                                    |
-| ACCRUAL_AMOUNT  | NUMBER(6,2)  | NOT NULL |         |                                    |
-| BALANCE_AFTER   | NUMBER(6,2)  | NULL     |         |                                    |
-| RUN_ID          | NUMBER(10)   | NULL     |         |                                    |
-| CREATED_BY      | VARCHAR2(30) | NOT NULL |         |                                    |
-| CREATED_DATE    | DATE         | NOT NULL | SYSDATE |                                    |
+| Column           | Data Type       | Constraints / Default                            |
+|------------------|-----------------|--------------------------------------------------|
+| ACCRUAL_ID       | NUMBER(15)      | NOT NULL, PK                                     |
+| EMP_ID           | NUMBER(10)      | NOT NULL, FK → EMPLOYEES(EMP_ID)                 |
+| LEAVE_TYPE_ID    | NUMBER(5)       | NOT NULL, FK → LEAVE_TYPES(LEAVE_TYPE_ID)        |
+| ACCRUAL_DATE     | DATE            | NOT NULL                                         |
+| ACCRUAL_AMOUNT   | NUMBER(6,2)     | NOT NULL                                         |
+| BALANCE_AFTER    | NUMBER(6,2)     | nullable                                         |
+| RUN_ID           | NUMBER(10)      | nullable (references a batch run, not FK defined)|
+| CREATED_BY       | VARCHAR2(30)    | NOT NULL                                         |
+| CREATED_DATE     | DATE            | NOT NULL, DEFAULT SYSDATE                        |
 
-**Constraints:**
-- PK_LEAVE_ACCRUAL_LOG: PRIMARY KEY (ACCRUAL_ID)
-- FK_LAL_EMP: FOREIGN KEY (EMP_ID) REFERENCES HRMS.EMPLOYEES(EMP_ID)
-- FK_LAL_TYPE: FOREIGN KEY (LEAVE_TYPE_ID) REFERENCES HRMS.LEAVE_TYPES(LEAVE_TYPE_ID)
+Constraints: PK_LEAVE_ACCRUAL_LOG (ACCRUAL_ID), FK_LAL_EMP → EMPLOYEES(EMP_ID), FK_LAL_TYPE → LEAVE_TYPES(LEAVE_TYPE_ID)
 
 ---
 
 **Table: HRMS.HOLIDAYS**
 
-| Column        | Data Type     | Nullable | Default | Notes                              |
-|---------------|---------------|----------|---------|------------------------------------|
-| HOLIDAY_ID    | NUMBER(5)     | NOT NULL |         | PK                                 |
-| HOLIDAY_DATE  | DATE          | NOT NULL |         |                                    |
-| HOLIDAY_NAME  | VARCHAR2(100) | NOT NULL |         |                                    |
-| LOCATION_CODE | VARCHAR2(10)  | NULL     |         | NULL = global holiday              |
-| FLOATING_FLAG | CHAR(1)       | NULL     | 'N'     |                                    |
-| ACTIVE_FLAG   | CHAR(1)       | NOT NULL | 'Y'     |                                    |
-| CREATED_BY    | VARCHAR2(30)  | NOT NULL |         |                                    |
-| CREATED_DATE  | DATE          | NOT NULL | SYSDATE |                                    |
+| Column           | Data Type       | Constraints / Default        |
+|------------------|-----------------|------------------------------|
+| HOLIDAY_ID       | NUMBER(5)       | NOT NULL, PK                 |
+| HOLIDAY_DATE     | DATE            | NOT NULL                     |
+| HOLIDAY_NAME     | VARCHAR2(100)   | NOT NULL                     |
+| LOCATION_CODE    | VARCHAR2(10)    | nullable (NULL = global)     |
+| FLOATING_FLAG    | CHAR(1)         | DEFAULT 'N'                  |
+| ACTIVE_FLAG      | CHAR(1)         | NOT NULL, DEFAULT 'Y'        |
+| CREATED_BY       | VARCHAR2(30)    | NOT NULL                     |
+| CREATED_DATE     | DATE            | NOT NULL, DEFAULT SYSDATE    |
 
-**Constraints:**
-- PK_HOLIDAYS: PRIMARY KEY (HOLIDAY_ID)
+Constraints: PK_HOLIDAYS (HOLIDAY_ID)
 
 ---
 
-=== FILE: ts-plsql-oracle-forms-hrms-main/schema/tables/04_performance_tables.sql ===
+=== FILE: ts-plsql-oracle-forms-hrms/ts-plsql-oracle-forms-hrms-main/schema/tables/04_performance_tables.sql ===
 
 **Schema:** HRMS
 **Database:** Oracle 19c
@@ -1170,210 +1142,184 @@ FUNCTION validate_required_fields(p_table_name IN VARCHAR2, p_record_id IN NUMBE
 
 **Table: HRMS.REVIEW_CYCLES**
 
-| Column              | Data Type     | Nullable | Default  | Notes                                                    |
-|---------------------|---------------|----------|----------|----------------------------------------------------------|
-| CYCLE_ID            | NUMBER(10)    | NOT NULL |          | PK                                                       |
-| CYCLE_NAME          | VARCHAR2(100) | NOT NULL |          |                                                          |
-| CYCLE_YEAR          | NUMBER(4)     | NOT NULL |          |                                                          |
-| START_DATE          | DATE          | NOT NULL |          |                                                          |
-| END_DATE            | DATE          | NOT NULL |          |                                                          |
-| SELF_REVIEW_DUE     | DATE          | NULL     |          |                                                          |
-| MANAGER_REVIEW_DUE  | DATE          | NULL     |          |                                                          |
-| CALIBRATION_DUE     | DATE          | NULL     |          |                                                          |
-| STATUS              | VARCHAR2(20)  | NULL     | 'DRAFT'  | CHECK IN ('DRAFT','OPEN','IN_PROGRESS','CALIBRATION','CLOSED') |
-| CREATED_BY          | VARCHAR2(30)  | NOT NULL |          |                                                          |
-| CREATED_DATE        | DATE          | NOT NULL | SYSDATE  |                                                          |
-| MODIFIED_BY         | VARCHAR2(30)  | NULL     |          |                                                          |
-| MODIFIED_DATE       | DATE          | NULL     |          |                                                          |
+| Column              | Data Type       | Constraints / Default                                                  |
+|---------------------|-----------------|------------------------------------------------------------------------|
+| CYCLE_ID            | NUMBER(10)      | NOT NULL, PK                                                           |
+| CYCLE_NAME          | VARCHAR2(100)   | NOT NULL                                                               |
+| CYCLE_YEAR          | NUMBER(4)       | NOT NULL                                                               |
+| START_DATE          | DATE            | NOT NULL                                                               |
+| END_DATE            | DATE            | NOT NULL                                                               |
+| SELF_REVIEW_DUE     | DATE            | nullable                                                               |
+| MANAGER_REVIEW_DUE  | DATE            | nullable                                                               |
+| CALIBRATION_DUE     | DATE            | nullable                                                               |
+| STATUS              | VARCHAR2(20)    | DEFAULT 'DRAFT', CHECK IN ('DRAFT','OPEN','IN_PROGRESS','CALIBRATION','CLOSED') |
+| CREATED_BY          | VARCHAR2(30)    | NOT NULL                                                               |
+| CREATED_DATE        | DATE            | NOT NULL, DEFAULT SYSDATE                                              |
+| MODIFIED_BY         | VARCHAR2(30)    | nullable                                                               |
+| MODIFIED_DATE       | DATE            | nullable                                                               |
 
-**Constraints:**
-- PK_REVIEW_CYCLES: PRIMARY KEY (CYCLE_ID)
-- CHK_CYCLE_STATUS: CHECK (STATUS IN ('DRAFT', 'OPEN', 'IN_PROGRESS', 'CALIBRATION', 'CLOSED'))
+Constraints: PK_REVIEW_CYCLES (CYCLE_ID), CHK_CYCLE_STATUS
 
 ---
 
 **Table: HRMS.PERFORMANCE_REVIEWS**
 
-| Column                  | Data Type     | Nullable | Default        | Notes                                                                        |
-|-------------------------|---------------|----------|----------------|------------------------------------------------------------------------------|
-| REVIEW_ID               | NUMBER(10)    | NOT NULL |                | PK                                                                           |
-| CYCLE_ID                | NUMBER(10)    | NOT NULL |                | FK → REVIEW_CYCLES(CYCLE_ID)                                                 |
-| EMP_ID                  | NUMBER(10)    | NOT NULL |                | FK → EMPLOYEES(EMP_ID)                                                       |
-| REVIEWER_EMP_ID         | NUMBER(10)    | NOT NULL |                | FK → EMPLOYEES(EMP_ID)                                                       |
-| REVIEW_TYPE             | VARCHAR2(20)  | NULL     | 'ANNUAL'       |                                                                              |
-| STATUS                  | VARCHAR2(20)  | NULL     | 'NOT_STARTED'  | CHECK (see below)                                                            |
-| OVERALL_RATING          | NUMBER(2,1)   | NULL     |                | CHECK BETWEEN 1.0 AND 5.0                                                    |
-| RATING_LABEL            | VARCHAR2(50)  | NULL     |                |                                                                              |
-| SELF_ASSESSMENT         | CLOB          | NULL     |                |                                                                              |
-| MANAGER_ASSESSMENT      | CLOB          | NULL     |                |                                                                              |
-| STRENGTHS               | CLOB          | NULL     |                |                                                                              |
-| AREAS_FOR_IMPROVEMENT   | CLOB          | NULL     |                |                                                                              |
-| DEVELOPMENT_PLAN        | CLOB          | NULL     |                |                                                                              |
-| EMPLOYEE_COMMENTS       | CLOB          | NULL     |                |                                                                              |
-| EMPLOYEE_ACK_DATE       | DATE          | NULL     |                |                                                                              |
-| CALIBRATED_RATING       | NUMBER(2,1)   | NULL     |                |                                                                              |
-| CALIBRATION_NOTES       | VARCHAR2(4000)| NULL     |                |                                                                              |
-| CREATED_BY              | VARCHAR2(30)  | NOT NULL |                |                                                                              |
-| CREATED_DATE            | DATE          | NOT NULL | SYSDATE        |                                                                              |
-| MODIFIED_BY             | VARCHAR2(30)  | NULL     |                |                                                                              |
-| MODIFIED_DATE           | DATE          | NULL     |                |                                                                              |
+| Column                 | Data Type       | Constraints / Default                                                                                 |
+|------------------------|-----------------|-------------------------------------------------------------------------------------------------------|
+| REVIEW_ID              | NUMBER(10)      | NOT NULL, PK                                                                                          |
+| CYCLE_ID               | NUMBER(10)      | NOT NULL, FK → REVIEW_CYCLES(CYCLE_ID)                                                                |
+| EMP_ID                 | NUMBER(10)      | NOT NULL, FK → EMPLOYEES(EMP_ID)                                                                      |
+| REVIEWER_EMP_ID        | NUMBER(10)      | NOT NULL, FK → EMPLOYEES(EMP_ID)                                                                      |
+| REVIEW_TYPE            | VARCHAR2(20)    | DEFAULT 'ANNUAL'                                                                                      |
+| STATUS                 | VARCHAR2(20)    | DEFAULT 'NOT_STARTED', CHECK IN ('NOT_STARTED','SELF_REVIEW','MANAGER_REVIEW','MEETING_SCHEDULED','COMPLETED','ACKNOWLEDGED') |
+| OVERALL_RATING         | NUMBER(2,1)     | nullable, CHECK BETWEEN 1.0 AND 5.0                                                                   |
+| RATING_LABEL           | VARCHAR2(50)    | nullable                                                                                              |
+| SELF_ASSESSMENT        | CLOB            | nullable                                                                                              |
+| MANAGER_ASSESSMENT     | CLOB            | nullable                                                                                              |
+| STRENGTHS              | CLOB            | nullable                                                                                              |
+| AREAS_FOR_IMPROVEMENT  | CLOB            | nullable                                                                                              |
+| DEVELOPMENT_PLAN       | CLOB            | nullable                                                                                              |
+| EMPLOYEE_COMMENTS      | CLOB            | nullable                                                                                              |
+| EMPLOYEE_ACK_DATE      | DATE            | nullable                                                                                              |
+| CALIBRATED_RATING      | NUMBER(2,1)     | nullable                                                                                              |
+| CALIBRATION_NOTES      | VARCHAR2(4000)  | nullable                                                                                              |
+| CREATED_BY             | VARCHAR2(30)    | NOT NULL                                                                                              |
+| CREATED_DATE           | DATE            | NOT NULL, DEFAULT SYSDATE                                                                             |
+| MODIFIED_BY            | VARCHAR2(30)    | nullable                                                                                              |
+| MODIFIED_DATE          | DATE            | nullable                                                                                              |
 
-**Constraints:**
-- PK_PERFORMANCE_REVIEWS: PRIMARY KEY (REVIEW_ID)
-- FK_PR_CYCLE: FOREIGN KEY (CYCLE_ID) REFERENCES HRMS.REVIEW_CYCLES(CYCLE_ID)
-- FK_PR_EMP: FOREIGN KEY (EMP_ID) REFERENCES HRMS.EMPLOYEES(EMP_ID)
-- FK_PR_REVIEWER: FOREIGN KEY (REVIEWER_EMP_ID) REFERENCES HRMS.EMPLOYEES(EMP_ID)
-- CHK_REVIEW_STATUS: CHECK (STATUS IN ('NOT_STARTED', 'SELF_REVIEW', 'MANAGER_REVIEW', 'MEETING_SCHEDULED', 'COMPLETED', 'ACKNOWLEDGED'))
-- CHK_RATING_RANGE: CHECK (OVERALL_RATING BETWEEN 1.0 AND 5.0)
+Constraints: PK_PERFORMANCE_REVIEWS (REVIEW_ID), FK_PR_CYCLE → REVIEW_CYCLES(CYCLE_ID), FK_PR_EMP → EMPLOYEES(EMP_ID), FK_PR_REVIEWER → EMPLOYEES(EMP_ID), CHK_REVIEW_STATUS, CHK_RATING_RANGE (OVERALL_RATING BETWEEN 1.0 AND 5.0)
 
-**Business Rule:** Overall rating must be between 1.0 and 5.0 inclusive.
+Business Rule: Rating must be between 1.0 and 5.0 inclusive.
 
 ---
 
 **Table: HRMS.PERFORMANCE_GOALS**
 
-| Column            | Data Type      | Nullable | Default        | Notes                                                                           |
-|-------------------|----------------|----------|----------------|---------------------------------------------------------------------------------|
-| GOAL_ID           | NUMBER(10)     | NOT NULL |                | PK                                                                              |
-| REVIEW_ID         | NUMBER(10)     | NOT NULL |                | FK → PERFORMANCE_REVIEWS(REVIEW_ID)                                             |
-| EMP_ID            | NUMBER(10)     | NOT NULL |                | FK → EMPLOYEES(EMP_ID)                                                          |
-| GOAL_TITLE        | VARCHAR2(200)  | NOT NULL |                |                                                                                 |
-| GOAL_DESCRIPTION  | CLOB           | NULL     |                |                                                                                 |
-| GOAL_CATEGORY     | VARCHAR2(30)   | NULL     |                | CHECK IN ('BUSINESS','DEVELOPMENT','LEADERSHIP','INNOVATION','COMPLIANCE')      |
-| WEIGHT_PCT        | NUMBER(5,2)    | NULL     | 0              |                                                                                 |
-| TARGET_DATE       | DATE           | NULL     |                |                                                                                 |
-| STATUS            | VARCHAR2(20)   | NULL     | 'NOT_STARTED'  | CHECK IN ('NOT_STARTED','IN_PROGRESS','COMPLETED','DEFERRED','CANCELLED')       |
-| PROGRESS_PCT      | NUMBER(5,2)    | NULL     | 0              |                                                                                 |
-| SELF_RATING       | NUMBER(2,1)    | NULL     |                |                                                                                 |
-| MANAGER_RATING    | NUMBER(2,1)    | NULL     |                |                                                                                 |
-| COMMENTS          | CLOB           | NULL     |                |                                                                                 |
-| CREATED_BY        | VARCHAR2(30)   | NOT NULL |                |                                                                                 |
-| CREATED_DATE      | DATE           | NOT NULL | SYSDATE        |                                                                                 |
-| MODIFIED_BY       | VARCHAR2(30)   | NULL     |                |                                                                                 |
-| MODIFIED_DATE     | DATE           | NULL     |                |                                                                                 |
+| Column            | Data Type       | Constraints / Default                                                                               |
+|-------------------|-----------------|-----------------------------------------------------------------------------------------------------|
+| GOAL_ID           | NUMBER(10)      | NOT NULL, PK                                                                                        |
+| REVIEW_ID         | NUMBER(10)      | NOT NULL, FK → PERFORMANCE_REVIEWS(REVIEW_ID)                                                       |
+| EMP_ID            | NUMBER(10)      | NOT NULL, FK → EMPLOYEES(EMP_ID)                                                                    |
+| GOAL_TITLE        | VARCHAR2(200)   | NOT NULL                                                                                            |
+| GOAL_DESCRIPTION  | CLOB            | nullable                                                                                            |
+| GOAL_CATEGORY     | VARCHAR2(30)    | nullable, CHECK IN ('BUSINESS','DEVELOPMENT','LEADERSHIP','INNOVATION','COMPLIANCE')                |
+| WEIGHT_PCT        | NUMBER(5,2)     | DEFAULT 0                                                                                           |
+| TARGET_DATE       | DATE            | nullable                                                                                            |
+| STATUS            | VARCHAR2(20)    | DEFAULT 'NOT_STARTED', CHECK IN ('NOT_STARTED','IN_PROGRESS','COMPLETED','DEFERRED','CANCELLED')    |
+| PROGRESS_PCT      | NUMBER(5,2)     | DEFAULT 0                                                                                           |
+| SELF_RATING       | NUMBER(2,1)     | nullable                                                                                            |
+| MANAGER_RATING    | NUMBER(2,1)     | nullable                                                                                            |
+| COMMENTS          | CLOB            | nullable                                                                                            |
+| CREATED_BY        | VARCHAR2(30)    | NOT NULL                                                                                            |
+| CREATED_DATE      | DATE            | NOT NULL, DEFAULT SYSDATE                                                                           |
+| MODIFIED_BY       | VARCHAR2(30)    | nullable                                                                                            |
+| MODIFIED_DATE     | DATE            | nullable                                                                                            |
 
-**Constraints:**
-- PK_PERF_GOALS: PRIMARY KEY (GOAL_ID)
-- FK_PG_REVIEW: FOREIGN KEY (REVIEW_ID) REFERENCES HRMS.PERFORMANCE_REVIEWS(REVIEW_ID)
-- FK_PG_EMP: FOREIGN KEY (EMP_ID) REFERENCES HRMS.EMPLOYEES(EMP_ID)
-- CHK_GOAL_STATUS: CHECK (STATUS IN ('NOT_STARTED', 'IN_PROGRESS', 'COMPLETED', 'DEFERRED', 'CANCELLED'))
-- CHK_GOAL_CATEGORY: CHECK (GOAL_CATEGORY IN ('BUSINESS', 'DEVELOPMENT', 'LEADERSHIP', 'INNOVATION', 'COMPLIANCE'))
+Constraints: PK_PERF_GOALS (GOAL_ID), FK_PG_REVIEW → PERFORMANCE_REVIEWS(REVIEW_ID), FK_PG_EMP → EMPLOYEES(EMP_ID), CHK_GOAL_STATUS, CHK_GOAL_CATEGORY
 
 ---
 
 **Table: HRMS.AUDIT_LOG**
 
-| Column        | Data Type      | Nullable | Default  | Notes                                    |
-|---------------|----------------|----------|----------|------------------------------------------|
-| AUDIT_ID      | NUMBER(15)     | NOT NULL |          | PK                                       |
-| TABLE_NAME    | VARCHAR2(60)   | NOT NULL |          |                                          |
-| RECORD_ID     | NUMBER(15)     | NOT NULL |          |                                          |
-| ACTION_TYPE   | VARCHAR2(10)   | NOT NULL |          | CHECK IN ('INSERT','UPDATE','DELETE')    |
-| OLD_VALUES    | CLOB           | NULL     |          |                                          |
-| NEW_VALUES    | CLOB           | NULL     |          |                                          |
-| CHANGED_BY    | VARCHAR2(30)   | NOT NULL |          |                                          |
-| CHANGED_DATE  | DATE           | NOT NULL | SYSDATE  |                                          |
-| IP_ADDRESS    | VARCHAR2(50)   | NULL     |          |                                          |
-| SESSION_ID    | VARCHAR2(100)  | NULL     |          |                                          |
+| Column         | Data Type       | Constraints / Default                             |
+|----------------|-----------------|---------------------------------------------------|
+| AUDIT_ID       | NUMBER(15)      | NOT NULL, PK                                      |
+| TABLE_NAME     | VARCHAR2(60)    | NOT NULL                                          |
+| RECORD_ID      | NUMBER(15)      | NOT NULL                                          |
+| ACTION_TYPE    | VARCHAR2(10)    | NOT NULL, CHECK IN ('INSERT','UPDATE','DELETE')   |
+| OLD_VALUES     | CLOB            | nullable                                          |
+| NEW_VALUES     | CLOB            | nullable                                          |
+| CHANGED_BY     | VARCHAR2(30)    | NOT NULL                                          |
+| CHANGED_DATE   | DATE            | NOT NULL, DEFAULT SYSDATE                         |
+| IP_ADDRESS     | VARCHAR2(50)    | nullable                                          |
+| SESSION_ID     | VARCHAR2(100)   | nullable                                          |
 
-**Constraints:**
-- PK_AUDIT_LOG: PRIMARY KEY (AUDIT_ID)
-- CHK_AUDIT_ACTION: CHECK (ACTION_TYPE IN ('INSERT', 'UPDATE', 'DELETE'))
+Constraints: PK_AUDIT_LOG (AUDIT_ID), CHK_AUDIT_ACTION
 
 ---
 
 **Table: HRMS.SYSTEM_PARAMETERS**
 
-| Column            | Data Type      | Nullable | Default      | Notes                          |
-|-------------------|----------------|----------|--------------|--------------------------------|
-| PARAM_ID          | NUMBER(5)      | NOT NULL |              | PK                             |
-| PARAM_GROUP       | VARCHAR2(50)   | NOT NULL |              |                                |
-| PARAM_CODE        | VARCHAR2(50)   | NOT NULL |              |                                |
-| PARAM_VALUE       | VARCHAR2(4000) | NOT NULL |              |                                |
-| PARAM_DESCRIPTION | VARCHAR2(200)  | NULL     |              |                                |
-| DATA_TYPE         | VARCHAR2(20)   | NULL     | 'VARCHAR2'   |                                |
-| EDITABLE_FLAG     | CHAR(1)        | NULL     | 'Y'          |                                |
-| CREATED_BY        | VARCHAR2(30)   | NOT NULL |              |                                |
-| CREATED_DATE      | DATE           | NOT NULL | SYSDATE      |                                |
-| MODIFIED_BY       | VARCHAR2(30)   | NULL     |              |                                |
-| MODIFIED_DATE     | DATE           | NULL     |              |                                |
+| Column            | Data Type       | Constraints / Default                            |
+|-------------------|-----------------|--------------------------------------------------|
+| PARAM_ID          | NUMBER(5)       | NOT NULL, PK                                     |
+| PARAM_GROUP       | VARCHAR2(50)    | NOT NULL                                         |
+| PARAM_CODE        | VARCHAR2(50)    | NOT NULL                                         |
+| PARAM_VALUE       | VARCHAR2(4000)  | NOT NULL                                         |
+| PARAM_DESCRIPTION | VARCHAR2(200)   | nullable                                         |
+| DATA_TYPE         | VARCHAR2(20)    | DEFAULT 'VARCHAR2'                               |
+| EDITABLE_FLAG     | CHAR(1)         | DEFAULT 'Y'                                      |
+| CREATED_BY        | VARCHAR2(30)    | NOT NULL                                         |
+| CREATED_DATE      | DATE            | NOT NULL, DEFAULT SYSDATE                        |
+| MODIFIED_BY       | VARCHAR2(30)    | nullable                                         |
+| MODIFIED_DATE     | DATE            | nullable                                         |
 
-**Constraints:**
-- PK_SYSTEM_PARAMS: PRIMARY KEY (PARAM_ID)
-- UK_PARAM_CODE: UNIQUE (PARAM_GROUP, PARAM_CODE)
+Constraints: PK_SYSTEM_PARAMS (PARAM_ID), UK_PARAM_CODE (PARAM_GROUP, PARAM_CODE)
 
 ---
 
 **Table: HRMS.NOTIFICATION_QUEUE**
 
-| Column              | Data Type      | Nullable | Default    | Notes                                          |
-|---------------------|----------------|----------|------------|------------------------------------------------|
-| NOTIFICATION_ID     | NUMBER(15)     | NOT NULL |            | PK                                             |
-| RECIPIENT_EMP_ID    | NUMBER(10)     | NULL     |            |                                                |
-| RECIPIENT_EMAIL     | VARCHAR2(100)  | NULL     |            |                                                |
-| NOTIFICATION_TYPE   | VARCHAR2(30)   | NOT NULL |            | CHECK IN ('EMAIL','IN_APP','SMS')              |
-| SUBJECT             | VARCHAR2(200)  | NOT NULL |            |                                                |
-| BODY                | CLOB           | NOT NULL |            |                                                |
-| STATUS              | VARCHAR2(20)   | NULL     | 'PENDING'  | CHECK IN ('PENDING','SENT','FAILED','CANCELLED')|
-| PRIORITY            | NUMBER(2)      | NULL     | 5          |                                                |
-| SENT_DATE           | DATE           | NULL     |            |                                                |
-| ERROR_MESSAGE       | VARCHAR2(4000) | NULL     |            |                                                |
-| RETRY_COUNT         | NUMBER(3)      | NULL     | 0          |                                                |
-| REFERENCE_TABLE     | VARCHAR2(60)   | NULL     |            |                                                |
-| REFERENCE_ID        | NUMBER(15)     | NULL     |            |                                                |
-| CREATED_BY          | VARCHAR2(30)   | NOT NULL |            |                                                |
-| CREATED_DATE        | DATE           | NOT NULL | SYSDATE    |                                                |
+| Column             | Data Type       | Constraints / Default                                          |
+|--------------------|-----------------|----------------------------------------------------------------|
+| NOTIFICATION_ID    | NUMBER(15)      | NOT NULL, PK                                                   |
+| RECIPIENT_EMP_ID   | NUMBER(10)      | nullable                                                       |
+| RECIPIENT_EMAIL    | VARCHAR2(100)   | nullable                                                       |
+| NOTIFICATION_TYPE  | VARCHAR2(30)    | NOT NULL, CHECK IN ('EMAIL','IN_APP','SMS')                    |
+| SUBJECT            | VARCHAR2(200)   | NOT NULL                                                       |
+| BODY               | CLOB            | NOT NULL                                                       |
+| STATUS             | VARCHAR2(20)    | DEFAULT 'PENDING', CHECK IN ('PENDING','SENT','FAILED','CANCELLED') |
+| PRIORITY           | NUMBER(2)       | DEFAULT 5                                                      |
+| SENT_DATE          | DATE            | nullable                                                       |
+| ERROR_MESSAGE      | VARCHAR2(4000)  | nullable                                                       |
+| RETRY_COUNT        | NUMBER(3)       | DEFAULT 0                                                      |
+| REFERENCE_TABLE    | VARCHAR2(60)    | nullable                                                       |
+| REFERENCE_ID       | NUMBER(15)      | nullable                                                       |
+| CREATED_BY         | VARCHAR2(30)    | NOT NULL                                                       |
+| CREATED_DATE       | DATE            | NOT NULL, DEFAULT SYSDATE                                      |
 
-**Constraints:**
-- PK_NOTIF_QUEUE: PRIMARY KEY (NOTIFICATION_ID)
-- CHK_NOTIF_STATUS: CHECK (STATUS IN ('PENDING', 'SENT', 'FAILED', 'CANCELLED'))
-- CHK_NOTIF_TYPE: CHECK (NOTIFICATION_TYPE IN ('EMAIL', 'IN_APP', 'SMS'))
-
-**Business Rule (numeric):** Default priority = 5 (scale not defined in DDL); retry count starts at 0.
+Constraints: PK_NOTIF_QUEUE (NOTIFICATION_ID), CHK_NOTIF_STATUS, CHK_NOTIF_TYPE
 
 ---
 
 **Table: HRMS.USER_SESSIONS**
 
-| Column          | Data Type      | Nullable | Default    | Notes                              |
-|-----------------|----------------|----------|------------|------------------------------------|
-| SESSION_ID      | NUMBER(15)     | NOT NULL |            | PK                                 |
-| EMP_ID          | NUMBER(10)     | NOT NULL |            | FK → EMPLOYEES(EMP_ID)             |
-| USERNAME        | VARCHAR2(30)   | NOT NULL |            |                                    |
-| LOGIN_TIME      | DATE           | NOT NULL |            |                                    |
-| LOGOUT_TIME     | DATE           | NULL     |            |                                    |
-| IP_ADDRESS      | VARCHAR2(50)   | NULL     |            |                                    |
-| FORMS_MODULE    | VARCHAR2(100)  | NULL     |            |                                    |
-| SESSION_STATUS  | VARCHAR2(20)   | NULL     | 'ACTIVE'   |                                    |
-| CREATED_DATE    | DATE           | NOT NULL | SYSDATE    |                                    |
+| Column           | Data Type       | Constraints / Default                    |
+|------------------|-----------------|------------------------------------------|
+| SESSION_ID       | NUMBER(15)      | NOT NULL, PK                             |
+| EMP_ID           | NUMBER(10)      | NOT NULL, FK → EMPLOYEES(EMP_ID)         |
+| USERNAME         | VARCHAR2(30)    | NOT NULL                                 |
+| LOGIN_TIME       | DATE            | NOT NULL                                 |
+| LOGOUT_TIME      | DATE            | nullable                                 |
+| IP_ADDRESS       | VARCHAR2(50)    | nullable                                 |
+| FORMS_MODULE     | VARCHAR2(100)   | nullable                                 |
+| SESSION_STATUS   | VARCHAR2(20)    | DEFAULT 'ACTIVE'                         |
+| CREATED_DATE     | DATE            | NOT NULL, DEFAULT SYSDATE                |
 
-**Constraints:**
-- PK_USER_SESSIONS: PRIMARY KEY (SESSION_ID)
-- FK_US_EMP: FOREIGN KEY (EMP_ID) REFERENCES HRMS.EMPLOYEES(EMP_ID)
+Constraints: PK_USER_SESSIONS (SESSION_ID), FK_US_EMP → EMPLOYEES(EMP_ID)
 
 ---
 
 **Table: HRMS.LOOKUP_VALUES**
 
-| Column           | Data Type     | Nullable | Default | Notes                              |
-|------------------|---------------|----------|---------|------------------------------------|
-| LOOKUP_ID        | NUMBER(10)    | NOT NULL |         | PK                                 |
-| LOOKUP_TYPE      | VARCHAR2(50)  | NOT NULL |         |                                    |
-| LOOKUP_CODE      | VARCHAR2(50)  | NOT NULL |         |                                    |
-| LOOKUP_VALUE     | VARCHAR2(200) | NOT NULL |         |                                    |
-| DISPLAY_ORDER    | NUMBER(5)     | NULL     | 0       |                                    |
-| PARENT_LOOKUP_ID | NUMBER(10)    | NULL     |         |                                    |
-| ACTIVE_FLAG      | CHAR(1)       | NOT NULL | 'Y'     |                                    |
-| CREATED_BY       | VARCHAR2(30)  | NOT NULL |         |                                    |
-| CREATED_DATE     | DATE          | NOT NULL | SYSDATE |                                    |
+| Column           | Data Type       | Constraints / Default                          |
+|------------------|-----------------|------------------------------------------------|
+| LOOKUP_ID        | NUMBER(10)      | NOT NULL, PK                                   |
+| LOOKUP_TYPE      | VARCHAR2(50)    | NOT NULL                                       |
+| LOOKUP_CODE      | VARCHAR2(50)    | NOT NULL                                       |
+| LOOKUP_VALUE     | VARCHAR2(200)   | NOT NULL                                       |
+| DISPLAY_ORDER    | NUMBER(5)       | DEFAULT 0                                      |
+| PARENT_LOOKUP_ID | NUMBER(10)      | nullable                                       |
+| ACTIVE_FLAG      | CHAR(1)         | NOT NULL, DEFAULT 'Y'                          |
+| CREATED_BY       | VARCHAR2(30)    | NOT NULL                                       |
+| CREATED_DATE     | DATE            | NOT NULL, DEFAULT SYSDATE                      |
 
-**Constraints:**
-- PK_LOOKUP_VALUES: PRIMARY KEY (LOOKUP_ID)
-- UK_LOOKUP: UNIQUE (LOOKUP_TYPE, LOOKUP_CODE)
+Constraints: PK_LOOKUP_VALUES (LOOKUP_ID), UK_LOOKUP (LOOKUP_TYPE, LOOKUP_CODE)
 
 ---
 
-=== FILE: ts-plsql-oracle-forms-hrms-main/schema/views/hrms_views.sql ===
+=== FILE: ts-plsql-oracle-forms-hrms/ts-plsql-oracle-forms-hrms-main/schema/views/hrms_views.sql ===
 
 **Schema:** HRMS
 **Used by:** Oracle Reports (.rdf), Forms LOVs, external reporting tools
@@ -1382,26 +1328,28 @@ FUNCTION validate_required_fields(p_table_name IN VARCHAR2, p_record_id IN NUMBE
 
 **View: HRMS.VW_ACTIVE_EMPLOYEES**
 
-**Purpose:** Denormalized view of active employees with department, job, manager, location, and salary.
+Purpose: Denormalized view of active employees with department, job, manager, location, and current salary.
 
-**Columns Returned:**
-- e.EMP_ID, e.EMP_NUMBER, e.FIRST_NAME, e.LAST_NAME
-- FULL_NAME: `e.FIRST_NAME || ' ' || e.LAST_NAME`
+Columns returned:
+- e.EMP_ID, e.EMP_NUMBER
+- e.FIRST_NAME, e.LAST_NAME
+- e.FIRST_NAME || ' ' || e.LAST_NAME AS FULL_NAME
 - e.EMAIL, e.PHONE_WORK, e.PHONE_MOBILE
 - e.HIRE_DATE
-- TENURE_YEARS: `TRUNC(MONTHS_BETWEEN(SYSDATE, e.HIRE_DATE) / 12, 1)` — truncated to 1 decimal place
+- TRUNC(MONTHS_BETWEEN(SYSDATE, e.HIRE_DATE) / 12, 1) AS TENURE_YEARS
 - e.EMPLOYMENT_TYPE, e.EMPLOYMENT_STATUS
 - e.DEPT_ID, d.DEPT_NAME, d.DEPT_CODE, d.COST_CENTER
 - e.JOB_ID, j.JOB_TITLE, j.JOB_CODE
 - g.GRADE_ID, g.GRADE_NAME
 - e.MANAGER_EMP_ID
-- MANAGER_NAME: `m.FIRST_NAME || ' ' || m.LAST_NAME`
-- e.LOCATION_CODE, l.LOCATION_NAME, l.CITY, l.STATE_PROVINCE, l.COUNTRY_CODE
-- CURRENT_SALARY: `sr.BASE_SALARY`
+- m.FIRST_NAME || ' ' || m.LAST_NAME AS MANAGER_NAME
+- e.LOCATION_CODE
+- l.LOCATION_NAME, l.CITY, l.STATE_PROVINCE, l.COUNTRY_CODE
+- sr.BASE_SALARY AS CURRENT_SALARY
 - sr.CURRENCY_CODE, sr.PAY_FREQUENCY
 
-**Joins:**
-- FROM EMPLOYEES e
+Joins:
+- EMPLOYEES e (base)
 - JOIN DEPARTMENTS d ON e.DEPT_ID = d.DEPT_ID
 - JOIN JOB_TITLES j ON e.JOB_ID = j.JOB_ID
 - JOIN JOB_GRADES g ON j.GRADE_ID = g.GRADE_ID
@@ -1409,151 +1357,137 @@ FUNCTION validate_required_fields(p_table_name IN VARCHAR2, p_record_id IN NUMBE
 - LEFT JOIN LOCATIONS l ON e.LOCATION_CODE = l.LOCATION_CODE
 - LEFT JOIN SALARY_RECORDS sr ON e.EMP_ID = sr.EMP_ID AND sr.ACTIVE_FLAG = 'Y' AND sr.EFFECTIVE_DATE <= SYSDATE AND (sr.END_DATE IS NULL OR sr.END_DATE > SYSDATE)
 
-**Filter:** e.EMPLOYMENT_STATUS = 'ACTIVE' AND e.ACTIVE_FLAG = 'Y'
+WHERE: e.EMPLOYMENT_STATUS = 'ACTIVE' AND e.ACTIVE_FLAG = 'Y'
 
-**Business Rules for salary join:** Active salary record where EFFECTIVE_DATE <= SYSDATE and (END_DATE is null or END_DATE > SYSDATE).
+Tenure formula: TRUNC(MONTHS_BETWEEN(SYSDATE, HIRE_DATE) / 12, 1) — truncated to 1 decimal place in years.
 
-**Tenure Calculation:** TRUNC(MONTHS_BETWEEN(SYSDATE, HIRE_DATE) / 12, 1) — expressed in years, 1 decimal, truncated (not rounded).
+Current salary logic: active salary record (ACTIVE_FLAG='Y') where EFFECTIVE_DATE <= SYSDATE and either END_DATE is NULL or END_DATE > SYSDATE.
 
 ---
 
 **View: HRMS.VW_ORG_HIERARCHY**
 
-**Purpose:** Hierarchical org chart.
+Purpose: Hierarchical org chart using CONNECT BY.
 
-**Performance Warning (documented):** Degrades significantly with >500 employees.
+Warning (from comment): Performance degrades significantly with >500 employees.
 
-**Columns Returned:**
-- EMP_ID, EMP_NUMBER
-- EMP_NAME: `FIRST_NAME || ' ' || LAST_NAME`
-- MANAGER_EMP_ID, DEPT_ID
-- ORG_LEVEL: `LEVEL` (Oracle CONNECT BY level pseudocolumn)
-- ORG_PATH: `SYS_CONNECT_BY_PATH(FIRST_NAME || ' ' || LAST_NAME, ' > ')` — separator is ` > ` (space-greater-space)
-- IS_LEAF: `CONNECT_BY_ISLEAF`
+Columns: EMP_ID, EMP_NUMBER, FIRST_NAME || ' ' || LAST_NAME AS EMP_NAME, MANAGER_EMP_ID, DEPT_ID, LEVEL AS ORG_LEVEL, SYS_CONNECT_BY_PATH(FIRST_NAME || ' ' || LAST_NAME, ' > ') AS ORG_PATH, CONNECT_BY_ISLEAF AS IS_LEAF
 
-**Filter:** EMPLOYMENT_STATUS = 'ACTIVE'
-**Hierarchy:** START WITH MANAGER_EMP_ID IS NULL; CONNECT BY PRIOR EMP_ID = MANAGER_EMP_ID
-**Order:** ORDER SIBLINGS BY LAST_NAME
+FROM: EMPLOYEES
+
+WHERE: EMPLOYMENT_STATUS = 'ACTIVE'
+
+Hierarchical traversal:
+- START WITH MANAGER_EMP_ID IS NULL (top of hierarchy = no manager)
+- CONNECT BY PRIOR EMP_ID = MANAGER_EMP_ID
+- ORDER SIBLINGS BY LAST_NAME
 
 ---
 
 **View: HRMS.VW_EMPLOYEE_COMPENSATION**
 
-**Purpose:** Current compensation details with compa-ratio.
+Purpose: Current compensation with compa-ratio calculation.
 
-**Columns Returned:**
+Columns:
 - e.EMP_ID, e.EMP_NUMBER
-- EMP_NAME: `e.FIRST_NAME || ' ' || e.LAST_NAME`
+- e.FIRST_NAME || ' ' || e.LAST_NAME AS EMP_NAME
 - d.DEPT_NAME, j.JOB_TITLE, g.GRADE_NAME
 - sr.BASE_SALARY
-- GRADE_MIN: g.MIN_SALARY
-- GRADE_MAX: g.MAX_SALARY
-- GRADE_MIDPOINT: `(g.MIN_SALARY + g.MAX_SALARY) / 2`
-- COMPA_RATIO: `ROUND(sr.BASE_SALARY / ((g.MIN_SALARY + g.MAX_SALARY) / 2) * 100, 1)` — rounded to 1 decimal, expressed as a percentage
-- SALARY_EFFECTIVE_DATE: sr.EFFECTIVE_DATE
-- LAST_CHANGE_REASON: sr.CHANGE_REASON
-- LAST_CHANGE_PCT: sr.CHANGE_PCT
+- g.MIN_SALARY AS GRADE_MIN
+- g.MAX_SALARY AS GRADE_MAX
+- (g.MIN_SALARY + g.MAX_SALARY) / 2 AS GRADE_MIDPOINT
+- ROUND(sr.BASE_SALARY / ((g.MIN_SALARY + g.MAX_SALARY) / 2) * 100, 1) AS COMPA_RATIO
+- sr.EFFECTIVE_DATE AS SALARY_EFFECTIVE_DATE
+- sr.CHANGE_REASON AS LAST_CHANGE_REASON
+- sr.CHANGE_PCT AS LAST_CHANGE_PCT
 
-**Joins:**
-- FROM EMPLOYEES e
-- JOIN DEPARTMENTS d ON e.DEPT_ID = d.DEPT_ID
-- JOIN JOB_TITLES j ON e.JOB_ID = j.JOB_ID
-- JOIN JOB_GRADES g ON j.GRADE_ID = g.GRADE_ID
-- JOIN SALARY_RECORDS sr ON e.EMP_ID = sr.EMP_ID AND sr.ACTIVE_FLAG = 'Y'
+Compa-ratio formula: ROUND(BASE_SALARY / ((MIN_SALARY + MAX_SALARY) / 2) * 100, 1)
+- Numerator: BASE_SALARY
+- Denominator: (MIN_SALARY + MAX_SALARY) / 2 (grade midpoint)
+- Result: percentage, rounded to 1 decimal place.
 
-**Filter:** e.EMPLOYMENT_STATUS = 'ACTIVE'
+Joins:
+- EMPLOYEES e → DEPARTMENTS d (DEPT_ID)
+- EMPLOYEES e → JOB_TITLES j (JOB_ID)
+- JOB_TITLES j → JOB_GRADES g (GRADE_ID)
+- EMPLOYEES e → SALARY_RECORDS sr (EMP_ID, ACTIVE_FLAG = 'Y')
 
-**Compa-ratio formula:** (BASE_SALARY / midpoint) * 100, rounded to 1 decimal. Midpoint = (MIN_SALARY + MAX_SALARY) / 2.
+WHERE: e.EMPLOYMENT_STATUS = 'ACTIVE'
 
 ---
 
 **View: HRMS.VW_LEAVE_SUMMARY**
 
-**Purpose:** Current year leave balances with utilization.
+Purpose: Current calendar year leave balances with utilization percentage.
 
-**Columns Returned:**
+Columns:
 - e.EMP_ID, e.EMP_NUMBER
-- EMP_NAME: `e.FIRST_NAME || ' ' || e.LAST_NAME`
+- e.FIRST_NAME || ' ' || e.LAST_NAME AS EMP_NAME
 - d.DEPT_NAME
 - lt.LEAVE_TYPE_NAME
-- lb.OPENING_BALANCE, lb.ACCRUED, lb.USED, lb.ADJUSTMENT, lb.PENDING
-- AVAILABLE: `lb.OPENING_BALANCE + lb.ACCRUED - lb.USED + lb.ADJUSTMENT` (note: does NOT subtract PENDING here, unlike the virtual column definition — potential discrepancy)
-- UTILIZATION_PCT: `ROUND(lb.USED * 100 / NULLIF(lb.OPENING_BALANCE + lb.ACCRUED, 0), 1)` — NULLIF used to prevent divide-by-zero; rounded to 1 decimal
+- lb.OPENING_BALANCE
+- lb.ACCRUED
+- lb.USED
+- lb.ADJUSTMENT
+- lb.PENDING
+- lb.OPENING_BALANCE + lb.ACCRUED - lb.USED + lb.ADJUSTMENT AS AVAILABLE
+- ROUND(lb.USED * 100 / NULLIF(lb.OPENING_BALANCE + lb.ACCRUED, 0), 1) AS UTILIZATION_PCT
 
-**Joins:**
-- FROM LEAVE_BALANCES lb
-- JOIN EMPLOYEES e ON lb.EMP_ID = e.EMP_ID
-- JOIN DEPARTMENTS d ON e.DEPT_ID = d.DEPT_ID
-- JOIN LEAVE_TYPES lt ON lb.LEAVE_TYPE_ID = lt.LEAVE_TYPE_ID
+Note: AVAILABLE formula in this view does NOT subtract PENDING (unlike the virtual column in LEAVE_BALANCES which does subtract PENDING). This is a discrepancy between the view and the table definition.
 
-**Filter:** lb.CALENDAR_YEAR = EXTRACT(YEAR FROM SYSDATE) AND e.EMPLOYMENT_STATUS = 'ACTIVE'
+Utilization formula: ROUND(USED * 100 / NULLIF(OPENING_BALANCE + ACCRUED, 0), 1) — protected against divide-by-zero via NULLIF.
 
-**Discrepancy noted:** The AVAILABLE column in the view computes `OPENING_BALANCE + ACCRUED - USED + ADJUSTMENT` (4 terms), while the LEAVE_BALANCES virtual column computes `OPENING_BALANCE + ACCRUED - USED + ADJUSTMENT - PENDING` (5 terms, subtracting PENDING). The view omits the PENDING deduction.
+WHERE: lb.CALENDAR_YEAR = EXTRACT(YEAR FROM SYSDATE) AND e.EMPLOYMENT_STATUS = 'ACTIVE'
 
 ---
 
 **View: HRMS.VW_PAYROLL_LATEST**
 
-**Purpose:** Latest payroll run details per employee.
+Purpose: Latest approved payroll run details per employee with gross/tax/deduction/net breakdown.
 
-**Columns Returned:**
+Columns:
 - pd.EMP_ID, e.EMP_NUMBER
-- EMP_NAME: `e.FIRST_NAME || ' ' || e.LAST_NAME`
+- e.FIRST_NAME || ' ' || e.LAST_NAME AS EMP_NAME
 - pp.PERIOD_NAME
-- GROSS_PAY: `SUM(CASE WHEN pd.ELEMENT_TYPE = 'EARNING' THEN pd.AMOUNT ELSE 0 END)`
-- TOTAL_TAXES: `SUM(CASE WHEN pd.ELEMENT_TYPE = 'TAX' THEN ABS(pd.AMOUNT) ELSE 0 END)`
-- TOTAL_DEDUCTIONS: `SUM(CASE WHEN pd.ELEMENT_TYPE IN ('DEDUCTION','BENEFIT') THEN ABS(pd.AMOUNT) ELSE 0 END)`
-- NET_PAY: `SUM(pd.AMOUNT)`
+- SUM(CASE WHEN pd.ELEMENT_TYPE = 'EARNING' THEN pd.AMOUNT ELSE 0 END) AS GROSS_PAY
+- SUM(CASE WHEN pd.ELEMENT_TYPE = 'TAX' THEN ABS(pd.AMOUNT) ELSE 0 END) AS TOTAL_TAXES
+- SUM(CASE WHEN pd.ELEMENT_TYPE IN ('DEDUCTION','BENEFIT') THEN ABS(pd.AMOUNT) ELSE 0 END) AS TOTAL_DEDUCTIONS
+- SUM(pd.AMOUNT) AS NET_PAY
 
-**Joins:**
-- FROM PAYROLL_DETAILS pd
-- JOIN EMPLOYEES e ON pd.EMP_ID = e.EMP_ID
-- JOIN PAYROLL_RUNS pr ON pd.RUN_ID = pr.RUN_ID
-- JOIN PAY_PERIODS pp ON pr.PERIOD_ID = pp.PERIOD_ID
+Logic:
+- "Latest" is determined by: pr.RUN_ID = (SELECT MAX(pr2.RUN_ID) FROM PAYROLL_RUNS pr2 WHERE pr2.STATUS = 'APPROVED')
+- Excludes detail rows with pd.STATUS = 'ERROR'
+- TAX and DEDUCTION/BENEFIT amounts are shown as absolute values (ABS)
+- NET_PAY = sum of all signed amounts (earnings positive, deductions/taxes negative)
 
-**Filter:**
-- pr.RUN_ID = (SELECT MAX(pr2.RUN_ID) FROM PAYROLL_RUNS pr2 WHERE pr2.STATUS = 'APPROVED') — only the single latest approved payroll run
-- pd.STATUS != 'ERROR' — excludes error rows
-
-**Group By:** pd.EMP_ID, e.EMP_NUMBER, `e.FIRST_NAME || ' ' || e.LAST_NAME`, pp.PERIOD_NAME
-
-**Business Rule:** "Latest" is determined by MAX(RUN_ID) among APPROVED runs. BENEFIT-type elements are aggregated with DEDUCTION into TOTAL_DEDUCTIONS. ABS() applied to TAX and DEDUCTION/BENEFIT amounts (stored as negative).
+GROUP BY: pd.EMP_ID, e.EMP_NUMBER, e.FIRST_NAME || ' ' || e.LAST_NAME, pp.PERIOD_NAME
 
 ---
 
 **View: HRMS.VW_PENDING_APPROVALS**
 
-**Purpose:** Unified view of items pending approval across modules (LEAVE and PERFORMANCE).
+Purpose: Unified view of items pending approval across leave and performance modules.
 
-**Columns Returned (both UNION ALL branches):**
-- APPROVAL_TYPE (literal: 'LEAVE' or 'PERFORMANCE')
-- ITEM_ID
-- APPROVER_ID
-- REQUESTOR_NAME
-- ITEM_DESCRIPTION
-- REQUEST_DATE
-- DETAILS
+Columns: APPROVAL_TYPE, ITEM_ID, APPROVER_ID, REQUESTOR_NAME, ITEM_DESCRIPTION, REQUEST_DATE, DETAILS
 
-**Branch 1 — LEAVE:**
-- APPROVAL_TYPE: 'LEAVE'
-- ITEM_ID: lr.REQUEST_ID
-- APPROVER_ID: lr.APPROVER_EMP_ID
-- REQUESTOR_NAME: `e.FIRST_NAME || ' ' || e.LAST_NAME`
-- ITEM_DESCRIPTION: lt.LEAVE_TYPE_NAME
-- REQUEST_DATE: lr.CREATED_DATE
-- DETAILS: `lr.TOTAL_DAYS || ' day(s) ' || TO_CHAR(lr.START_DATE, 'MM/DD') || '-' || TO_CHAR(lr.END_DATE, 'MM/DD')`
-- Filter: lr.STATUS = 'PENDING'
-- Joins: LEAVE_REQUESTS lr, EMPLOYEES e (on EMP_ID), LEAVE_TYPES lt (on LEAVE_TYPE_ID)
+Part 1 — Leave requests:
+- APPROVAL_TYPE = 'LEAVE'
+- ITEM_ID = lr.REQUEST_ID
+- APPROVER_ID = lr.APPROVER_EMP_ID
+- REQUESTOR_NAME = e.FIRST_NAME || ' ' || e.LAST_NAME
+- ITEM_DESCRIPTION = lt.LEAVE_TYPE_NAME
+- REQUEST_DATE = lr.CREATED_DATE
+- DETAILS = lr.TOTAL_DAYS || ' day(s) ' || TO_CHAR(lr.START_DATE, 'MM/DD') || '-' || TO_CHAR(lr.END_DATE, 'MM/DD')
+- WHERE lr.STATUS = 'PENDING'
 
-**Branch 2 — PERFORMANCE:**
-- APPROVAL_TYPE: 'PERFORMANCE'
-- ITEM_ID: pr.REVIEW_ID
-- APPROVER_ID: pr.REVIEWER_EMP_ID
-- REQUESTOR_NAME: `e.FIRST_NAME || ' ' || e.LAST_NAME`
-- ITEM_DESCRIPTION: `'Performance Review - ' || rc.CYCLE_NAME`
-- REQUEST_DATE: pr.CREATED_DATE
-- DETAILS: pr.STATUS
-- Filter: pr.STATUS = 'MANAGER_REVIEW'
-- Joins: PERFORMANCE_REVIEWS pr, EMPLOYEES e (on EMP_ID), REVIEW_CYCLES rc (on CYCLE_ID)
+Part 2 — Performance reviews:
+- APPROVAL_TYPE = 'PERFORMANCE'
+- ITEM_ID = pr.REVIEW_ID
+- APPROVER_ID = pr.REVIEWER_EMP_ID
+- REQUESTOR_NAME = e.FIRST_NAME || ' ' || e.LAST_NAME
+- ITEM_DESCRIPTION = 'Performance Review - ' || rc.CYCLE_NAME
+- REQUEST_DATE = pr.CREATED_DATE
+- DETAILS = pr.STATUS
+- WHERE pr.STATUS = 'MANAGER_REVIEW'
 
-**Date Format for leave details:** 'MM/DD' (no year)
+Combined via UNION ALL.

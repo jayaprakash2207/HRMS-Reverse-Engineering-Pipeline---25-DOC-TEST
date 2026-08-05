@@ -1,0 +1,271 @@
+{
+  "gaps": [
+    {
+      "which_track_has_it": "BA",
+      "which_track_is_missing_it": "DA",
+      "entity_type": "table",
+      "entity_name": "USER_CREDENTIALS",
+      "suggested_source_files": [
+        "plsql/packages/PKG_SECURITY.pkb",
+        "plsql/packages/PKG_SECURITY.pks"
+      ],
+      "severity": "HIGH",
+      "resolved": true
+    },
+    {
+      "which_track_has_it": "DA",
+      "which_track_is_missing_it": "BA",
+      "entity_type": "table",
+      "entity_name": "EMPLOYEE_DEPENDENTS",
+      "suggested_source_files": [
+        "schema/tables/01_core_tables.sql",
+        "plsql/packages/PKG_INTEGRATION.pkb"
+      ],
+      "severity": "HIGH",
+      "resolved": true
+    },
+    {
+      "which_track_has_it": "DA",
+      "which_track_is_missing_it": "AA",
+      "entity_type": "table",
+      "entity_name": "EMPLOYEE_DEPENDENTS",
+      "suggested_source_files": [
+        "schema/tables/01_core_tables.sql",
+        "plsql/packages/PKG_INTEGRATION.pkb"
+      ],
+      "severity": "HIGH",
+      "resolved": true
+    },
+    {
+      "which_track_has_it": "DA",
+      "which_track_is_missing_it": "BA",
+      "entity_type": "table",
+      "entity_name": "EMPLOYEE_BANK_ACCOUNTS",
+      "suggested_source_files": [
+        "schema/tables/02_payroll_tables.sql"
+      ],
+      "severity": "HIGH",
+      "resolved": true
+    },
+    {
+      "which_track_has_it": "DA",
+      "which_track_is_missing_it": "AA",
+      "entity_type": "table",
+      "entity_name": "EMPLOYEE_BANK_ACCOUNTS",
+      "suggested_source_files": [
+        "schema/tables/02_payroll_tables.sql",
+        "plsql/packages/PKG_PAYROLL.pkb"
+      ],
+      "severity": "HIGH",
+      "resolved": true
+    },
+    {
+      "which_track_has_it": "AA",
+      "which_track_is_missing_it": "DA",
+      "entity_type": "table",
+      "entity_name": "TIME_ATTENDANCE_RECORDS (implied target of PKG_INTEGRATION.import_time_attendance — no DDL exists for the destination table)",
+      "suggested_source_files": [
+        "plsql/packages/PKG_INTEGRATION.pkb",
+        "plsql/packages/PKG_INTEGRATION.pks"
+      ],
+      "severity": "HIGH",
+      "resolved": true
+    },
+    {
+      "which_track_has_it": "BA",
+      "which_track_is_missing_it": "DA",
+      "entity_type": "table",
+      "entity_name": "RPT_HEADCOUNT / RPT_COMPENSATION / RPT_LEAVE_UTIL (RPT_* denormalized reporting tables referenced in BA reporting capabilities and PKG_REPORTING.refresh_reporting_tables stub)",
+      "suggested_source_files": [
+        "plsql/packages/PKG_REPORTING.pkb",
+        "plsql/packages/PKG_REPORTING.pks"
+      ],
+      "severity": "MEDIUM",
+      "resolved": true
+    },
+    {
+      "which_track_has_it": "DA",
+      "which_track_is_missing_it": "BA",
+      "entity_type": "table",
+      "entity_name": "EMERGENCY_CONTACTS",
+      "suggested_source_files": [
+        "schema/tables/01_core_tables.sql"
+      ],
+      "severity": "MEDIUM",
+      "resolved": true
+    },
+    {
+      "which_track_has_it": "DA",
+      "which_track_is_missing_it": "BA",
+      "entity_type": "business_rule",
+      "entity_name": "PERFORMANCE_REVIEWS.CALIBRATED_RATING + PERFORMANCE_REVIEWS.CALIBRATION_NOTES + REVIEW_CYCLES.CALIBRATION_DUE — columns and due-date exist in schema but no BA business rule describes the calibration process",
+      "suggested_source_files": [
+        "schema/tables/04_performance_tables.sql",
+        "plsql/packages/PKG_PERFORMANCE.pkb"
+      ],
+      "severity": "MEDIUM",
+      "resolved": true
+    },
+    {
+      "which_track_has_it": "AA",
+      "which_track_is_missing_it": "BA",
+      "entity_type": "procedure",
+      "entity_name": "PKG_INTEGRATION.get_integration_status",
+      "suggested_source_files": [
+        "plsql/packages/PKG_INTEGRATION.pkb",
+        "plsql/packages/PKG_INTEGRATION.pks"
+      ],
+      "severity": "MEDIUM",
+      "resolved": true
+    },
+    {
+      "which_track_has_it": "AA",
+      "which_track_is_missing_it": "TA",
+      "entity_type": "procedure",
+      "entity_name": "PKG_INTEGRATION.get_integration_status",
+      "suggested_source_files": [
+        "plsql/packages/PKG_INTEGRATION.pkb"
+      ],
+      "severity": "MEDIUM",
+      "resolved": true
+    },
+    {
+      "which_track_has_it": "AA",
+      "which_track_is_missing_it": "BA",
+      "entity_type": "procedure",
+      "entity_name": "PKG_PAYROLL.get_ytd_earnings",
+      "suggested_source_files": [
+        "plsql/packages/PKG_PAYROLL.pkb",
+        "plsql/packages/PKG_PAYROLL.pks"
+      ],
+      "severity": "MEDIUM",
+      "resolved": true
+    },
+    {
+      "which_track_has_it": "DA",
+      "which_track_is_missing_it": "BA",
+      "entity_type": "table",
+      "entity_name": "TAX_BRACKETS",
+      "suggested_source_files": [
+        "schema/tables/02_payroll_tables.sql",
+        "plsql/packages/PKG_PAYROLL.pkb"
+      ],
+      "severity": "MEDIUM",
+      "resolved": true
+    },
+    {
+      "which_track_has_it": "DA",
+      "which_track_is_missing_it": "BA",
+      "entity_type": "table",
+      "entity_name": "LOOKUP_VALUES",
+      "suggested_source_files": [
+        "schema/tables/04_performance_tables.sql",
+        "data/seed/01_reference_data.sql"
+      ],
+      "severity": "LOW"
+    },
+    {
+      "which_track_has_it": "AA",
+      "which_track_is_missing_it": "BA",
+      "entity_type": "procedure",
+      "entity_name": "PKG_AUDIT.purge_old_records",
+      "suggested_source_files": [
+        "plsql/packages/PKG_AUDIT.pkb",
+        "plsql/packages/PKG_AUDIT.pks"
+      ],
+      "severity": "LOW"
+    },
+    {
+      "which_track_has_it": "AA",
+      "which_track_is_missing_it": "BA",
+      "entity_type": "procedure",
+      "entity_name": "PKG_EMPLOYEE.set_session_context",
+      "suggested_source_files": [
+        "plsql/packages/PKG_EMPLOYEE.pkb",
+        "plsql/packages/PKG_EMPLOYEE.pks"
+      ],
+      "severity": "LOW"
+    },
+    {
+      "which_track_has_it": "AA",
+      "which_track_is_missing_it": "BA",
+      "entity_type": "procedure",
+      "entity_name": "PKG_LEAVE.get_pending_requests",
+      "suggested_source_files": [
+        "plsql/packages/PKG_LEAVE.pkb",
+        "plsql/packages/PKG_LEAVE.pks"
+      ],
+      "severity": "LOW"
+    },
+    {
+      "which_track_has_it": "AA",
+      "which_track_is_missing_it": "BA",
+      "entity_type": "procedure",
+      "entity_name": "PKG_PAYROLL.get_current_period",
+      "suggested_source_files": [
+        "plsql/packages/PKG_PAYROLL.pkb",
+        "plsql/packages/PKG_PAYROLL.pks"
+      ],
+      "severity": "LOW"
+    }
+  ],
+  "contradictions": [
+    {
+      "description": "VW_LEAVE_SUMMARY.AVAILABLE formula = OPENING_BALANCE + ACCRUED - USED + ADJUSTMENT (omits PENDING). LEAVE_BALANCES.AVAILABLE virtual column = OPENING_BALANCE + ACCRUED - USED + ADJUSTMENT - PENDING. Both defined in DA; BA process flows and AA call-flow map (CF-003 step 5) use the virtual column (with PENDING). All three reporting consumers — the view, the virtual column, and PKG_LEAVE — give different available-balance figures for any employee with a pending request.",
+      "track_a": "DA",
+      "track_b": "BA",
+      "entity": "VW_LEAVE_SUMMARY.AVAILABLE vs LEAVE_BALANCES.AVAILABLE virtual column formula",
+      "severity": "HIGH"
+    },
+    {
+      "description": "Hire date future limit is stated as three different values across tracks: AA (HRMS_EMPLOYEE form WHEN-VALIDATE-ITEM) enforces SYSDATE+90; DA (TRG_EMP_BEFORE_INSERT, confirmed DDL authoritative per DA reviewer) enforces SYSDATE+180; BA process flow documents 90 days for the UI path and notes both limits with no declared tie-breaker. TA flags this as DISC-001.",
+      "track_a": "AA",
+      "track_b": "DA",
+      "entity": "EMPLOYEES.HIRE_DATE maximum future date (90 days in form vs 180 days in trigger)",
+      "severity": "HIGH"
+    },
+    {
+      "description": "EMPLOYEE_HISTORY column structure differs between DA and AA: DA DDL (01_core_tables.sql) declares typed columns EFFECTIVE_DATE, OLD_DEPT_ID, NEW_DEPT_ID, OLD_JOB_ID, NEW_JOB_ID, OLD_MANAGER_ID, NEW_MANAGER_ID, OLD_SALARY, NEW_SALARY, OLD_LOCATION, NEW_LOCATION. AA component COMP-020 (TRG_EMP_BEFORE_UPDATE) references flat-string columns CHANGE_DATE, OLD_VALUE, NEW_VALUE which do not exist in the DDL. Exactly one of these will raise ORA-00904 on every EMPLOYEES UPDATE. DA reviewer confirms DDL is authoritative (DISC-002).",
+      "track_a": "DA",
+      "track_b": "AA",
+      "entity": "EMPLOYEE_HISTORY column layout (DDL typed columns vs trigger flat-string columns)",
+      "severity": "HIGH"
+    },
+    {
+      "description": "PKG_EMPLOYEE.rehire_employee is listed in AA component-registry (COMP-001) as a confirmed public method with no non-functional flag in risk_flags. BA Pass 2 explicitly marks 'Rehire Employee' as entirely non-functional — TRG_EMP_BEFORE_UPDATE raises -20503 on TERMINATED→ACTIVE status change, which is exactly what rehire_employee executes. TA also documents this defect. AA's component-registry incorrectly classifies a broken procedure as healthy.",
+      "track_a": "BA",
+      "track_b": "AA",
+      "entity": "PKG_EMPLOYEE.rehire_employee functionality status",
+      "severity": "HIGH"
+    },
+    {
+      "description": "DA schema-catalogue.json extraction metadata declares tables: 30. TA Stack Scout section heading states 'Total tables: 35 (confirmed from DDL).' A 5-table discrepancy exists between the two tracks with no reconciliation. TA's own section headings also contain internal inconsistencies ('Core Tables — 6 tables' with 8 rows in the table body; 'Payroll Tables — 8 tables' with 9 rows), suggesting the TA count of 35 may itself be unreliable.",
+      "track_a": "DA",
+      "track_b": "TA",
+      "entity": "Total HRMS schema table count (DA: 30 vs TA: 35)",
+      "severity": "MEDIUM"
+    },
+    {
+      "description": "BA document version fragmentation: BA_Deep_Analyst_FINAL.md at repository root declares 120 business rules (BR-01–BR-120, 7 domains). The merged file at results/Business_Analysis/BA_Deep_Analyst.md declares 140 rules (BR-01–BR-140). BA_Deep_Analyst_Edge.md declares 87 rules. No canonical version is designated. Any cross-track reference to 'the BA output' is ambiguous because rule counts differ by 20–53 depending on which file is used.",
+      "track_a": "BA",
+      "track_b": "BA",
+      "entity": "Business rule count across BA document versions (120 vs 140 vs 87)",
+      "severity": "MEDIUM"
+    },
+    {
+      "description": "AA component-registry (COMP-002 PKG_PAYROLL risk_flags) states 'SALARY_BASIS always ANNUAL regardless of input.' DA schema-catalogue documents SALARY_RECORDS.SALARY_BASIS with CHECK constraint IN ('ANNUAL','HOURLY') and default 'ANNUAL', implying HOURLY is a valid and expected value. BA payroll process flow does not document hourly-basis employees at all. DA schema supports hourly employees; AA confirms HOURLY is silently overwritten; BA has no business rule for hourly-basis payroll calculation.",
+      "track_a": "DA",
+      "track_b": "BA",
+      "entity": "SALARY_RECORDS.SALARY_BASIS HOURLY value — schema supports it, code silently overrides it, BA ignores it",
+      "severity": "MEDIUM"
+    }
+  ],
+  "summary": "18 gaps and 7 contradictions found. Most critical gaps: (1) USER_CREDENTIALS table is referenced across BA and TA/AA for password authentication but has no DDL in DA; (2) EMPLOYEE_DEPENDENTS and EMPLOYEE_BANK_ACCOUNTS are fully modelled in DA with business-significant columns (BENEFITS_ENROLLED, PRENOTE_SENT, split-deposit logic) yet have zero BA business rules and no AA package coverage — the dependent management and direct-deposit domains are entirely undocumented in BA and AA; (3) PKG_INTEGRATION.import_time_attendance has a procedure in AA but DA has no target table to receive the imported records. Most critical contradictions: VW_LEAVE_SUMMARY available-balance formula contradicts the LEAVE_BALANCES authoritative virtual column formula (tracked in DA DISC-003 but unresolved across tracks); rehire_employee is classified as a working method in AA but is confirmed broken in BA and TA; EMPLOYEE_HISTORY column layout in DA DDL is incompatible with the trigger logic documented in AA.",
+  "tracks_validated": [
+    "BA",
+    "DA",
+    "TA",
+    "AA"
+  ],
+  "resolved_count": 13
+}

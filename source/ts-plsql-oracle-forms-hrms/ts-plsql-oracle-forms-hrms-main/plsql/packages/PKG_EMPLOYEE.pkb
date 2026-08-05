@@ -5,6 +5,7 @@ CREATE OR REPLACE PACKAGE BODY HRMS.PKG_EMPLOYEE AS
 
     -- Private constants
     c_emp_number_prefix  CONSTANT VARCHAR2(3) := 'EMP';
+    -- CONSTRAINT: The reporting hierarchy is limited to a maximum depth of 15 levels to prevent unbounded traversal during circular reference detection
     c_max_hierarchy_depth CONSTANT NUMBER := 15;
 
     -- Private forward declarations
@@ -70,13 +71,16 @@ CREATE OR REPLACE PACKAGE BODY HRMS.PKG_EMPLOYEE AS
     PROCEDURE validate_dept(p_dept_id IN NUMBER) IS
         v_count NUMBER;
     BEGIN
+        -- BUSINESS: Only departments flagged as active (ACTIVE_FLAG = 'Y') are considered valid for employee assignment
         SELECT COUNT(*)
         INTO v_count
         FROM DEPARTMENTS
         WHERE DEPT_ID = p_dept_id
         AND ACTIVE_FLAG = 'Y';
 
+        -- RULE: Department must exist and be active before it can be assigned to an employee
         IF v_count = 0 THEN
+            -- RULE: Assigning an inactive or non-existent department to an employee raises an application error
             RAISE_APPLICATION_ERROR(-20003, 'Invalid or inactive department: ' || p_dept_id);
         END IF;
     END validate_dept;
@@ -90,26 +94,33 @@ CREATE OR REPLACE PACKAGE BODY HRMS.PKG_EMPLOYEE AS
         v_current_mgr NUMBER;
         v_depth NUMBER := 0;
     BEGIN
+        -- RULE: A NULL manager assignment is valid and indicates the employee is at the top of the reporting hierarchy with no manager above them
         IF p_manager_id IS NULL THEN
             RETURN;  -- NULL manager is valid (top-level employee)
         END IF;
 
         -- Check manager exists and is active
+        -- BUSINESS: Only employees with EMPLOYMENT_STATUS = 'ACTIVE' are eligible to be assigned as a manager
         SELECT COUNT(*)
         INTO v_count
         FROM EMPLOYEES
         WHERE EMP_ID = p_manager_id
         AND EMPLOYMENT_STATUS = 'ACTIVE';
 
+        -- RULE: The designated manager must exist in the system and have EMPLOYMENT_STATUS = 'ACTIVE'
         IF v_count = 0 THEN
+            -- RULE: Specifying a manager who does not exist or is not currently active raises an application error
             RAISE_APPLICATION_ERROR(-20004, 'Invalid or inactive manager: ' || p_manager_id);
         END IF;
 
         -- Check for circular reporting (only if updating existing employee)
+        -- RULE: When updating an existing employee, the new manager assignment must not create a circular reporting chain
         IF p_emp_id IS NOT NULL THEN
             v_current_mgr := p_manager_id;
             WHILE v_current_mgr IS NOT NULL AND v_depth < c_max_hierarchy_depth LOOP
+                -- RULE: An employee cannot directly or indirectly report to themselves; circular reporting chains are prohibited
                 IF v_current_mgr = p_emp_id THEN
+                    -- RULE: Assigning a manager who already reports (directly or indirectly) to this employee creates a circular chain and raises an error
                     RAISE_APPLICATION_ERROR(-20004,
                         'Circular reporting chain detected: Employee ' || p_emp_id ||
                         ' cannot report to ' || p_manager_id);
@@ -200,7 +211,9 @@ CREATE OR REPLACE PACKAGE BODY HRMS.PKG_EMPLOYEE AS
         v_grade_id   NUMBER;
     BEGIN
         -- Validate inputs
+        -- RULE: Both first name and last name are mandatory fields when creating a new employee record
         IF p_first_name IS NULL OR p_last_name IS NULL THEN
+            -- RULE: An employee cannot be created without both a first name and a last name
             RAISE_APPLICATION_ERROR(-20010, 'First name and last name are required');
         END IF;
 
@@ -209,11 +222,13 @@ CREATE OR REPLACE PACKAGE BODY HRMS.PKG_EMPLOYEE AS
 
         -- Validate job exists
         BEGIN
+            -- BUSINESS: Only job titles with ACTIVE_FLAG = 'Y' are valid for assignment to a new employee
             SELECT GRADE_ID INTO v_grade_id
             FROM JOB_TITLES
             WHERE JOB_ID = p_job_id AND ACTIVE_FLAG = 'Y';
         EXCEPTION
             WHEN NO_DATA_FOUND THEN
+                -- RULE: The job title specified at hire must exist in the JOB_TITLES table and be currently active
                 RAISE_APPLICATION_ERROR(-20011, 'Invalid or inactive job: ' || p_job_id);
         END;
 
@@ -228,6 +243,7 @@ CREATE OR REPLACE PACKAGE BODY HRMS.PKG_EMPLOYEE AS
                 FROM JOB_GRADES
                 WHERE GRADE_ID = v_grade_id;
 
+                -- RULE: Employee starting salary must fall within the minimum and maximum range for their assigned job grade (soft warning — manager approval via the Forms layer allows override)
                 IF p_base_salary < v_min OR p_base_salary > v_max THEN
                     -- NOTE: This is a soft warning, not an error
                     -- Forms trigger WHEN-VALIDATE-ITEM shows warning dialog
@@ -241,6 +257,7 @@ CREATE OR REPLACE PACKAGE BODY HRMS.PKG_EMPLOYEE AS
         END IF;
 
         -- Default location from department if not specified
+        -- VALIDATION: When no location is explicitly provided, the employee's work location defaults to the location defined on their assigned department
         IF p_location_code IS NULL THEN
             SELECT LOCATION_CODE INTO v_location
             FROM DEPARTMENTS
@@ -269,6 +286,7 @@ CREATE OR REPLACE PACKAGE BODY HRMS.PKG_EMPLOYEE AS
         );
 
         -- Create initial salary record
+        -- RULE: A salary record is only created at hire when a starting salary is explicitly provided; employees may be hired without an initial salary record
         IF p_base_salary IS NOT NULL THEN
             -- NOTE: Circular dependency - calls PKG_PAYROLL.create_salary_record
             -- which in turn may call PKG_EMPLOYEE.is_active for validation
@@ -329,6 +347,7 @@ CREATE OR REPLACE PACKAGE BODY HRMS.PKG_EMPLOYEE AS
 
     EXCEPTION
         WHEN DUP_VAL_ON_INDEX THEN
+            -- RULE: Employee numbers must be unique; a duplicate generated during concurrent inserts requires the caller to retry the operation
             RAISE_APPLICATION_ERROR(-20002, 'Duplicate employee number generated. Please retry.');
         WHEN OTHERS THEN
             -- Log error details before re-raising
@@ -361,10 +380,13 @@ CREATE OR REPLACE PACKAGE BODY HRMS.PKG_EMPLOYEE AS
         p_user            IN VARCHAR2 DEFAULT USER
     ) IS
     BEGIN
+        -- RULE: Employee must exist in the system before their contact or personal information can be updated
         IF NOT emp_exists(p_emp_id) THEN
+            -- RULE: Attempting to update a non-existent employee record raises an application error
             RAISE_APPLICATION_ERROR(-20001, 'Employee not found: ' || p_emp_id);
         END IF;
 
+        -- VALIDATION: Each field is updated only when a non-NULL value is passed; NULL parameters preserve the existing stored value (partial-update pattern)
         UPDATE EMPLOYEES SET
             FIRST_NAME     = NVL(UPPER(TRIM(p_first_name)), FIRST_NAME),
             LAST_NAME      = NVL(UPPER(TRIM(p_last_name)), LAST_NAME),
@@ -381,7 +403,9 @@ CREATE OR REPLACE PACKAGE BODY HRMS.PKG_EMPLOYEE AS
             MODIFIED_DATE  = SYSDATE
         WHERE EMP_ID = p_emp_id;
 
+        -- RULE: If the update affects zero rows, an error is raised to signal an unexpected data integrity failure
         IF SQL%ROWCOUNT = 0 THEN
+            -- RULE: Zero rows updated after a successful existence check indicates a concurrent deletion between the two operations
             RAISE_APPLICATION_ERROR(-20001, 'Employee update failed: ' || p_emp_id);
         END IF;
 
@@ -399,6 +423,7 @@ CREATE OR REPLACE PACKAGE BODY HRMS.PKG_EMPLOYEE AS
         SELECT e.EMP_ID, e.EMP_NUMBER, e.FIRST_NAME, e.LAST_NAME,
                e.HIRE_DATE, e.DEPT_ID, e.JOB_ID, e.MANAGER_EMP_ID,
                e.EMPLOYMENT_STATUS,
+               -- BUSINESS: The current salary is the active salary record that became effective on or before today and whose end date is either open-ended or in the future
                (SELECT sr.BASE_SALARY
                 FROM SALARY_RECORDS sr
                 WHERE sr.EMP_ID = e.EMP_ID
@@ -415,6 +440,7 @@ CREATE OR REPLACE PACKAGE BODY HRMS.PKG_EMPLOYEE AS
         RETURN v_rec;
     EXCEPTION
         WHEN NO_DATA_FOUND THEN
+            -- RULE: Requesting an employee by ID that does not exist in the EMPLOYEES table raises an application error
             RAISE_APPLICATION_ERROR(-20001, 'Employee not found: ' || p_emp_id);
     END get_employee;
 
@@ -433,6 +459,7 @@ CREATE OR REPLACE PACKAGE BODY HRMS.PKG_EMPLOYEE AS
         RETURN get_employee(v_emp_id);
     EXCEPTION
         WHEN NO_DATA_FOUND THEN
+            -- RULE: Requesting an employee by employee number that does not exist in the EMPLOYEES table raises an application error
             RAISE_APPLICATION_ERROR(-20001, 'Employee not found: ' || p_emp_number);
     END get_employee_by_number;
 
@@ -475,6 +502,7 @@ CREATE OR REPLACE PACKAGE BODY HRMS.PKG_EMPLOYEE AS
             v_sql := v_sql || 'AND e.DEPT_ID = ' || p_dept_id || ' ';
         END IF;
 
+        -- BUSINESS: When provided, the status filter restricts search results to employees with the specified EMPLOYMENT_STATUS value (e.g., ACTIVE, TERMINATED)
         IF p_status IS NOT NULL THEN
             v_sql := v_sql || 'AND e.EMPLOYMENT_STATUS = ''' || p_status || ''' ';
         END IF;
@@ -522,7 +550,9 @@ CREATE OR REPLACE PACKAGE BODY HRMS.PKG_EMPLOYEE AS
         WHERE EMP_ID = p_emp_id
         FOR UPDATE NOWAIT;
 
+        -- RULE: Only employees with EMPLOYMENT_STATUS = 'ACTIVE' may be transferred; transferring a non-active employee is prohibited
         IF v_old_rec.EMPLOYMENT_STATUS != 'ACTIVE' THEN
+            -- RULE: Attempting to transfer an employee who is not in ACTIVE status raises an application error
             RAISE_APPLICATION_ERROR(-20012,
                 'Cannot transfer non-active employee. Status: ' || v_old_rec.EMPLOYMENT_STATUS);
         END IF;
@@ -531,10 +561,12 @@ CREATE OR REPLACE PACKAGE BODY HRMS.PKG_EMPLOYEE AS
         validate_dept(p_new_dept_id);
 
         -- Default job and location
+        -- VALIDATION: Job title and work location default to the employee's current values when not explicitly specified in the transfer request
         v_new_job_id := NVL(p_new_job_id, v_old_rec.JOB_ID);
         v_new_location := NVL(p_new_location, v_old_rec.LOCATION_CODE);
 
         -- Validate new manager if specified
+        -- RULE: A new manager for the transfer is validated (including circular-chain detection) only when one is explicitly provided; omitting the manager preserves the existing assignment
         IF p_new_manager_id IS NOT NULL THEN
             validate_manager(p_new_manager_id, p_emp_id);
         END IF;
@@ -595,6 +627,7 @@ CREATE OR REPLACE PACKAGE BODY HRMS.PKG_EMPLOYEE AS
 
         -- Get current salary
         BEGIN
+            -- BUSINESS: The most recent active salary record is used as the pre-promotion baseline for computing the percentage salary increase
             SELECT BASE_SALARY INTO v_old_salary
             FROM SALARY_RECORDS
             WHERE EMP_ID = p_emp_id
@@ -619,6 +652,7 @@ CREATE OR REPLACE PACKAGE BODY HRMS.PKG_EMPLOYEE AS
             p_effective_date => p_effective_date,
             p_base_salary    => p_new_salary,
             p_change_reason  => 'PROMOTION',
+            -- VALIDATION: Salary change percentage is calculated only when the employee has a non-zero prior salary; a zero or missing prior salary record results in a NULL change percentage on the promotion record
             p_change_pct     => CASE WHEN v_old_salary > 0
                                      THEN ROUND(((p_new_salary - v_old_salary) / v_old_salary) * 100, 2)
                                      ELSE NULL END,
@@ -659,17 +693,21 @@ CREATE OR REPLACE PACKAGE BODY HRMS.PKG_EMPLOYEE AS
         WHERE EMP_ID = p_emp_id
         FOR UPDATE;
 
+        -- RULE: An employee who is already terminated cannot be terminated again; re-termination is blocked
         IF v_emp.EMPLOYMENT_STATUS = 'TERMINATED' THEN
+            -- RULE: Attempting to terminate an already-terminated employee raises an application error
             RAISE_APPLICATION_ERROR(-20005,
                 'Employee ' || p_emp_id || ' is already terminated');
         END IF;
 
         -- Check for pending leave requests
+        -- BUSINESS: Only leave requests in PENDING status are identified for automatic cancellation upon employee termination
         SELECT COUNT(*) INTO v_pending_leave
         FROM LEAVE_REQUESTS
         WHERE EMP_ID = p_emp_id
         AND STATUS = 'PENDING';
 
+        -- RULE: All pending leave requests for a terminating employee are automatically cancelled; no manual action is required from the employee or their manager
         IF v_pending_leave > 0 THEN
             -- Auto-cancel pending leave requests
             UPDATE LEAVE_REQUESTS
@@ -693,6 +731,7 @@ CREATE OR REPLACE PACKAGE BODY HRMS.PKG_EMPLOYEE AS
         WHERE EMP_ID = p_emp_id;
 
         -- End current salary record
+        -- BUSINESS: Only currently active salary records (ACTIVE_FLAG = 'Y') are closed upon termination; previously ended records are not modified
         UPDATE SALARY_RECORDS
         SET END_DATE = p_termination_date,
             ACTIVE_FLAG = 'N',
@@ -702,6 +741,7 @@ CREATE OR REPLACE PACKAGE BODY HRMS.PKG_EMPLOYEE AS
         AND ACTIVE_FLAG = 'Y';
 
         -- Deactivate pay elements
+        -- BUSINESS: Only currently active pay elements (ACTIVE_FLAG = 'Y') are deactivated at termination; previously ended pay elements are not affected
         UPDATE EMPLOYEE_PAY_ELEMENTS
         SET END_DATE = p_termination_date,
             ACTIVE_FLAG = 'N',
@@ -723,6 +763,7 @@ CREATE OR REPLACE PACKAGE BODY HRMS.PKG_EMPLOYEE AS
         PKG_AUDIT.log_action('EMPLOYEES', p_emp_id, 'UPDATE', p_user);
 
         -- Send notifications
+        -- RULE: A termination notification is sent to the employee's direct manager only when a manager is assigned; top-level employees with no manager do not trigger a manager notification
         IF v_emp.MANAGER_EMP_ID IS NOT NULL THEN
             PKG_NOTIFICATION.send_notification(
                 p_recipient_emp_id => v_emp.MANAGER_EMP_ID,
@@ -758,6 +799,7 @@ CREATE OR REPLACE PACKAGE BODY HRMS.PKG_EMPLOYEE AS
     BEGIN
         validate_dept(p_dept_id);
 
+        -- RULE: Rehiring an employee overwrites their hire date with the rehire date and clears all prior termination data; the employee is treated as starting fresh from the rehire date
         UPDATE EMPLOYEES SET
             EMPLOYMENT_STATUS  = 'ACTIVE',
             HIRE_DATE          = p_rehire_date,
@@ -771,6 +813,7 @@ CREATE OR REPLACE PACKAGE BODY HRMS.PKG_EMPLOYEE AS
         WHERE EMP_ID = p_emp_id;
 
         IF SQL%ROWCOUNT = 0 THEN
+            -- RULE: Attempting to rehire an employee ID that does not exist in the EMPLOYEES table raises an application error
             RAISE_APPLICATION_ERROR(-20001, 'Employee not found for rehire: ' || p_emp_id);
         END IF;
 
@@ -802,6 +845,7 @@ CREATE OR REPLACE PACKAGE BODY HRMS.PKG_EMPLOYEE AS
         v_idx    BINARY_INTEGER := 0;
     BEGIN
         FOR r IN (
+            -- BUSINESS: Only employees with EMPLOYMENT_STATUS = 'ACTIVE' are returned as direct reports; terminated or inactive employees are excluded
             SELECT EMP_ID
             FROM EMPLOYEES
             WHERE MANAGER_EMP_ID = p_manager_emp_id
@@ -825,11 +869,13 @@ CREATE OR REPLACE PACKAGE BODY HRMS.PKG_EMPLOYEE AS
     ) RETURN t_emp_cursor IS
         v_cursor t_emp_cursor;
     BEGIN
+        -- CONSTRAINT: The default maximum depth for org chart traversal is 10 levels; callers may override this, but deeper traversal risks timeout on large organisations
         OPEN v_cursor FOR
             SELECT LEVEL AS depth,
                    EMP_ID, EMP_NUMBER, FIRST_NAME, LAST_NAME,
                    DEPT_ID, JOB_ID, MANAGER_EMP_ID
             FROM EMPLOYEES
+            -- BUSINESS: The org chart hierarchy traversal includes only employees with EMPLOYMENT_STATUS = 'ACTIVE'; terminated employees are excluded from the hierarchy
             WHERE EMPLOYMENT_STATUS = 'ACTIVE'
             START WITH EMP_ID = p_root_emp_id
             CONNECT BY PRIOR EMP_ID = MANAGER_EMP_ID
@@ -848,6 +894,7 @@ CREATE OR REPLACE PACKAGE BODY HRMS.PKG_EMPLOYEE AS
     ) RETURN NUMBER IS
         v_count NUMBER;
     BEGIN
+        -- BUSINESS: Headcount counts only employees who were actively employed on the specified as-of date — hired on or before that date and not yet terminated at that point
         SELECT COUNT(*)
         INTO v_count
         FROM EMPLOYEES
@@ -868,6 +915,7 @@ CREATE OR REPLACE PACKAGE BODY HRMS.PKG_EMPLOYEE AS
         v_hire_date DATE;
         v_end_date  DATE;
     BEGIN
+        -- VALIDATION: For currently active employees with no termination date, today's date is substituted as the tenure end point so tenure can be computed in real time
         SELECT HIRE_DATE, NVL(TERMINATION_DATE, SYSDATE)
         INTO v_hire_date, v_end_date
         FROM EMPLOYEES
@@ -892,6 +940,7 @@ CREATE OR REPLACE PACKAGE BODY HRMS.PKG_EMPLOYEE AS
         FROM EMPLOYEES
         WHERE EMP_ID = p_emp_id;
 
+        -- RULE: An employee is considered active if and only if their EMPLOYMENT_STATUS column value equals 'ACTIVE'
         RETURN v_status = 'ACTIVE';
     EXCEPTION
         WHEN NO_DATA_FOUND THEN
@@ -909,14 +958,17 @@ CREATE OR REPLACE PACKAGE BODY HRMS.PKG_EMPLOYEE AS
         SELECT * INTO v_emp FROM EMPLOYEES WHERE EMP_ID = p_emp_id;
 
         -- Basic validations
+        -- RULE: An employee record is considered invalid if either the first name or the last name is absent
         IF v_emp.FIRST_NAME IS NULL OR v_emp.LAST_NAME IS NULL THEN
             RETURN FALSE;
         END IF;
 
+        -- RULE: An employee record is considered invalid if no hire date has been recorded
         IF v_emp.HIRE_DATE IS NULL THEN
             RETURN FALSE;
         END IF;
 
+        -- RULE: An employee record is considered inconsistent if EMPLOYMENT_STATUS is 'ACTIVE' but ACTIVE_FLAG is not 'Y'; both fields must be in agreement for active employees
         IF v_emp.EMPLOYMENT_STATUS = 'ACTIVE' AND v_emp.ACTIVE_FLAG != 'Y' THEN
             RETURN FALSE;
         END IF;

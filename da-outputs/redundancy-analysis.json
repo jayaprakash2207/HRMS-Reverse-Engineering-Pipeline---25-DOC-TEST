@@ -1,50 +1,154 @@
 {
-  "canonical_shadow_entity_checks": [
+  "extraction_metadata": {
+    "schema": "HRMS",
+    "extraction_date": "2026-08-04",
+    "method": "CODE-ONLY",
+    "total_redundancies_found": 12
+  },
+  "redundancies": [
     {
-      "concept": "Employee identity",
-      "canonical": "HRMS.EMPLOYEES (EMP_ID surrogate PK, EMP_NUMBER natural unique key)",
-      "shadow_representations_found": "NONE — every other table that references an employee (EMPLOYEE_HISTORY, EMPLOYEE_DEPENDENTS, EMERGENCY_CONTACTS, SALARY_RECORDS, EMPLOYEE_PAY_ELEMENTS, EMPLOYEE_TAX_INFO, EMPLOYEE_BANK_ACCOUNTS, LEAVE_BALANCES, LEAVE_REQUESTS, LEAVE_ACCRUAL_LOG, PERFORMANCE_REVIEWS, PERFORMANCE_GOALS, NOTIFICATION_QUEUE, USER_SESSIONS) does so via a proper FK (or, for NOTIFICATION_QUEUE, an undeclared-but-consistent EMP_ID column) to EMPLOYEES.EMP_ID — no loose string-based employee identifier (e.g. a bare 'emp_name' or duplicated employee sub-table) was found.",
-      "verdict": "No duplication — single source of truth, cleanly modeled.",
-      "confidence": 0.85
+      "id": "RED-001",
+      "category": "Denormalized Column",
+      "severity": "MEDIUM",
+      "title": "PAYROLL_DETAILS.ELEMENT_TYPE duplicates PAY_ELEMENTS.ELEMENT_TYPE",
+      "primary_source": "PAY_ELEMENTS.ELEMENT_TYPE",
+      "redundant_copy": "PAYROLL_DETAILS.ELEMENT_TYPE",
+      "tables_affected": ["PAYROLL_DETAILS", "PAY_ELEMENTS"],
+      "description": "PAYROLL_DETAILS stores ELEMENT_TYPE as a direct copy of PAY_ELEMENTS.ELEMENT_TYPE at the time of payroll calculation. This was done for 'query performance' (comment in schema). However, if a PAY_ELEMENT's type is ever changed, historical PAYROLL_DETAILS rows will not reflect the change — creating a silent divergence.",
+      "divergence_risk": "HIGH — no trigger or constraint keeps these in sync",
+      "recommendation": "For most queries, join PAY_ELEMENTS to get ELEMENT_TYPE. Remove the denormalized column unless payroll historical snapshot semantics are explicitly required (in which case, document the intent clearly)."
     },
     {
-      "concept": "Department",
-      "canonical": "HRMS.DEPARTMENTS (DEPT_ID)",
-      "shadow_representations_found": "NONE distinct — DEPT_ID is used consistently everywhere (EMPLOYEES, EMPLOYEE_HISTORY.OLD_DEPT_ID/NEW_DEPT_ID). LOOKUP_VALUES is a separate generic lookup table but no evidence it duplicates department data specifically (no seed rows for LOOKUP_VALUES were available to confirm what LOOKUP_TYPEs it actually stores).",
-      "verdict": "No duplication found for department specifically; LOOKUP_VALUES' actual contents are UNKNOWN (no seed data, DB not connected) so a shadow risk there cannot be fully ruled out — flagged for Agent 2.",
-      "confidence": 0.7
+      "id": "RED-002",
+      "category": "Formula Discrepancy",
+      "severity": "HIGH",
+      "title": "VW_LEAVE_SUMMARY available balance formula differs from LEAVE_BALANCES virtual column",
+      "primary_source": "LEAVE_BALANCES.AVAILABLE (virtual column): OPENING_BALANCE + ACCRUED - USED + ADJUSTMENT - PENDING",
+      "redundant_copy": "VW_LEAVE_SUMMARY.AVAILABLE: OPENING_BALANCE + ACCRUED - USED + ADJUSTMENT",
+      "tables_affected": ["LEAVE_BALANCES", "VW_LEAVE_SUMMARY"],
+      "description": "The view omits the subtraction of PENDING days from the available balance formula. Any report or Oracle Form that uses VW_LEAVE_SUMMARY will overstate available leave for employees who have pending (submitted but not yet approved) leave requests. The authoritative formula is in the virtual column.",
+      "divergence_risk": "ACTIVE BUG — employees can submit overlapping leave requests",
+      "recommendation": "Fix VW_LEAVE_SUMMARY to match the virtual column: change to OPENING_BALANCE + ACCRUED - USED + ADJUSTMENT - PENDING."
     },
     {
-      "concept": "Job / role classification",
-      "canonical": "HRMS.JOB_TITLES (JOB_ID) + HRMS.JOB_GRADES (GRADE_ID)",
-      "shadow_representations_found": "NONE",
-      "verdict": "Clean 1:N (JOB_TITLES → JOB_GRADES), no duplication.",
-      "confidence": 0.85
+      "id": "RED-003",
+      "category": "Column Mismatch",
+      "severity": "HIGH",
+      "title": "TRG_EMP_BEFORE_UPDATE uses column names that do not match EMPLOYEE_HISTORY DDL",
+      "primary_source": "EMPLOYEE_HISTORY DDL columns: HIST_ID, EFFECTIVE_DATE, OLD_DEPT_ID, NEW_DEPT_ID, OLD_JOB_ID, NEW_JOB_ID, OLD_SALARY, NEW_SALARY",
+      "redundant_copy": "TRG_EMP_BEFORE_UPDATE INSERT columns: HISTORY_ID, CHANGE_DATE, OLD_VALUE, NEW_VALUE",
+      "tables_affected": ["EMPLOYEE_HISTORY"],
+      "description": "The trigger attempts to insert into EMPLOYEE_HISTORY using column names that do not match the DDL. This will raise ORA-00904 (invalid identifier) at runtime, meaning all STATUS_CHANGE, DEPARTMENT_CHANGE, and JOB_CHANGE history records are silently failing to insert. The trigger may also be catching the exception internally and swallowing it.",
+      "divergence_risk": "CRITICAL — employee change history is likely missing or corrupt",
+      "recommendation": "Determine which version is authoritative (DDL or trigger). If DDL is correct: (1) rewrite the trigger INSERT to use HIST_ID, EFFECTIVE_DATE, OLD_DEPT_ID, etc.; (2) replace 'DEPARTMENT_CHANGE' with 'TRANSFER' and 'JOB_CHANGE' with 'PROMOTION'/'DEMOTION' to comply with CHK_CHANGE_TYPE — both values are absent from the actual constraint (`HIRE, TRANSFER, PROMOTION, DEMOTION, SALARY_CHANGE, TERMINATION, REHIRE, LEAVE_START, LEAVE_END, STATUS_CHANGE`). Note: a prior review pass suggested 'DEPT_CHANGE' as the fix, but 'DEPT_CHANGE' does NOT appear in the real constraint. CORRECTED by DA Agent 2 (pass 2)."
     },
     {
-      "concept": "Location",
-      "canonical": "HRMS.LOCATIONS (LOCATION_CODE, natural key)",
-      "shadow_representations_found": "Used consistently as a soft/FK reference from EMPLOYEES, DEPARTMENTS, HOLIDAYS. No duplicate location table found.",
-      "verdict": "No duplication.",
-      "confidence": 0.85
+      "id": "RED-004",
+      "category": "Validation Divergence",
+      "severity": "MEDIUM",
+      "title": "SSN validation rules differ between client (Oracle Forms) and server (PKG_COMMON)",
+      "primary_source": "HRMS_VALIDATION_LIB.pll validate_ssn: checks all-zero segments (000-xx-xxxx, xxx-00-xxxx, xxx-xx-0000)",
+      "redundant_copy": "PKG_COMMON.is_valid_ssn: does NOT check all-zero segments",
+      "tables_affected": ["EMPLOYEES"],
+      "description": "A user entering SSN 000-12-3456 via the Oracle Forms client will receive a validation error (client rejects it). If the same SSN is submitted via a direct package call or a future API, it passes server-side validation and gets stored. This creates a maintenance trap: anyone bypassing the form can store SSNs that the form would reject.",
+      "divergence_risk": "MEDIUM — data quality gap if server-side procedures are called directly",
+      "recommendation": "Add all-zero segment checks to PKG_COMMON.is_valid_ssn to match client-side rules."
     },
     {
-      "concept": "Audit / change history",
-      "canonical": "AMBIGUOUS — two competing mechanisms exist for the same conceptual need",
-      "shadow_representations_found": "HRMS.AUDIT_LOG (generic, polymorphic TABLE_NAME/RECORD_ID, populated via PKG_AUDIT.log_action for SALARY_RECORDS/LEAVE_REQUESTS-status/DEPARTMENTS) **and** HRMS.EMPLOYEE_HISTORY (typed, employee-specific, populated via TRG_EMP_BEFORE_UPDATE for status/dept/job changes — though currently broken, see data-quality-report.md).",
-      "verdict": "This is a genuine canonical/shadow split, not a false positive: two different tables both try to answer 'what changed and when' for overlapping concerns (e.g. a department transfer touches both EMPLOYEE_HISTORY conceptually and would NOT touch AUDIT_LOG unless the DEPARTMENTS row itself changed). Neither is clearly canonical — EMPLOYEE_HISTORY has richer typed columns (OLD_SALARY/NEW_SALARY, OLD_MANAGER_ID/NEW_MANAGER_ID) suggesting design intent as the primary employee-change ledger, but it's the one that's currently broken by the trigger mismatch, while AUDIT_LOG is the one actually being written to successfully today (for the 3 tables its triggers cover). Recommend Agent 2 treat AUDIT_LOG as the de facto working audit trail and EMPLOYEE_HISTORY as an aspirational/broken secondary mechanism pending a fix.",
-      "confidence": 0.85
+      "id": "RED-005",
+      "category": "Validation Divergence",
+      "severity": "MEDIUM",
+      "title": "Email validation rejects subdomains in client but not server",
+      "primary_source": "HRMS_VALIDATION_LIB.pll: rejects user@mail.company.com (subdomain)",
+      "redundant_copy": "PKG_COMMON/PKG_VALIDATION: accepts subdomain emails",
+      "tables_affected": ["EMPLOYEES"],
+      "description": "Client-side email regex does not allow subdomains. Server-side validation does. Employees with legitimate subdomain emails cannot enter them via the form but they can be stored if inserted directly.",
+      "divergence_risk": "LOW — functional gap for edge case employees with subdomain email",
+      "recommendation": "Update client-side validation to allow subdomains per RFC 5322."
     },
     {
-      "concept": "Generic key-value / classification data",
-      "canonical": "UNCLEAR",
-      "shadow_representations_found": "HRMS.LOOKUP_VALUES (generic LOOKUP_TYPE/LOOKUP_CODE/LOOKUP_VALUE table) exists alongside several *purpose-built* enum-like tables that could conceptually have been LOOKUP_VALUES entries instead: LEAVE_TYPES, PAY_ELEMENTS, JOB_GRADES all model what are essentially typed reference lists, but each has its own dedicated table with its own extra business columns (accrual rules, salary bands, tax flags) rather than living in LOOKUP_VALUES.",
-      "verdict": "Not true duplication — the dedicated tables carry domain-specific columns LOOKUP_VALUES couldn't hold (e.g. JOB_GRADES.MIN_SALARY/MAX_SALARY), so this is appropriately-not-generic modeling, not a shadow entity. LOOKUP_VALUES appears reserved for simpler UI dropdown values (e.g. MARITAL_STATUS options, TERMINATION_REASON codes) which have no dedicated table of their own — a plausible, appropriate use, though unconfirmed since no LOOKUP_VALUES seed data exists.",
-      "confidence": 0.75
+      "id": "RED-006",
+      "category": "Business Logic Duplication",
+      "severity": "MEDIUM",
+      "title": "Two business-day calculation functions with different holiday behavior",
+      "primary_source": "PKG_LEAVE.calculate_business_days: excludes HOLIDAYS",
+      "redundant_copy": "PKG_COMMON.business_days_between: does NOT exclude HOLIDAYS",
+      "tables_affected": ["HOLIDAYS", "LEAVE_REQUESTS"],
+      "description": "Two functions calculate the number of business days between two dates, but they use different rules. The PKG_LEAVE version excludes public holidays; the PKG_COMMON version does not. Callers that use the PKG_COMMON version for leave-related calculations will overcount working days.",
+      "divergence_risk": "MEDIUM — PKG_REPORTING may use the non-holiday-aware version for SLA calculations",
+      "recommendation": "Consolidate into one function. Add a p_include_holidays parameter or always use PKG_LEAVE.calculate_business_days as the standard."
+    },
+    {
+      "id": "RED-007",
+      "category": "Duplicate Logic",
+      "severity": "HIGH",
+      "title": "Tax brackets hard-coded in PKG_PAYROLL despite TAX_BRACKETS table existing",
+      "primary_source": "TAX_BRACKETS table: designed to store annual tax brackets by year and filing status",
+      "redundant_copy": "PKG_PAYROLL private constants: 2024 federal brackets, standard deductions, SS wage base",
+      "tables_affected": ["TAX_BRACKETS", "PAYROLL_DETAILS"],
+      "description": "The TAX_BRACKETS table exists and contains the structure for dynamic bracket lookup, but PKG_PAYROLL ignores it entirely and uses hard-coded 2024 values. This means: (1) the table and its seed data are dead weight; (2) 2025 tax calculations will be incorrect until the package is recompiled; (3) the TAX_BRACKETS table's content cannot be validated against what the system actually uses.",
+      "divergence_risk": "HIGH — payroll calculations incorrect starting 2025",
+      "recommendation": "Remove hard-coded constants from PKG_PAYROLL. Implement lookup from TAX_BRACKETS by p_tax_year. This unblocks annual tax updates without code deployment."
+    },
+    {
+      "id": "RED-008",
+      "category": "Stale Reference",
+      "severity": "LOW",
+      "title": "SEQ_EMP_NUMBER exists but is never used",
+      "primary_source": "SEQ_EMP_NUMBER: sequence defined in hrms_sequences.sql",
+      "redundant_copy": "PKG_EMPLOYEE.generate_emp_number: uses MAX(EMP_NUMBER)+1 instead",
+      "tables_affected": ["EMPLOYEES"],
+      "description": "SEQ_EMP_NUMBER was likely intended as the primary mechanism for generating EMP_NUMBER values. Instead, PKG_EMPLOYEE uses a MAX()+1 approach, leaving the sequence as an unused object. The sequence starts at 1000, which may conflict with the format EMP-NNNNNN if SEQ_EMP_NUMBER were ever activated.",
+      "divergence_risk": "LOW — the unused sequence wastes no data but is a maintenance confusion",
+      "recommendation": "Retire SEQ_EMP_NUMBER or switch PKG_EMPLOYEE to use it (after aligning starting value with current MAX(EMP_NUMBER))."
+    },
+    {
+      "id": "RED-009",
+      "category": "Duplicate Data Path",
+      "severity": "MEDIUM",
+      "title": "VW_PAYROLL_LATEST.latest_run identified by MAX(RUN_ID) not MAX(RUN_DATE)",
+      "primary_source": "PAYROLL_RUNS.RUN_DATE: the actual date of the run",
+      "redundant_copy": "VW_PAYROLL_LATEST: uses MAX(RUN_ID) as proxy for latest",
+      "tables_affected": ["PAYROLL_RUNS"],
+      "description": "The view assumes RUN_ID is a monotonically increasing proxy for recency. This breaks for supplemental or bonus runs inserted after a later regular run — the supplemental run would have a lower RUN_ID than the next regular run, causing the view to misidentify the 'latest' run for a period.",
+      "divergence_risk": "MEDIUM — payroll summary reports could show wrong run for a given period",
+      "recommendation": "Change to MAX(RUN_DATE) or use ROW_NUMBER() OVER (PARTITION BY PERIOD_ID ORDER BY RUN_DATE DESC)."
+    },
+    {
+      "id": "RED-010",
+      "category": "Redundant Status Field",
+      "severity": "LOW",
+      "title": "EMPLOYEES.EMPLOYMENT_STATUS and ACTIVE_FLAG encode the same termination state",
+      "primary_source": "EMPLOYEES.EMPLOYMENT_STATUS: can be ACTIVE/ON_LEAVE/SUSPENDED/TERMINATED",
+      "redundant_copy": "EMPLOYEES.ACTIVE_FLAG: CHAR(1) Y/N",
+      "tables_affected": ["EMPLOYEES"],
+      "description": "An employee with EMPLOYMENT_STATUS='TERMINATED' should always have ACTIVE_FLAG='N'. Conversely, ACTIVE_FLAG='Y' employees should have STATUS other than TERMINATED. PKG_EMPLOYEE.terminate_employee sets both, but there is no CHECK constraint ensuring their consistency. A partial update could produce TERMINATED employees with ACTIVE_FLAG='Y' or ACTIVE employees with ACTIVE_FLAG='N'.",
+      "divergence_risk": "LOW-MEDIUM — queries filtering on one but not both could return incorrect results",
+      "recommendation": "Add a CHECK constraint or trigger ensuring EMPLOYMENT_STATUS='TERMINATED' ↔ ACTIVE_FLAG='N'. Or remove ACTIVE_FLAG from EMPLOYEES since EMPLOYMENT_STATUS provides a richer status."
+    },
+    {
+      "id": "RED-011",
+      "category": "Duplicated Approval Tracking",
+      "severity": "LOW",
+      "title": "PAYROLL_RUNS.APPROVED_BY stores VARCHAR2 username while SALARY_RECORDS.APPROVED_BY stores NUMBER(EMP_ID)",
+      "primary_source": "SALARY_RECORDS.APPROVED_BY: NUMBER(10) — EMP_ID reference",
+      "redundant_copy": "PAYROLL_RUNS.APPROVED_BY: VARCHAR2(30) — username string",
+      "tables_affected": ["PAYROLL_RUNS", "SALARY_RECORDS"],
+      "description": "Two 'approved by' columns use different data types and semantics. SALARY_RECORDS stores EMP_ID (numeric FK-ish); PAYROLL_RUNS stores username string. Inconsistent — makes auditing approval authority harder. Neither is formally FKed to EMPLOYEES.",
+      "divergence_risk": "LOW — inconsistency only; no functional bug",
+      "recommendation": "Standardize: store EMP_ID in both columns. Add soft FK documentation."
+    },
+    {
+      "id": "RED-012",
+      "category": "Stale Seed Data",
+      "severity": "LOW",
+      "title": "DEPT_ID=30 manager set twice in seed data with different values",
+      "primary_source": "data/seed/02_employee_data.sql first UPDATE: DEPT_ID=30 MANAGER_EMP_ID=3",
+      "redundant_copy": "data/seed/02_employee_data.sql second UPDATE (later): DEPT_ID=30 MANAGER_EMP_ID=30",
+      "tables_affected": ["DEPARTMENTS"],
+      "description": "The seed script updates the manager of department 30 twice, with the second update (EMP_ID=30, Rachel Thompson) overwriting the first (EMP_ID=3, Michael OConnor). The first UPDATE is dead code — the end state is EMP_ID=30 as manager. Intent is ambiguous.",
+      "divergence_risk": "LOW — seed data only; no runtime impact",
+      "recommendation": "Remove the first UPDATE; keep only the intended final value."
     }
-  ],
-  "constructed_vs_defined_check": {
-    "note": "Per skill guidance: check whether each representation is actually constructed/queried anywhere, not just defined.",
-    "findings": "All 30 tables are referenced by at least one FK, trigger, view, or package signature seen in this scan except: TAX_BRACKETS (defined, has a CHK constraint, but no seed data and no scanned code path reads/writes it directly — presumably read by PKG_PAYROLL's tax calculation, unconfirmed since that body wasn't read), and LOOKUP_VALUES (defined, unique constraint present, but no seed data and no scanned reference to it from any trigger/view/package spec read so far). Both are flagged UNKNOWN-usage rather than confirmed-dead, since the packages most likely to touch them (PKG_PAYROLL, PKG_COMMON/PKG_VALIDATION for lookups) were not body-read in this pass."
-  }
+  ]
 }

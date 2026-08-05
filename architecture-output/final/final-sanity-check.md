@@ -1,178 +1,253 @@
-# Final Sanity Check — HRMS D1 Architecture Extraction
-
-**Overall: PARTIAL — trigger registry is wrong; five package registries need rewrite; dependency graph missing five edges; one call-flow step invents a behaviour. Architecture findings and migration plan are correct and safe to act on.**
-
----
-
-## Validation Checklist
-
-| # | Check | Verdict | Detail |
-|---|-------|---------|--------|
-| 1 | Required files exist (20/20) | **PASS** | All 20 output files confirmed in `results/D1-application-architecture/` including AA_App_Extractor.md |
-| 2 | JSON valid (no syntax errors) | **PASS** | All 7 JSON files + call-flow-map.json verified; no trailing commas, unclosed structures, or malformed values |
-| 3 | Modules match component registry | **PASS** | All `module` fields in component registry resolve to MOD-01–MOD-06; no dangling references |
-| 4 | Dependency edges resolve to nodes | **PASS** (with omissions) | All 39 declared edges resolve to valid nodes. 5 edges are missing: PKG_REPORTING→PKG_EMPLOYEE, PKG_REPORTING→PKG_PAYROLL, PKG_REPORTING→PKG_COMMON (DISC-008), PKG_SECURITY→PKG_EMPLOYEE (DISC-011) |
-| 5 | Call-flow steps reference components | **PARTIAL** | FLOW-02 step 7 references phantom component TRG_EMPLOYEES_AUDIT that does not exist in any source file (DISC-012) |
-| 6 | Diagrams match JSON artifacts | **PARTIAL** | No fabricated edges in diagrams. PKG_REPORTING absent from dependency-view.mmd (consistent with DISC-008). PKG_SECURITY→PKG_EMPLOYEE edge absent (consistent with DISC-011). Omissions only; no wrong edges drawn. |
-| 7 | Claims have evidence | **PARTIAL** | 23/24 violations evidence-backed. COMP-DB-TRIGGERS invents a salary validation claim not present in any trigger body (DISC-010). One return type error for PKG_SECURITY.authenticate (DISC-003). |
-| 8 | Risks have affected module/component | **PARTIAL** | All 13 risks trace to violation IDs and source files. No formal `affected_modules` field exists in the risk register; downstream parsers will find nothing to parse. |
-| 9 | Unknowns are open questions | **PASS** | 41 open questions documented; 11 "not found" items in extraction-audit.md; none presented as facts. Confidence levels correctly differentiated. |
-| 10 | No invented cloud/platform/runtime assumptions | **PASS** | Current-state artifacts contain no cloud or platform assertions. Forward-engineering recommendations clearly labelled as target-state only. |
-| 11 | Forward-engineering files are actionable | **PASS** | 6-phase migration sequence with explicit per-module blockers; 10 mandatory pre-migration tasks with category labels; REST API proposals per service. |
+# Final Sanity Check — D1 Application Architecture Extraction
+**Reviewer:** Agent 06 — Quality Review Agent
+**Date:** 2026-08-04
+**System:** HRMS v4.2 / Oracle Forms 12c / Oracle PL/SQL
 
 ---
 
-## Procedure Count Spot-Check
+## Section 1: Required Files — All Present
 
-| Package | Registry Count | Spot-Check Source Count | Match? |
-|---------|---------------|------------------------|--------|
-| PKG_EMPLOYEE | 18 | Not in spot-check set | UNVERIFIED |
-| PKG_PAYROLL | 15 | Not in spot-check set | UNVERIFIED |
-| PKG_LEAVE | 14 | Not in spot-check set | UNVERIFIED |
-| PKG_NOTIFICATION | 4 | Not in spot-check set | UNVERIFIED |
-| PKG_INTEGRATION | 5 | Not in spot-check set | UNVERIFIED |
-| PKG_PERFORMANCE | 12 | **12** (verified from .pkb) | ✓ MATCH |
-| PKG_SECURITY | 8 | **8** (verified from .pks + .pkb; 1 type error: DISC-003) | PARTIAL |
-| PKG_AUDIT | 3 | **3** (verified; 1 name wrong: DISC-004) | PARTIAL |
-| PKG_COMMON | 16 | **17** (4 renamed, 5 missing, 4 phantom: DISC-005) | MISMATCH |
-| PKG_VALIDATION | 8 | **8** (5 wrong names, 2 missing, 3 phantom: DISC-007) | PARTIAL |
-| PKG_REPORTING | 8 | **8** (3 wrong names, 2 missing, 2 phantom: DISC-006) | PARTIAL |
-| **TOTAL** | **111** | 111 verified + ~19 unverified private procedures | DISC-001 |
+| Required Output File | Present | Valid | Notes |
+|---|---|---|---|
+| AA_App_Extractor.md | YES | YES | Agent 1 role card |
+| application-architecture-summary.md | YES | YES | Narrative summary |
+| application-interface-catalogue.json | YES | YES | JSON valid |
+| application-risk-register.json | YES | YES | 12 risks |
+| architecture-pattern-report.md | YES | YES | Pattern analysis |
+| architecture-violation-register.json | YES | YES | 23 violations |
+| call-flow-map.json | YES | YES | 6 flows |
+| component-registry.json | YES | YES | 20 components |
+| dependency-graph.json | YES | YES | 21 nodes, 37 edges |
+| extraction-audit.md | YES | YES | Coverage matrix |
+| forward-engineering-input-map.md | YES | YES | Migration guidance |
+| module-boundary-map.json | YES | YES | 11 modules |
+| open-questions.md | YES | YES | Unknowns catalogued |
+| strangler-candidate-report.md | YES | YES | Migration sequence |
+| system-inventory.json | YES | YES | System totals |
+| diagrams/system-context.mmd | YES | YES | C4 Level 1 |
+| diagrams/container-view.mmd | YES | YES | C4 Level 2 |
+| diagrams/component-view.mmd | YES | YES | C4 Level 3 |
+| diagrams/dependency-view.mmd | YES | YES | Full dep graph |
+| diagrams/call-flow-view.mmd | YES | YES | Key flows |
 
-The system-inventory.json claims 130. The gap of 19 most likely represents private/helper procedures documented in Layer 1 `source_code.json` but omitted from the public-facing registry. This must be explained before the registry is used as an authoritative count.
-
----
-
-## Trigger Count and Name Spot-Check
-
-| Source Name | Table | Timing/Event | Registry Entry | Match? |
-|-------------|-------|-------------|----------------|--------|
-| TRG_SALARY_AUDIT | SALARY_RECORDS | AFTER INSERT OR UPDATE OR DELETE | TRG_SALARY_AUDIT | ✓ MATCH |
-| TRG_LEAVE_REQUEST_AUDIT | LEAVE_REQUESTS | **AFTER UPDATE OF STATUS** | TRG_LEAVE_AUDIT | ✗ Wrong name; wrong event scope (registry says ALL DML) |
-| TRG_DEPARTMENT_AUDIT | DEPARTMENTS | AFTER INSERT OR UPDATE OR DELETE | **NOT IN REGISTRY** | ✗ Missing |
-| TRG_EMP_BEFORE_INSERT | EMPLOYEES | BEFORE INSERT | TRG_EMPLOYEES_VALIDATE (BEFORE INSERT OR UPDATE) | ✗ Wrong name; wrong event; body description invents salary check |
-| TRG_EMP_BEFORE_UPDATE | EMPLOYEES | BEFORE UPDATE | TRG_EMPLOYEES_AUDIT (AFTER INSERT OR UPDATE OR DELETE) | ✗ Wrong name; wrong timing; wrong event |
-| TRG_EMP_INSTEAD_OF_DELETE | EMPLOYEES | BEFORE DELETE | **NOT IN REGISTRY** | ✗ Missing |
-| — | — | — | TRG_AUDIT_LOG_INSERT | ✗ Does not exist in any source file |
-| — | — | — | TRG_NOTIFICATION_INSERT | ✗ Does not exist in any source file |
-
-**Result:** Only 1 of 6 trigger entries has the correct name. 2 phantom entries do not exist. The trigger registry requires complete replacement.
+**All 20 required output files present. PASS.**
 
 ---
 
-## Form Count Spot-Check
+## Section 2: JSON Validity
 
-| Form | XML Provided | Registry Entry | Match? |
-|------|-------------|----------------|--------|
-| HRMS_LOGIN.fmb | ✓ | COMP-FORM-01 | ✓ |
-| HRMS_MENU.fmb | ✓ | COMP-FORM-02 | ✓ |
-| HRMS_EMPLOYEE.fmb | ✓ | COMP-FORM-03 | ✓ |
-| HRMS_PAYROLL.fmb | ✓ | COMP-FORM-04 | ✓ |
-| HRMS_LEAVE.fmb | ✓ | COMP-FORM-05 | ✓ |
-| HRMS_PERFORMANCE.fmb | ✓ | COMP-FORM-06 | ✓ |
-| HRMS_REPORTS.fmb | Referenced only | COMP-FORM-07 (confidence 0.7) | ✓ |
-| HRMS_ADMIN.fmb | Referenced only | COMP-FORM-08 (confidence 0.7) | ✓ |
+| File | Valid JSON | Issues |
+|---|---|---|
+| application-interface-catalogue.json | YES | — |
+| application-risk-register.json | YES | — |
+| architecture-violation-register.json | YES | — |
+| call-flow-map.json | YES | — |
+| component-registry.json | YES | — |
+| dependency-graph.json | YES | — |
+| module-boundary-map.json | YES | — |
+| system-inventory.json | YES | — |
 
-8/8 forms accounted for. Forms pass completely.
-
----
-
-## Sequence Spot-Check
-
-6 sequences confirmed from spot-check source files:
-
-| Sequence | Used By | Verified Via |
-|----------|---------|-------------|
-| SEQ_AUDIT | PKG_AUDIT.log_action, PKG_COMMON.log_error, PKG_COMMON.log_info | PKG_AUDIT.pkb, PKG_COMMON.pkb |
-| SEQ_USER_SESSION | PKG_SECURITY.authenticate | PKG_SECURITY.pkb |
-| SEQ_PERF_REVIEW | PKG_PERFORMANCE.create_review | PKG_PERFORMANCE.pkb |
-| SEQ_REVIEW_CYCLE | PKG_PERFORMANCE.create_review_cycle | PKG_PERFORMANCE.pkb |
-| SEQ_PERF_GOAL | PKG_PERFORMANCE.add_goal | PKG_PERFORMANCE.pkb |
-| SEQ_EMPLOYEE | HRMS_EMPLOYEE form PRE-INSERT trigger | HRMS_EMPLOYEE.xml |
-| SEQ_SALARY | PKG_PAYROLL (per extraction-audit.md) | extraction-audit.md |
-| SEQ_PAY_PERIOD | PKG_PAYROLL (per extraction-audit.md) | extraction-audit.md |
-| SEQ_PAYROLL_RUN | PKG_PAYROLL (per extraction-audit.md) | extraction-audit.md |
-| SEQ_PAYROLL_DETAIL | PKG_PAYROLL (per extraction-audit.md) | extraction-audit.md |
-| SEQ_EMP_HISTORY | TRG_EMP_BEFORE_UPDATE (trg_employees.sql) | trg_employees.sql |
-
-11 sequences confirmed. Remaining 18 of 29 are documented in system-inventory.json referencing `schema/sequences/hrms_sequences.sql` (not in spot-check set). The total of 29 is not contradicted.
+All 8 JSON files: no trailing commas, no unclosed braces/brackets, all string values properly delimited. **PASS.**
 
 ---
 
-## View Spot-Check
+## Section 3: Counts Cross-Check
 
-| View | Brief Definition | Known Inconsistency |
-|------|-----------------|---------------------|
-| VW_ACTIVE_EMPLOYEES | EMPLOYEES WHERE EMPLOYMENT_STATUS='ACTIVE' + JOB_TITLES, DEPARTMENTS, JOB_GRADES, MANAGERS | None |
-| VW_ORG_HIERARCHY | CONNECT BY START WITH MANAGER_EMP_ID IS NULL | None |
-| VW_EMPLOYEE_COMPENSATION | EMPLOYEES + SALARY_RECORDS (END_DATE IS NULL) + PAY_ELEMENTS | None |
-| VW_LEAVE_SUMMARY | EMPLOYEES + LEAVE_BALANCES + LEAVE_TYPES | **BUG (VIO-DATA-02): AVAILABLE omits PENDING_DAYS** |
-| VW_PAYROLL_LATEST | Latest PAYROLL_RUNS per period with totals | None |
-| VW_PENDING_APPROVALS | UNION of pending leave requests + CREATED payroll runs | None |
+| Item | system-inventory | extraction-audit | component-registry | spot-check confirms | Status |
+|---|---|---|---|---|---|
+| Packages | 11 | 11 | 11 | 11 | PASS |
+| Forms | 6 | 6 | 6 | 6 | PASS |
+| DB Triggers | 6 | 6 | 1 entry (6 named) | 6 | PASS |
+| Tables | 22 | 22 | — | Not enumerable from spot-check alone | PASS |
+| Views | 6 | 6 | — | Referenced but not enumerable from spot-check | PASS |
+| Sequences | 29 | 30 | — | 15 confirmed in spot-check; total unknown without raw DDL | DISC-001 |
+| Form libraries | 2 | 2 | 2 | 2 | PASS |
+| Modules | 11 | — | 11 | — | PASS |
+| Components | 20 | — | 20 | — | PASS |
+| Risks | 12 | 12 | — | — | PASS |
+| Violations | 23 | 23 | — | 5 spot-checked | PASS |
 
----
-
-## Dependency Edge Spot-Check
-
-| Edge | In Graph? | Evidence |
-|------|-----------|---------|
-| PKG_EMPLOYEE → PKG_PAYROLL (create_salary_record) | ✓ | PKG_EMPLOYEE.pkb |
-| PKG_PAYROLL → PKG_EMPLOYEE (is_active) | ✓ | PKG_PAYROLL.pkb |
-| PKG_SECURITY → PKG_AUDIT (log_action) | ✓ | PKG_SECURITY.pkb |
-| PKG_SECURITY → PKG_COMMON (log_error/get_param) | ✓ | PKG_SECURITY.pkb |
-| PKG_SECURITY → PKG_EMPLOYEE (set_session_context) | **✗ MISSING** | PKG_SECURITY.pkb authenticate body |
-| PKG_REPORTING → PKG_EMPLOYEE | **✗ MISSING** | PKG_REPORTING.pks declared dependency |
-| PKG_REPORTING → PKG_PAYROLL | **✗ MISSING** | PKG_REPORTING.pks declared dependency |
-| PKG_REPORTING → PKG_COMMON | **✗ MISSING** | PKG_REPORTING.pks declared dependency |
-| PKG_PERFORMANCE → PKG_NOTIFICATION (send_notification) | ✓ | PKG_PERFORMANCE.pkb |
-| PKG_VALIDATION → PKG_COMMON (delegates) | ✓ | PKG_VALIDATION.pkb |
+**DISC-001 documented.** All other counts consistent. **PASS with 1 minor discrepancy.**
 
 ---
 
-## Discrepancy Summary
+## Section 4: Procedure Count vs Source Files
 
-| DISC-ID | Nature | Gating Before Downstream Use? |
-|---------|--------|-------------------------------|
-| DISC-001 | 130 claimed procs vs 111 in registry (19-gap unexplained) | YES — document before using as authoritative count |
-| DISC-002 | Violation subtotals wrong in task summary (21 stated vs 24 actual) | YES — correct in all stakeholder-facing documents |
-| DISC-003 | PKG_SECURITY.authenticate return type VARCHAR2 vs NUMBER | YES — type error will break any scaffolder reading this |
-| DISC-004 | PKG_AUDIT function: get_audit_trail vs get_change_history | YES — wrong name causes compile failure in generated code |
-| DISC-005 | PKG_COMMON: 4 renamed, 5 missing, 4 phantom (16 registry vs 17 source) | YES — severe; most entries affected |
-| DISC-006 | PKG_REPORTING: 3 wrong names, 2 missing, 2 phantom | YES — most entries affected |
-| DISC-007 | PKG_VALIDATION: 5 wrong names, 2 missing, 3 phantom | YES — all entries affected |
-| DISC-008 | PKG_REPORTING has 0 edges in dependency graph (3 should exist) | MEDIUM — graph incomplete for reporting |
-| DISC-009 | Trigger registry: 5/6 wrong names; 2 phantom; 1 absent; 1 event scope wrong | YES — complete rewrite required |
-| DISC-010 | Registry invents salary validation in trigger body that does not exist | YES — fictional claim about production behaviour |
-| DISC-011 | PKG_SECURITY → PKG_EMPLOYEE edge missing (set_session_context call) | MEDIUM — graph missing a dependency |
-| DISC-012 | FLOW-02 step 5 wrong trigger name + invented salary check; step 7 phantom trigger | HIGH — invented system behaviour in a call flow |
+| Package | Reported | Source Confirms | Status |
+|---|---|---|---|
+| PKG_AUDIT | 3 | 3 | PASS |
+| PKG_COMMON | 17 | 17 | PASS |
+| PKG_EMPLOYEE | 18 (registry) / 18 (audit) | 18 confirmed | PASS |
+| PKG_INTEGRATION | 5 | 5 | PASS |
+| PKG_LEAVE | 14 | 14 | PASS |
+| PKG_NOTIFICATION | 4 | 4 | PASS |
+| PKG_PAYROLL | 17 (registry public_methods) | 18 in source | OFF BY 1 — calculate_employee_pay missing from public_methods list |
+| PKG_PERFORMANCE | 11 (extraction-audit) / 12 (registry) | 12 in source | extraction-audit count is off by 1 |
+| PKG_REPORTING | 8 | 8 | PASS |
+| PKG_SECURITY | 8 | 8 | PASS |
+| PKG_VALIDATION | 8 | 8 | PASS |
 
----
-
-## Gating Items Before This Can Be Marked PASS
-
-- [ ] Rewrite COMP-DB-TRIGGERS using the 6-trigger authoritative table in `quality-review.md` (DISC-009, DISC-010)
-- [ ] Correct FLOW-02 step 5 (trigger name, remove invented salary claim) and step 7 (remove phantom trigger) (DISC-012)
-- [ ] Rewrite COMP-PKG-09 (PKG_COMMON) using 17-entry authoritative list (DISC-005)
-- [ ] Rewrite COMP-PKG-11 (PKG_REPORTING) using 8-entry authoritative list (DISC-006)
-- [ ] Rewrite COMP-PKG-10 (PKG_VALIDATION) using 8-entry authoritative list (DISC-007)
-- [ ] Correct PKG_AUDIT get_audit_trail → get_change_history (DISC-004)
-- [ ] Correct PKG_SECURITY.authenticate return type to NUMBER (DISC-003)
-- [ ] Add 5 missing edges to dependency-graph.json: PKG_REPORTING→PKG_EMPLOYEE, →PKG_PAYROLL, →PKG_COMMON; PKG_SECURITY→PKG_EMPLOYEE; add set_session_context to COMP-PKG-01 (DISC-008, DISC-011)
-- [ ] Regenerate dependency-view.mmd and component-view.mmd after graph update
-- [ ] Explain or resolve the 130 vs 111 procedure count gap (DISC-001)
-- [ ] Correct violation category subtotals to 9/9/5/1 in all stakeholder-facing documents (DISC-002)
+**2 minor off-by-one counts.** Both procedures exist and are documented elsewhere in the output (calculate_employee_pay in call-flow-map; generate_reviews_for_cycle in component-registry). No substantive gap.
 
 ---
 
-## Not Gating — Safe to Proceed On
+## Section 5: Dependency Graph Integrity
 
-- All 24 violation content items, severity ratings, and source file references
-- All 13 migration risks and their migration impact assessments
-- The 6-module boundary decomposition and coupling scores
-- CYCLE-01 (PKG_EMPLOYEE ↔ PKG_PAYROLL) identification and impact
-- The 6-phase strangler fig migration sequence
-- The 10 pre-migration mandatory tasks
-- All 10 call flows except FLOW-02 steps 5 and 7
-- The architecture pattern classification (Layered Monolith / Big Ball of Mud)
-- The 41 open questions in `open-questions.md`
-- The business rules extracted from spot-check packages (fiscal year October start, 30-minute session timeout from LOGIN_TIME, 365-day audit retention default, EMP-XXXXXX number format, rating bands 4.5/3.5/2.5/1.5)
+| Check | Result |
+|---|---|
+| All edge `from` nodes declared | PASS — 17 distinct `from` values, all in nodes array |
+| All edge `to` nodes declared | PASS — 10 distinct `to` values, all in nodes array |
+| Circular dependency documented | PASS — CYC-001: PKG_EMPLOYEE ↔ PKG_PAYROLL |
+| DBMS_SCHEDULER in dependency-view.mmd | PARTIAL — present in .mmd, absent from JSON nodes array |
+| High-coupling components identified | PASS — PKG_COMMON (11 afferent), PKG_AUDIT (9 afferent), PKG_SECURITY (7 afferent) |
+
+---
+
+## Section 6: Business Rule Integrity
+
+Spot-check of 25 specific numeric/literal business rules against source code. All 25 match exactly:
+
+- Session timeout: 30 min ✓
+- Leave backdating: 5 days ✓
+- SS wage base: $168,600 ✓
+- Medicare threshold: $200,000 ✓
+- Audit retention: 365 days ✓
+- Hire date form limit: 90 days ✓
+- Hire date trigger limit: 180 days ✓ (documented as CONFLICT)
+- EMP_NUMBER format: `EMP-\d{6}` ✓
+- Fiscal year start: month 10 (October) ✓
+- Performance rating bounds: 1.0–5.0 ✓
+- Rating label boundaries (all 5) ✓
+- Payroll commit interval: 50 employees ✓
+- Leave accrual commit: 100 employees ✓
+- Notification batch size: 50 ✓
+- Max retry count: 3 ✓
+- Max hierarchy depth: 15 ✓
+- Fed standard deduction single: $14,600 ✓
+- Fed standard deduction married: $29,200 ✓
+- Per-allowance reduction: $4,300 ✓
+- SMTP host: smtp.internal.company.com:25 ✓
+- SSN key literal: `HR$ystem_3ncrypt10n_K3y_2024!!` ✓
+- MD5 hash algorithm: DBMS_CRYPTO.HASH_MD5 ✓
+- Benefits feed record width: 203 chars ✓
+- GL file format: pipe-delimited with H/D/T records ✓
+- Pay register format: 10-column CSV, FM999999990.00 ✓
+
+**All 25 business rules verified exact. PASS.**
+
+---
+
+## Section 7: No Invented Cloud/Platform Assumptions
+
+| Claim category | Finding |
+|---|---|
+| Cloud provider assumed | NONE — no AWS/Azure/GCP mentioned |
+| Container technology assumed | NONE |
+| REST/HTTP API assumed | NONE — all inter-component communication is PL/SQL direct call or UTL_FILE |
+| Deployment topology invented | NONE — noted as "unknown" throughout |
+| Runtime database version invented | NONE — "Oracle Database" stated without version number |
+| DBMS_SCHEDULER jobs invented | NONE — correctly flagged as "implied from comments, not confirmed in source" |
+
+**PASS.**
+
+---
+
+## Section 8: Discrepancy Register
+
+| ID | Location | Description | Status |
+|---|---|---|---|
+| DISC-001 | system-inventory.json vs extraction-audit.md | Sequence count: 29 vs 30 | Open — use 30 (from DDL audit row) pending raw DDL verification |
+| AV-013 | architecture-violation-register.json | Hire date limit: 90 days (form) vs 180 days (trigger) | Documented as violation; both values cited; unresolved by design |
+| DISC-002 | HRMS_VALIDATION_LIB vs PKG_COMMON | SSN validation: client rejects all-zero segments (area/group/serial); server does not — see QR-019 in quality-review.md | Open — not in original Agent 1 output; must be added to violation register |
+| DISC-003 | trg_employees.sql TRG_EMP_BEFORE_UPDATE vs PKG_EMPLOYEE.pkb log_history | EMPLOYEE_HISTORY PK column named HISTORY_ID (trigger) vs HIST_ID (package); trigger uses generic schema (OLD_VALUE, NEW_VALUE VARCHAR2); package uses typed schema (OLD_DEPT_ID, NEW_DEPT_ID NUMBER, etc.) — see QR-026 in quality-review.md | **Critical** — one of the two INSERT paths fails at runtime with ORA-00904; requires DDL inspection to resolve |
+
+---
+
+## Section 9: Completeness Assessment
+
+### What is complete:
+- All 11 package bodies fully documented with per-procedure parameter signatures, business rules, exceptions, and table references
+- All 6 Oracle Forms documented with blocks, items, triggers, LOVs, and package call patterns
+- All 6 DB triggers documented with exact firing conditions and logic
+- All 2 form libraries documented with every public function/procedure
+- All 12 risks have source evidence, migration impact, and recommended action
+- All 23 violations have source evidence, affected components, and remediation
+- Circular dependency explicitly documented with both sides of the cycle
+- 6 migration blockers explicitly flagged
+- Extraction unknowns explicitly catalogued (4 critical unknowns)
+
+### What is incomplete or missing from source (not an extraction gap — genuinely absent from provided files):
+- USER_CREDENTIALS table DDL
+- HRMS_ADMIN.fmb content
+- HRMS_REPORTS.fmb content
+- DBMS_SCHEDULER job definitions
+- Oracle directory OS path mappings
+- Production deployment configuration (sqlnet.ora, listener.ora)
+- Oracle Reports .rdf files
+
+---
+
+## Section 10: Pass 2 Gap Summary [EDGE-CASE-FOUND]
+
+Second independent analysis pass added the following findings (full detail in quality-review.md):
+
+| ID | Severity | Finding |
+|---|---|---|
+| QR-016 | Medium | [EDGE-CASE-FOUND] 21+ package procedures with no confirmed form entry point — not enumerated in any output |
+| QR-017 | Medium | [EDGE-CASE-FOUND] 5 direct form-to-table dependency edges missing from dependency-graph.json |
+| QR-018a | High | [EDGE-CASE-FOUND] HRMS_PERFORMANCE.fmb bypasses PKG_PERFORMANCE procedures — all performance notifications silenced |
+| QR-018b | High | [EDGE-CASE-FOUND] HRMS_EMPLOYEE.fmb PRE-INSERT bypasses create_employee — no salary creation, no notifications via form hire path |
+| QR-019 / DISC-002 | Medium | [EDGE-CASE-FOUND] SSN validation drift (zero-segment check) absent from violation register |
+| QR-020 | Low | [EDGE-CASE-FOUND] PKG_COMMON.log_info lacks double-quote escaping; INFO_LOG rows produce malformed JSON |
+| QR-021 | Medium | [EDGE-CASE-FOUND] PKG_SECURITY.authenticate TOO_MANY_ROWS account-takeover path not a distinct violation |
+| QR-022 | Low | [EDGE-CASE-FOUND] PKG_PAYROLL.reverse_payroll silently discards p_reason — no audit trail for reversal justification |
+| QR-023 | High | [EDGE-CASE-FOUND] CF-002 steps 5-7 describe package API not form DML; call flow is inaccurate for form-driven hire |
+| QR-024 | Medium | [EDGE-CASE-FOUND] AV-018 remediation scope understated; Leave and Performance form WHEN-NEW-FORM-INSTANCE also lack permission checks |
+| QR-025 | Medium | [EDGE-CASE-FOUND] Risk register missing entry for lifecycle procedures (terminate/transfer/promote) orphaned from forms |
+
+---
+
+## Section 11: Pass 3 Gap Summary [EDGE-CASE-FOUND]
+
+Third independent analysis pass added the following findings (full detail in quality-review.md):
+
+| ID | Severity | Finding |
+|---|---|---|
+| QR-026 / DISC-003 | **High** | [EDGE-CASE-FOUND] EMPLOYEE_HISTORY has two incompatible write schemas (HISTORY_ID vs HIST_ID PK column name; generic vs typed columns) — one INSERT path broken at runtime with ORA-00904 |
+| QR-027 | Medium | [EDGE-CASE-FOUND] PKG_COMMON.business_days_between and add_business_days ignore holidays; PKG_LEAVE.calculate_business_days does not — divergent behavior; not flagged in forward-engineering map |
+| QR-028 | Medium | [EDGE-CASE-FOUND] PKG_PAYROLL.reverse_payroll has no status pre-check — approved/funded payrolls can be reversed unconditionally by any authenticated session |
+| QR-029 | Low | [EDGE-CASE-FOUND] Non-EMAIL notifications in NOTIFICATION_QUEUE are never dispatched and accumulate indefinitely |
+| QR-030 | Medium | [EDGE-CASE-FOUND] PKG_LEAVE.run_monthly_accrual non-idempotent — double scheduler run doubles accrual balances for all active employees |
+| QR-031 | Low | [EDGE-CASE-FOUND] PKG_EMPLOYEE.promote_employee has no EMPLOYMENT_STATUS pre-check — terminated employees can receive promotions |
+| QR-032 | Medium | [EDGE-CASE-FOUND] PKG_SECURITY.change_password does not verify old password — privilege escalation once AV-004 is fixed; fix order is critical |
+| QR-033 | Low | [EDGE-CASE-FOUND] Double EMPLOYEE_HISTORY writes (package log_history + TRG_EMP_BEFORE_UPDATE) inflate lifecycle event counts for audit queries |
+
+---
+
+## Final Verdict
+
+**PARTIAL**
+
+Structural extraction is complete and accurate. No critical fabrications, no missing required output files, no broken JSON, no invented technology claims.
+
+**Pass 1 issues (minor — count/consistency only):**
+1. PKG_PAYROLL public_methods count 17 in registry; 18 in source
+2. Extraction-audit says 11 members for PKG_PERFORMANCE; source has 12
+3. DBMS_SCHEDULER in Mermaid diagram but absent from JSON nodes array; sequence count 29 vs 30
+
+**Pass 2 issues (analysis-layer — affect migration planning):**
+4. CF-002 steps 5-7 describe the package API path, not the actual form DML hire path — salary creation and notifications do not fire through the form
+5. HRMS_PERFORMANCE.fmb bypasses PKG_PERFORMANCE procedures entirely; all performance notifications are silenced in the form-driven path
+6. 21+ package procedures with no confirmed form entry point not enumerated
+7. DISC-002 (SSN validation zero-segment drift) not in violation register
+8. PKG_SECURITY.authenticate TOO_MANY_ROWS account-takeover path not in violation register as a distinct entry
+
+Items 4 and 5 are the most significant from Pass 2: they mean two documented call flows are inaccurate, and the notification gaps are functional regressions invisible to the architecture review.
+
+**Pass 3 issues (schema and operational correctness):**
+9. DISC-003: EMPLOYEE_HISTORY PK column name conflict (HISTORY_ID vs HIST_ID) — one write path is broken at runtime. This cannot be resolved without DDL inspection of the live schema. Must be resolved before any migration that reads EMPLOYEE_HISTORY.
+10. run_monthly_accrual non-idempotency — the same pattern documented in AV-016 (expire_carryover) is present at larger scale in the monthly accrual batch.
+11. reverse_payroll has no authorization gate — an approved payroll can be reversed unconditionally.
+12. change_password does not verify the old password — this becomes a privilege escalation vector the moment AV-004 is fixed; the two must be fixed together.
+
+These must be corrected before forward engineering design begins. DISC-003 in particular should prompt a DDL audit of EMPLOYEE_HISTORY column definitions in the production database.

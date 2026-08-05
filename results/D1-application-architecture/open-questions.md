@@ -1,84 +1,113 @@
-# Open Questions
-**System:** HRMS v4.2  
-**Stage:** Stage 12 — Unknowns Requiring Human Review  
-**Date:** 2026-08-03
+# Open Questions — HRMS Application Architecture Extraction
 
-All items below cannot be determined from the available codebase. They require human input (DBA, HR team, operations, or product owner) before migration planning can be completed.
-
----
-
-## Infrastructure / Deployment
-
-| ID | Question | Why It Matters |
-|----|----------|---------------|
-| OQ-INF-01 | Where is Oracle Forms 12c deployed? (Oracle WebLogic version, server OS, JDK version) | Determines migration window and compatibility constraints |
-| OQ-INF-02 | What are the filesystem paths for Oracle Directory Objects: GL_FEED_OUT, BENEFITS_FEED_OUT, TIME_ATTENDANCE_IN, PAYROLL_OUTPUT? | Required to migrate file-based integrations; these paths are OS-level |
-| OQ-INF-03 | What is the Oracle Database version (exact: 12cR1, 12cR2, 19c, 21c)? | Affects available features and migration tooling |
-| OQ-INF-04 | Is there a DR/standby database? | Migration downtime window and switchover strategy |
-| OQ-INF-05 | How many concurrent users typically use the system? What is peak load? | Capacity planning for the replacement system |
-| OQ-INF-06 | What is the Oracle Forms deployment model: Oracle HTTP Server applet, Forms Standalone Launcher (JNLP), or WebSocket thin client? | Affects client compatibility during coexistence phase |
+**Extractor:** AA Agent 1 — Application Architecture Extractor  
+**Date:** 2026-08-04  
+**Status:** Requires human review / additional source discovery
 
 ---
 
-## Missing Source Files
-
-| ID | Question | Why It Matters |
-|----|----------|---------------|
-| OQ-SRC-01 | HRMS_REPORTS.fmb — Can the full XML export be provided? | Feature inventory for the reporting module is unknown |
-| OQ-SRC-02 | HRMS_ADMIN.fmb — Can the full XML export be provided? | Admin module features are unknown |
-| OQ-SRC-03 | DBMS_SCHEDULER job DDL (for HRMS_NOTIFICATION_JOB and HRMS_LEAVE_ACCRUAL_JOB) — Can a DBA extract these from the live DB? | Without DDL, jobs will be lost on any environment rebuild |
-| OQ-SRC-04 | USER_CREDENTIALS table DDL — referenced in PKG_SECURITY but not found in schema files | Password storage design is unknown; critical for auth migration |
-| OQ-SRC-05 | Oracle Forms .fmb binary files — Are these version-controlled alongside the XML exports? | Binary files needed for Oracle Forms Builder; XML exports are read-only |
-| OQ-SRC-06 | Oracle Forms configuration files (default.env, formsweb.cfg) — Are these in source control? | Required to understand environment configuration and connection strings |
-| OQ-SRC-07 | TAX_BRACKETS table contents — Is the table currently populated with data? | PKG_PAYROLL has a TODO to read from this table but uses hard-coded values instead |
+## OQ-001: Missing HRMS_REPORTS.fmb Form
+**Category:** Completeness  
+**Severity:** HIGH  
+**Description:** HRMS_MENU.xml contains a menu item that calls `OPEN_FORM('HRMS_REPORTS')`, but `HRMS_REPORTS.fmb` and its XML export are not present in the source set. This form presumably surfaces PKG_REPORTING data.  
+**Required Action:** Locate and provide `forms/xml-exports/HRMS_REPORTS.xml`. If the form was never completed, document as incomplete feature.  
+**Impact on Analysis:** PKG_REPORTING (MOD-005) has no identified UI caller. The 11 report procedures in PKG_REPORTING have unknown invocation paths.
 
 ---
 
-## Business Rules
-
-| ID | Question | Why It Matters |
-|----|----------|---------------|
-| OQ-BIZ-01 | What is the correct hire date future limit: 90 days (form) or 180 days (DB trigger)? | Inconsistency VIO-DATA-01 must be resolved before migration |
-| OQ-BIZ-02 | What is the intended behavior of VW_LEAVE_SUMMARY AVAILABLE — should it include or exclude PENDING days? | Inconsistency VIO-DATA-02 affects leave balance accuracy |
-| OQ-BIZ-03 | What leave types are accrual-based vs. granted? What are the accrual rates per tenure bracket? | Needed for LeaveService implementation; PKG_LEAVE reads from LEAVE_TYPES but the data content is unknown |
-| OQ-BIZ-04 | Is COBRA notification legally required? Has it been tracked/handled outside the HRMS? | The TODO in terminate_employee is a potential compliance gap |
-| OQ-BIZ-05 | Is the fiscal year (October start) correct for all reporting? Or does it vary by report type? | PKG_COMMON.get_fiscal_year hard-codes month 10; affects all fiscal reporting |
-| OQ-BIZ-06 | What is the intended RBAC model? The current GRADE_ID thresholds (5, 8) appear to be a simplification — is the business expectation more granular? | Critical for replacing PKG_SECURITY.has_permission with proper RBAC |
-| OQ-BIZ-07 | What are the performance review cycle frequency options? Is ANNUAL the only type, or are there interim/probationary reviews? | PERFORMANCE_REVIEWS.REVIEW_TYPE is hard-coded to 'ANNUAL' in create_review |
-| OQ-BIZ-08 | What happens to performance goals when a review is terminated mid-cycle (e.g., employee termination)? | No logic found for this scenario in PKG_PERFORMANCE |
+## OQ-002: Missing HRMS_ADMIN.fmb Form
+**Category:** Completeness  
+**Severity:** HIGH  
+**Description:** HRMS_MENU.xml contains an admin menu item (only visible to ADMIN permission holders), but `HRMS_ADMIN.fmb` is not in the source set. Admin functions typically include user management, system parameter configuration, and scheduler job control.  
+**Required Action:** Locate and provide `forms/xml-exports/HRMS_ADMIN.xml`.  
+**Impact on Analysis:** Admin functions (creating users, setting SYSTEM_PARAMETERS, controlling DBMS_SCHEDULER jobs) are uncharted.
 
 ---
 
-## External Integrations
-
-| ID | Question | Why It Matters |
-|----|----------|---------------|
-| OQ-INT-01 | What Oracle Financials (ERP) version is the GL journal file sent to? Does it have an API that could replace the flat-file approach? | Migration path for SYS-01 GL integration |
-| OQ-INT-02 | What is the exact ADP product/version receiving the benefits feed? Is there an ADP API available? | Migration path for SYS-02 ADP integration |
-| OQ-INT-03 | What time & attendance system is the intended source for import_time_attendance? | The stub procedure has no vendor identified |
-| OQ-INT-04 | What LDAP/Active Directory system was intended for sync_org_structure? Is this feature planned or abandoned? | The stub procedure may be dead code |
-| OQ-INT-05 | Is the GL journal file currently being processed by Oracle Financials? What is the file pickup mechanism (FTP, shared folder, manual)? | Needed to understand end-to-end integration flow |
+## OQ-003: USER_CREDENTIALS Table Absent from Schema
+**Category:** Data Integrity / Security  
+**Severity:** CRITICAL  
+**Description:** PKG_SECURITY.authenticate and hash_password reference a USER_CREDENTIALS table for password storage and verification. This table is not defined in any of the 4 schema DDL files provided (01_core_tables.sql through 04_performance_tables.sql). Either: (a) the table was never created and authentication is truly a stub, or (b) the DDL file is missing from the source set.  
+**Required Action:** Confirm whether USER_CREDENTIALS table exists in the production Oracle schema (`SELECT * FROM ALL_TABLES WHERE TABLE_NAME='USER_CREDENTIALS'`). If it exists, provide DDL. If not, confirm that authentication is effectively bypassed in production.  
+**Impact on Analysis:** VIO-003 severity is CRITICAL — if table is genuinely missing, the system has no functional password authentication.
 
 ---
 
-## Security / Compliance
-
-| ID | Question | Why It Matters |
-|----|----------|---------------|
-| OQ-SEC-01 | Is PKG_SECURITY.authenticate's password stub a known issue? Is there a separate authentication mechanism in use? | If auth is broken, there may be an undiscovered bypass (SSO, DB auth) |
-| OQ-SEC-02 | When was the SSN encryption key last rotated? Is the hard-coded key still in use? | Pre-migration key rotation plan requires knowing the current state |
-| OQ-SEC-03 | Has a penetration test been performed on the HRMS? Are the SQL injection and auth vulnerabilities already known? | Contextualizes urgency of VIO-SEC-01 and VIO-SEC-02 |
-| OQ-SEC-04 | Is there a data retention policy for AUDIT_LOG? PKG_AUDIT.purge_old_records exists but its scheduling is unknown | Needed for AUDIT_LOG migration strategy |
-| OQ-SEC-05 | Are there any active sessions currently using the system? How many total users are in the EMPLOYEES table? | Migration downtime planning |
+## OQ-004: DBMS_SCHEDULER Job Definitions
+**Category:** Completeness  
+**Severity:** HIGH  
+**Description:** Multiple scheduled operations are inferred from package comments (monthly leave accrual, carryover process, notification queue processor every 5 minutes, nightly GL feed, weekly benefits feed, audit purge), but no DBMS_SCHEDULER CREATE_JOB DDL scripts were found in the source set.  
+**Required Action:** Export scheduler job definitions: `SELECT JOB_NAME, JOB_TYPE, JOB_ACTION, START_DATE, REPEAT_INTERVAL, ENABLED FROM DBA_SCHEDULER_JOBS WHERE OWNER='HRMS'`.  
+**Impact on Analysis:** Scheduled job frequency, error handling, and failure notification cannot be assessed.
 
 ---
 
-## Data Quality
+## OQ-005: Oracle Forms Deployment Configuration
+**Category:** Infrastructure  
+**Severity:** MEDIUM  
+**Description:** The Oracle Forms 12c application deployment infrastructure (WebLogic Server or OC4J version, Forms Servlet configuration, database connection pool config, Oracle HTTP Server / Apache config) is not in the source set.  
+**Required Action:** Provide `formsweb.cfg` and WebLogic domain configuration. Document whether deployment uses web browser (Java applet via browser plugin, JNLP, or webstart).  
+**Impact on Analysis:** Cannot assess deployment risk or infrastructure migration complexity.
 
-| ID | Question | Why It Matters |
-|----|----------|---------------|
-| OQ-DATA-01 | How many rows are in EMPLOYEES, PAYROLL_DETAILS, LEAVE_REQUESTS, AUDIT_LOG? | Migration time estimates and ETL sizing |
-| OQ-DATA-02 | Are there any EMPLOYEES with duplicate usernames? (TOO_MANY_ROWS in authenticate suggests this may exist) | Must be resolved before authentication migration |
-| OQ-DATA-03 | Has expire_carryover ever been run twice on the same day? Are any LEAVE_BALANCES double-subtracted? | Data quality check before LeaveService migration |
-| OQ-DATA-04 | Are there any payroll runs in STATUS='PROCESSING' or partial states from past failures? | Must be resolved before PayrollService migration |
-| OQ-DATA-05 | Is the HRMS_REPORTS form currently in use? What reports are most frequently run? | Determines reporting migration priority |
+---
+
+## OQ-006: Oracle Reports (.rdf) Definition Files
+**Category:** Completeness  
+**Severity:** MEDIUM  
+**Description:** PKG_REPORTING provides 8 report data queries via REF CURSORs. Oracle Forms commonly launches Oracle Reports for formatted output (PDF, RTF, HTML). No `.rdf` files were found in the source set. It is unclear whether Oracle Reports is used alongside this system.  
+**Required Action:** Confirm whether Oracle Reports is deployed. If yes, provide `.rdf` files.  
+**Impact on Analysis:** Reporting migration strategy may need to include Oracle Reports runtime in addition to PKG_REPORTING.
+
+---
+
+## OQ-007: Self-Service Employee Portal Reference
+**Category:** Completeness  
+**Severity:** MEDIUM  
+**Description:** A comment in `PKG_LEAVE.pkb` header references "Employee self-service portal integration". No self-service web application code (JSP, JSF, APEX, or modern web) was found in the source set.  
+**Required Action:** Determine whether a self-service portal exists (e.g., Oracle APEX application, separate web app). If it exists, provide source for architecture review.  
+**Impact on Analysis:** Unknown additional entry points into PKG_LEAVE and potentially PKG_EMPLOYEE.
+
+---
+
+## OQ-008: RPT_* Reporting Tables Not in Schema
+**Category:** Data Integrity  
+**Severity:** MEDIUM  
+**Description:** PKG_REPORTING.refresh_reporting_tables (a stub) references denormalized reporting tables with an RPT_ prefix. No RPT_* tables are defined in the schema DDL files provided.  
+**Required Action:** Check production schema for RPT_* tables: `SELECT TABLE_NAME FROM ALL_TABLES WHERE OWNER='HRMS' AND TABLE_NAME LIKE 'RPT_%'`. Provide DDL if they exist.  
+**Impact on Analysis:** If these tables exist and are queried by Oracle Reports or HRMS_REPORTS.fmb, their structure affects reporting migration.
+
+---
+
+## OQ-009: EMPLOYEE_HISTORY.HISTORY_ID vs HIST_ID Column Name
+**Category:** Data Integrity  
+**Severity:** LOW  
+**Description:** TRG_EMP_BEFORE_UPDATE inserts a row into EMPLOYEE_HISTORY using a column called `HISTORY_ID`. The Layer 1 JSON schema for EMPLOYEE_HISTORY lists `HIST_ID` (not `HISTORY_ID`). This may be a column name mismatch that would cause the trigger to fail at runtime.  
+**Required Action:** Confirm actual column name in production: `SELECT COLUMN_NAME FROM ALL_TAB_COLUMNS WHERE OWNER='HRMS' AND TABLE_NAME='EMPLOYEE_HISTORY' AND COLUMN_NAME LIKE '%HIST%'`.  
+**Impact on Analysis:** If the column name is wrong, TRG_EMP_BEFORE_UPDATE silently fails (audit trail for status/dept/job changes is broken).
+
+---
+
+## OQ-010: Production Instance Count and Employee Volume
+**Category:** Performance Assessment  
+**Severity:** MEDIUM  
+**Description:** Several performance risk assessments (row-by-row payroll loop, org chart >500 employees, notification queue flush time) depend on the employee headcount in production. The source code does not contain this data.  
+**Required Action:** Provide approximate active employee count and peak concurrent user count.  
+**Impact on Analysis:** Performance risk severity (VIO-018, CF-004 notes) depends heavily on org size.
+
+---
+
+## OQ-011: Encryption Key Rotation History
+**Category:** Security  
+**Severity:** HIGH  
+**Description:** The hard-coded AES key contains the string `2024` suggesting it was introduced or last updated in 2024. It is unknown whether SSN data was ever encrypted with a different key (prior to 2024) and whether all records use the current key.  
+**Required Action:** Determine from development team: has the encryption key ever been rotated? If so, are there any SSN records encrypted with the old key?  
+**Impact on Analysis:** Re-encryption strategy for migration depends on this answer.
+
+---
+
+## OQ-012: Database Character Set and NLS Settings
+**Category:** Migration  
+**Severity:** LOW  
+**Description:** Oracle database character set (AL32UTF8 vs WE8MSWIN1252, etc.) and NLS settings (NLS_DATE_FORMAT, NLS_CURRENCY) are not documented. These affect data migration to a new database platform.  
+**Required Action:** `SELECT * FROM NLS_DATABASE_PARAMETERS` and `SELECT VALUE FROM NLS_DATABASE_PARAMETERS WHERE PARAMETER='NLS_CHARACTERSET'`.  
+**Impact on Analysis:** Affects data migration scripts for any non-Oracle target.

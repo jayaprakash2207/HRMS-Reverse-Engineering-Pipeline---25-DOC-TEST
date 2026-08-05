@@ -1,29 +1,23 @@
----
-title: HRMS Container View (C4 Level 2)
----
 C4Container
-    title HRMS v4.2 — Container View
+    title Container View — Oracle HRMS v4.2
 
-    Person(user, "HRMS User", "HR admin, employee, manager, payroll admin")
+    Person(user, "HRMS User", "HR Admin / Manager / Employee / Payroll Admin")
 
-    System_Boundary(hrms_system, "HRMS System") {
-        Container(forms_client, "Oracle Forms Client", "Oracle Forms 12c (12.2.1.4)\nJava applet / JNLP", "Presentation layer. 6 forms + 2 PLL libraries. Thin UI delegates — business logic in PL/SQL.")
-        Container(plsql_backend, "PL/SQL Business Logic", "Oracle PL/SQL\n11 packages, ~130 procedures", "All business rules, validations, workflow, scheduling, integrations.")
-        ContainerDb(oracle_db, "HRMS Oracle Schema", "Oracle Database\n26 tables, 6 views, 6 triggers, 29 sequences", "Single schema. All application data and audit trail.")
+    System_Boundary(hrms_sys, "Oracle HRMS") {
+        Container(forms_runtime, "Oracle Forms Runtime", "Oracle Forms 12c (12.2.1.4)", "Renders Oracle Forms .fmb screens. Hosts 6 forms + 2 PLL libraries + 1 menu module. Connects directly to Oracle DB.")
+        Container(oracle_db, "Oracle Database", "Oracle RDBMS — version unknown", "Hosts schema HRMS. Contains all tables, views, sequences, 11 PL/SQL packages, 6 triggers.")
+        Container(oracle_dirs, "Oracle Directory Objects", "OS filesystem paths registered as Oracle Directories", "PAYROLL_OUTPUT, GL_FEED_OUT, BENEFITS_FEED_OUT, TIME_ATTENDANCE_IN. Used by UTL_FILE for flat-file I/O.")
     }
 
-    System_Ext(oracle_fin, "Oracle Financials", "ERP — receives GL journal flat file")
-    System_Ext(adp, "ADP Benefits", "Receives fixed-width benefits feed")
-    System_Ext(smtp_relay, "SMTP Relay", "smtp.internal.company.com:25")
-    System_Ext(time_att, "Time & Attendance", "CSV file source (stub)")
-    System_Ext(oracle_forms_server, "Oracle WebLogic / Forms Services", "Serves the Java applet to browser clients")
+    System_Ext(gl, "GL System", "Pipe-delimited flat file consumer")
+    System_Ext(adp, "ADP Benefits", "Fixed-width file consumer")
+    System_Ext(smtp, "SMTP Server", "Email relay")
+    System_Ext(time_sys, "Time & Attendance", "CSV file provider (import unimplemented)")
 
-    Rel(user, forms_client, "Uses", "Browser + Java applet / Java Web Start")
-    Rel(forms_client, oracle_forms_server, "Served by", "HTTP / Forms protocol")
-    Rel(forms_client, plsql_backend, "Calls procedures", "Oracle Net / JDBC (via Forms runtime)")
-    Rel(plsql_backend, oracle_db, "Reads/Writes", "SQL DML + DDL")
-    Rel(oracle_db, plsql_backend, "Triggers call", "DB triggers → PKG_AUDIT, PKG_COMMON")
-    Rel(plsql_backend, smtp_relay, "Sends email", "UTL_SMTP port 25")
-    Rel(plsql_backend, oracle_fin, "Writes GL journal file", "UTL_FILE flat file")
-    Rel(plsql_backend, adp, "Writes benefits feed", "UTL_FILE fixed-width")
-    Rel(time_att, plsql_backend, "Provides attendance CSV", "UTL_FILE (stub — not implemented)")
+    Rel(user, forms_runtime, "Interacts via", "Oracle Forms client (thin/web runtime)")
+    Rel(forms_runtime, oracle_db, "Reads/writes data", "Oracle Net / SQL*Net — direct DB connection")
+    Rel(oracle_db, oracle_dirs, "Reads/writes files", "UTL_FILE (PKG_INTEGRATION, PKG_PAYROLL)")
+    Rel(oracle_dirs, gl, "GL journal export", "File pickup / FTP (external process)")
+    Rel(oracle_dirs, adp, "Benefits export", "File pickup / FTP (external process)")
+    Rel(time_sys, oracle_dirs, "Time data file drop", "FTP (external process — DB read not implemented)")
+    Rel(oracle_db, smtp, "Email notifications", "UTL_SMTP plaintext port 25")

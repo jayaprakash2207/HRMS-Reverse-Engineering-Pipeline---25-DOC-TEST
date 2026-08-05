@@ -1,36 +1,350 @@
 {
-  "db_connection": "CODE-ONLY — see schema-catalogue.json",
+  "extraction_metadata": {
+    "schema": "HRMS",
+    "extraction_date": "2026-08-04",
+    "method": "CODE-ONLY",
+    "standards_reference": ["GDPR", "CCPA", "HIPAA (partial)", "SOX (financial)"]
+  },
+  "pii_categories": {
+    "direct_identifier": "Uniquely identifies an individual",
+    "quasi_identifier": "In combination can identify an individual",
+    "sensitive_personal": "Special category requiring heightened protection",
+    "financial": "Financial account or transaction data",
+    "contact": "Contact information"
+  },
   "pii_fields": [
-    {"table": "EMPLOYEES", "column": "SSN_ENCRYPTED", "classification": "SPI (Sensitive PII)", "protection": "AES-256-CBC-PKCS5 via DBMS_CRYPTO; key is hard-coded constant 'HR$ystem_3ncrypt10n_K3y_2024!!' (32 bytes, RAW). Confirmed from PKG_SECURITY.pkb — E-007/RC-007. decrypt_ssn silently swallows decrypt failures (returns '***DECRYPT_ERROR***'). Key rotation requires re-encrypting all SSN_ENCRYPTED values in EMPLOYEES and EMPLOYEE_DEPENDENTS simultaneously.", "confidence": 1.0, "note": "Hard-coded encryption key in checked-in source is a CRITICAL security finding — any developer with repo access knows the key value."},
-    {"table": "EMPLOYEES", "column": "DATE_OF_BIRTH", "classification": "PII", "protection": "None observed"},
-    {"table": "EMPLOYEES", "column": "EMAIL, PHONE_WORK, PHONE_MOBILE", "classification": "PII", "protection": "None observed; EMAIL also has no DB-level uniqueness constraint"},
-    {"table": "EMPLOYEES", "column": "ADDRESS_LINE1/2, CITY, STATE_PROVINCE, POSTAL_CODE, COUNTRY_CODE", "classification": "PII", "protection": "None observed"},
-    {"table": "EMPLOYEES", "column": "PHOTO_BLOB", "classification": "PII (biometric-adjacent)", "protection": "None observed — raw BLOB on the master table, no separate access-controlled storage"},
-    {"table": "EMPLOYEES", "column": "GENDER, MARITAL_STATUS, NATIONALITY", "classification": "Sensitive demographic PII", "protection": "None observed"},
-    {"table": "EMPLOYEE_DEPENDENTS", "column": "SSN_ENCRYPTED, DATE_OF_BIRTH", "classification": "SPI — third-party (dependents are not the primary data subject/employee)", "protection": "Same AES-256/PKG_SECURITY mechanism presumed, not independently confirmed for this table"},
-    {"table": "EMERGENCY_CONTACTS", "column": "CONTACT_NAME, PHONE_PRIMARY/SECONDARY, EMAIL", "classification": "PII — third-party", "protection": "None observed"},
-    {"table": "EMPLOYEE_BANK_ACCOUNTS", "column": "ROUTING_NUMBER, ACCOUNT_NUMBER_ENC", "classification": "Financial PII", "protection": "ACCOUNT_NUMBER_ENC name implies encryption; mechanism not confirmed (no encrypt/decrypt function for bank accounts found in PKG_SECURITY spec — only encrypt_ssn/decrypt_ssn exist). ROUTING_NUMBER is stored in plaintext (not itself sensitive in isolation, but combined with ACCOUNT_NUMBER_ENC it completes a payment credential).", "confidence": "UNKNOWN — reason: no PKG_SECURITY function targets bank account numbers specifically; encryption mechanism for this column is unconfirmed"},
-    {"table": "SALARY_RECORDS", "column": "BASE_SALARY", "classification": "Sensitive financial PII", "protection": "None observed at column level; access presumably gated by PKG_SECURITY.has_permission at the module/form level, not row/column level"},
-    {"table": "EMPLOYEE_TAX_INFO", "column": "FILING_STATUS, ADDITIONAL_FED_WH, ADDITIONAL_STATE_WH", "classification": "Tax PII", "protection": "None observed"},
-    {"table": "USER_SESSIONS", "column": "IP_ADDRESS, USERNAME", "classification": "PII (login metadata)", "protection": "None observed"},
-    {"table": "AUDIT_LOG", "column": "IP_ADDRESS, OLD_VALUES/NEW_VALUES (CLOB)", "classification": "PII (may transitively contain any of the above fields as JSON snapshots)", "protection": "None observed — audit JSON built via manual string concatenation in triggers (TRG_SALARY_AUDIT), not a JSON-safe serializer, so malformed/injected content is a data-quality risk more than a security one given values are numeric/date here"}
+    {
+      "table": "EMPLOYEES",
+      "column": "SSN_ENCRYPTED",
+      "pii_category": "sensitive_personal",
+      "data_type": "VARCHAR2(200)",
+      "encryption": "AES-256-CBC-PKCS5",
+      "encryption_key_location": "Hard-coded constant in PKG_SECURITY: c_encryption_key RAW(32)",
+      "encryption_key_value_risk": "CRITICAL — key is literal string 'HR$ystem_3ncrypt10n_K3y_2024!!' visible in source code",
+      "access_package": "PKG_SECURITY.decrypt_ssn",
+      "access_restriction": "Grade ≥ 8 (Director+) only via PKG_SECURITY.decrypt_ssn",
+      "da2_correction": "CORRECTED by DA Agent 2 — prior value 'GRADE ≥ 5 can view' is wrong. Grade 5-7 gets VIEW access to general employee modules but decrypt_ssn is protected by PKG_SECURITY.has_permission which returns TRUE only for Grade ≥ 8. See access-control-matrix.md row 'SECURITY - Encrypt/decrypt SSN'.",
+      "exposed_in_integration": "NOT in benefits feed — RC-006: export_benefits_feed does not select SSN_ENCRYPTED and does not call decrypt_ssn. SSN stays encrypted in DB. Remains a risk via direct DB query for grade ≥ 8 users.",
+      "regulatory_impact": "SSN = US federal PII; CCPA; breach notification required if decrypted and exposed"
+    },
+    {
+      "table": "EMPLOYEES",
+      "column": "DATE_OF_BIRTH",
+      "pii_category": "quasi_identifier",
+      "data_type": "DATE",
+      "encryption": "NONE",
+      "access_restriction": "Grade-based",
+      "exposed_in_integration": "BENEFITS_FEED_OUT (DS-03) — DOB is in the file; SSN is NOT (RC-006 correction)",
+      "regulatory_impact": "DOB combined with name = quasi-identifier in benefits file; SSN not transmitted"
+    },
+    {
+      "table": "EMPLOYEES",
+      "column": "FIRST_NAME",
+      "pii_category": "direct_identifier",
+      "data_type": "VARCHAR2(50)",
+      "encryption": "NONE",
+      "notes": "Stored UPPER(TRIM()) by PKG_EMPLOYEE.create_employee"
+    },
+    {
+      "table": "EMPLOYEES",
+      "column": "MIDDLE_NAME",
+      "pii_category": "direct_identifier",
+      "data_type": "VARCHAR2(50)",
+      "encryption": "NONE",
+      "notes": "ADDED by DA Agent 2 (pass 2): absent from Agent 1 PII inventory. Middle name is a direct personal identifier. Nullable; no UPPER(TRIM()) transform applied (PKG_EMPLOYEE.create_employee does not accept a middle_name parameter)."
+    },
+    {
+      "table": "EMPLOYEES",
+      "column": "LAST_NAME",
+      "pii_category": "direct_identifier",
+      "data_type": "VARCHAR2(50)",
+      "encryption": "NONE",
+      "notes": "Stored UPPER(TRIM()) by PKG_EMPLOYEE.create_employee; used in search_employees (p_last_name parameter) which has SQL INJECTION vulnerability"
+    },
+    {
+      "table": "EMPLOYEES",
+      "column": "EMAIL",
+      "pii_category": "contact",
+      "data_type": "VARCHAR2(100)",
+      "encryption": "NONE",
+      "notes": "Stored LOWER(TRIM()); also serves as login username; uniqueness enforced only for ACTIVE employees by trigger",
+      "exposed_in_integration": "SMTP notifications"
+    },
+    {
+      "table": "EMPLOYEES",
+      "column": "PHONE_WORK",
+      "pii_category": "contact",
+      "data_type": "VARCHAR2(30)",
+      "encryption": "NONE"
+    },
+    {
+      "table": "EMPLOYEES",
+      "column": "PHONE_MOBILE",
+      "pii_category": "contact",
+      "data_type": "VARCHAR2(30)",
+      "encryption": "NONE"
+    },
+    {
+      "table": "EMPLOYEES",
+      "column": "ADDRESS_LINE1",
+      "pii_category": "contact",
+      "data_type": "VARCHAR2(200)",
+      "encryption": "NONE"
+    },
+    {
+      "table": "EMPLOYEES",
+      "column": "ADDRESS_LINE2",
+      "pii_category": "contact",
+      "data_type": "VARCHAR2(200)",
+      "encryption": "NONE"
+    },
+    {
+      "table": "EMPLOYEES",
+      "column": "CITY",
+      "pii_category": "quasi_identifier",
+      "data_type": "VARCHAR2(100)",
+      "encryption": "NONE"
+    },
+    {
+      "table": "EMPLOYEES",
+      "column": "STATE_PROVINCE",
+      "pii_category": "quasi_identifier",
+      "data_type": "VARCHAR2(100)",
+      "encryption": "NONE"
+    },
+    {
+      "table": "EMPLOYEES",
+      "column": "POSTAL_CODE",
+      "pii_category": "quasi_identifier",
+      "data_type": "VARCHAR2(20)",
+      "encryption": "NONE"
+    },
+    {
+      "table": "EMPLOYEES",
+      "column": "GENDER",
+      "pii_category": "sensitive_personal",
+      "data_type": "CHAR(1)",
+      "encryption": "NONE",
+      "regulatory_impact": "Protected characteristic under EEOC; special category under GDPR"
+    },
+    {
+      "table": "EMPLOYEES",
+      "column": "MARITAL_STATUS",
+      "pii_category": "sensitive_personal",
+      "data_type": "VARCHAR2(10)",
+      "encryption": "NONE",
+      "regulatory_impact": "GDPR special category; used in tax calculations (filing status)"
+    },
+    {
+      "table": "EMPLOYEES",
+      "column": "NATIONALITY",
+      "pii_category": "sensitive_personal",
+      "data_type": "VARCHAR2(50)",
+      "encryption": "NONE",
+      "regulatory_impact": "GDPR special category; I-9 eligibility"
+    },
+    {
+      "table": "EMPLOYEES",
+      "column": "PHOTO_BLOB",
+      "pii_category": "sensitive_personal",
+      "data_type": "BLOB",
+      "encryption": "NONE",
+      "notes": "Biometric-adjacent; GDPR Art. 9 may apply if facial recognition used"
+    },
+    {
+      "table": "EMPLOYEES",
+      "column": "NOTES",
+      "pii_category": "sensitive_personal",
+      "data_type": "CLOB",
+      "encryption": "NONE",
+      "notes": "Free-text field; may contain medical, disciplinary, or other sensitive info"
+    },
+    {
+      "table": "EMPLOYEE_DEPENDENTS",
+      "column": "FIRST_NAME",
+      "pii_category": "direct_identifier",
+      "data_type": "VARCHAR2(50)",
+      "encryption": "NONE",
+      "subject_type": "Third-party (dependent)"
+    },
+    {
+      "table": "EMPLOYEE_DEPENDENTS",
+      "column": "LAST_NAME",
+      "pii_category": "direct_identifier",
+      "data_type": "VARCHAR2(50)",
+      "encryption": "NONE",
+      "subject_type": "Third-party (dependent)"
+    },
+    {
+      "table": "EMPLOYEE_DEPENDENTS",
+      "column": "DATE_OF_BIRTH",
+      "pii_category": "quasi_identifier",
+      "data_type": "DATE",
+      "encryption": "NONE",
+      "subject_type": "Third-party (dependent)",
+      "exposed_in_integration": "BENEFITS_FEED_OUT"
+    },
+    {
+      "table": "EMPLOYEE_DEPENDENTS",
+      "column": "SSN_ENCRYPTED",
+      "pii_category": "sensitive_personal",
+      "data_type": "VARCHAR2(200)",
+      "encryption": "AES-256-CBC-PKCS5",
+      "encryption_key_location": "Same hard-coded key as EMPLOYEES.SSN_ENCRYPTED",
+      "subject_type": "Third-party (dependent)",
+      "regulatory_impact": "Dependent SSN = federal PII; breach notification required"
+    },
+    {
+      "table": "EMERGENCY_CONTACTS",
+      "column": "CONTACT_NAME",
+      "pii_category": "direct_identifier",
+      "data_type": "VARCHAR2(100)",
+      "encryption": "NONE",
+      "subject_type": "Third-party (emergency contact)"
+    },
+    {
+      "table": "EMERGENCY_CONTACTS",
+      "column": "PHONE_PRIMARY",
+      "pii_category": "contact",
+      "data_type": "VARCHAR2(30)",
+      "encryption": "NONE",
+      "subject_type": "Third-party (emergency contact)"
+    },
+    {
+      "table": "EMERGENCY_CONTACTS",
+      "column": "PHONE_SECONDARY",
+      "pii_category": "contact",
+      "data_type": "VARCHAR2(30)",
+      "encryption": "NONE",
+      "subject_type": "Third-party (emergency contact)"
+    },
+    {
+      "table": "EMERGENCY_CONTACTS",
+      "column": "EMAIL",
+      "pii_category": "contact",
+      "data_type": "VARCHAR2(100)",
+      "encryption": "NONE",
+      "subject_type": "Third-party (emergency contact)"
+    },
+    {
+      "table": "EMPLOYEE_BANK_ACCOUNTS",
+      "column": "ROUTING_NUMBER",
+      "pii_category": "financial",
+      "data_type": "VARCHAR2(20)",
+      "encryption": "NONE — stored plain-text",
+      "risk": "HIGH — bank routing number in plain text"
+    },
+    {
+      "table": "EMPLOYEE_BANK_ACCOUNTS",
+      "column": "ACCOUNT_NUMBER_ENC",
+      "pii_category": "financial",
+      "data_type": "VARCHAR2(200)",
+      "encryption": "AES-256-CBC-PKCS5",
+      "encryption_key_location": "Same hard-coded key in PKG_SECURITY",
+      "regulatory_impact": "Bank account number = GLBA/CCPA financial data; PCI-DSS adjacent"
+    },
+    {
+      "table": "SALARY_RECORDS",
+      "column": "BASE_SALARY",
+      "pii_category": "financial",
+      "data_type": "NUMBER(12,2)",
+      "encryption": "NONE",
+      "notes": "Annual salary — sensitive financial PII; access via PKG_SECURITY grade-based control"
+    },
+    {
+      "table": "PAYROLL_DETAILS",
+      "column": "AMOUNT",
+      "pii_category": "financial",
+      "data_type": "NUMBER(12,2)",
+      "encryption": "NONE",
+      "notes": "Per-element payroll amounts including tax withholding figures"
+    },
+    {
+      "table": "EMPLOYEE_TAX_INFO",
+      "column": "FILING_STATUS",
+      "pii_category": "sensitive_personal",
+      "data_type": "VARCHAR2(30)",
+      "encryption": "NONE",
+      "notes": "W-4 filing status — implies marital situation; tax-sensitive"
+    },
+    {
+      "table": "AUDIT_LOG",
+      "column": "OLD_VALUES / NEW_VALUES",
+      "pii_category": "sensitive_personal",
+      "data_type": "CLOB (JSON)",
+      "encryption": "NONE",
+      "notes": "Audit trail contains old/new values of audited records — may contain salary, SSN metadata, etc."
+    },
+    {
+      "table": "USER_SESSIONS",
+      "column": "IP_ADDRESS",
+      "pii_category": "quasi_identifier",
+      "data_type": "VARCHAR2(50)",
+      "encryption": "NONE",
+      "notes": "GDPR: IP address is personal data"
+    },
+    {
+      "table": "AUDIT_LOG",
+      "column": "IP_ADDRESS",
+      "pii_category": "quasi_identifier",
+      "data_type": "VARCHAR2(50)",
+      "encryption": "NONE"
+    },
+    {
+      "table": "USER_CREDENTIALS",
+      "column": "PASSWORD_HASH",
+      "pii_category": "sensitive_personal",
+      "data_type": "VARCHAR2(200)",
+      "encryption": "MD5 hash (DBMS_CRYPTO.HASH_MD5 → RAWTOHEX)",
+      "encryption_strength": "CRITICALLY WEAK — MD5 is broken for password storage; rainbow tables and pre-image attacks are practical",
+      "produced_by": "PKG_SECURITY.hash_password",
+      "access_restriction": "No grade-based restriction found; table DDL absent from recovered schema files",
+      "regulatory_impact": "Credential data; if USER_CREDENTIALS is exfiltrated, all employee passwords are recoverable. Treat as sensitive personal data under GDPR Art.32 (appropriate technical measures) and CCPA.",
+      "da_source": "ADDED from PKG_SECURITY.pkb recovery — table not previously in PII inventory",
+      "cross_ref": ["DQ-003 (authentication stub)", "DQ-010 (MD5 weakness)", "DQ-023 (no lockout)", "BR-041", "BR-042"]
+    }
   ],
-  "authentication_credentials": {
-    "table": "USER_CREDENTIALS — referenced in PKG_SECURITY.pkb comments for both authenticate and change_password, but NO DDL for this table exists in any scanned schema file. Not included in schema-catalogue.json's 30 tables. Status: referenced-but-undocumented. If the table exists in production, its schema (column names, hash algorithm, salt storage) is unknown from this analysis. A-022/G1-Q9.",
-    "mechanism": "PKG_SECURITY.hash_password uses MD5 via DBMS_CRYPTO.HASH (HASH_MD5) — returns RAWTOHEX. No salt. Self-documented known issue. PKG_SECURITY.authenticate does NOT call hash_password or query USER_CREDENTIALS — any password is accepted for any active user email. change_password validates complexity but is a stub that never writes to USER_CREDENTIALS.",
-    "classification": "CRITICAL security finding — effective no-password authentication in current code",
-    "confidence": 1.0,
-    "note": "MD5 without salt is trivially brute-forceable. The combination of no-password authenticate + stub change_password + missing USER_CREDENTIALS DDL strongly suggests the authentication layer was never completed in this codebase version."
+  "inferred_table_pii_exposure": [
+    {
+      "table": "RPT_NEW_HIRES",
+      "status": "INFERRED — DDL not found; column shapes derived from PKG_REPORTING.new_hires_report SELECT list",
+      "pii_columns": [
+        {"column": "EMP_NAME", "pii_category": "direct_identifier", "notes": "FIRST_NAME || ' ' || LAST_NAME — full name"},
+        {"column": "BASE_SALARY", "pii_category": "financial", "notes": "Active salary from SALARY_RECORDS; salary is personal financial data under GDPR/CCPA"},
+        {"column": "HIRE_DATE", "pii_category": "quasi_identifier", "notes": "In combination with name, allows individual identification"},
+        {"column": "MANAGER_EMP_ID", "pii_category": "quasi_identifier", "notes": "Reveals reporting relationship"},
+        {"column": "MANAGER_NAME", "pii_category": "direct_identifier", "notes": "Manager full name"}
+      ],
+      "risk": "MEDIUM-HIGH — RPT_NEW_HIRES is a denormalized snapshot that co-locates employee name, hire date, job title, location, employment type, and base salary in a single row. This is more sensitive than the individual OLTP tables because salary is joined directly to name without requiring a multi-table query. Access must be restricted to Grade >= 5 (consistent with REPORTING - View standard reports in access-control-matrix.md) or Grade >= 8 if the salary column is treated as payroll data.",
+      "access_gap": "No explicit access control row exists for direct SELECT on RPT_* tables in access-control-matrix.md. If any Oracle Reports .rdf or BI tool queries RPT_NEW_HIRES directly (bypassing PKG_REPORTING.new_hires_report which enforces no access check itself), salary data would be readable by anyone with schema access.",
+      "da_source": "ADDED from PKG_REPORTING.pkb analysis — RPT_NEW_HIRES salary PII not previously inventoried"
+    }
+  ],
+  "flat_file_pii_exposure": [
+    {
+      "file": "BENEFITS_FEED_OUT/BENEFITS_YYYYMMDD.dat",
+      "contains": ["EMP_NUMBER", "FIRST_NAME", "LAST_NAME", "DATE_OF_BIRTH", "HIRE_DATE", "EMPLOYMENT_STATUS", "MARITAL_STATUS", "GENDER", "DEP_FIRST_NAME", "DEP_LAST_NAME", "RELATIONSHIP", "DEP_DOB"],
+      "ssn_in_file": false,
+      "correction": "RC-006 — prior version listed 'SSN (decrypted)' which is WRONG. export_benefits_feed does not select SSN_ENCRYPTED and does not call decrypt_ssn. Fixed-width 203-char record contains demographic and dependent data only.",
+      "risk": "MEDIUM-HIGH — unencrypted PII (names, DOB, marital status, gender) in filesystem including third-party dependent data; Oracle directory object path not secured by application code",
+      "consumed_by": "ADP Benefits Platform via FTP"
+    },
+    {
+      "file": "PAY_REGISTER_OUT/PAY_REGISTER_{run_id}_{YYYYMMDD_HH24MISS}.csv",
+      "contains": ["EMP_NUMBER", "EMPLOYEE_NAME", "DEPT_NAME", "GROSS_PAY", "FED_TAX", "STATE_TAX", "SS_TAX", "MEDICARE", "DEDUCTIONS", "NET_PAY"],
+      "correction": "RC-007 — prior version had wrong filename pattern (PAY_REGISTER_RUN{id}.txt); actual format is CSV with timestamp in filename per PKG_PAYROLL.generate_pay_register",
+      "risk": "MEDIUM — financial PII in filesystem"
+    }
+  ],
+  "encryption_assessment": {
+    "encrypted_fields": 3,
+    "algorithm": "AES-256-CBC-PKCS5 via DBMS_CRYPTO",
+    "key_management": "CRITICAL FAILURE — single hard-coded key in PKG_SECURITY source code; key rotation requires code change and re-encrypt of all records",
+    "key_value_exposure": "Key literal visible in PKG_SECURITY.pkb source file — anyone with code access has the key",
+    "password_hashing": "MD5 only (not bcrypt/scrypt/Argon2) — insecure for stored passwords"
   },
-  "retention_policy": {
-    "table": "AUDIT_LOG",
-    "mechanism": "PKG_AUDIT.purge_old_records(p_days_to_keep IN NUMBER DEFAULT 365)",
-    "classification": "Documented retention default — 365 days for audit trail",
-    "confidence": 0.9,
-    "note": "No scheduler (DBMS_SCHEDULER job) confirming this runs automatically was found in scanned files — retention is a callable default, not a confirmed enforced policy. See hidden-business-rules.json."
-  },
-  "gdpr_ccpa_relevant_gaps": [
-    "No soft-delete/anonymization path evident for terminated employees' PII — TRG_EMP_INSTEAD_OF_DELETE blocks ALL physical deletes unconditionally, meaning employee PII (SSN, DOB, bank accounts, address) is retained indefinitely with no purge mechanism, which may conflict with a right-to-erasure obligation depending on jurisdiction.",
-    "EMPLOYEE_DEPENDENTS and EMERGENCY_CONTACTS store third-party PII (spouses, children, emergency contacts) with no independent consent/retention tracking — these individuals are not employees and have no login/session record of their own."
-  ]
+  "third_party_pii_subjects": {
+    "dependents": "SSN, name, DOB stored in EMPLOYEE_DEPENDENTS — no separate consent mechanism found",
+    "emergency_contacts": "Name, phone, email stored in EMERGENCY_CONTACTS — no consent mechanism found"
+  }
 }

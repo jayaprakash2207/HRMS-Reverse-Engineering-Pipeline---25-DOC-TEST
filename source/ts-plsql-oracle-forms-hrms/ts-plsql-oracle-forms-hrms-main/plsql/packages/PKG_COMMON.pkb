@@ -118,9 +118,12 @@ CREATE OR REPLACE PACKAGE BODY HRMS.PKG_COMMON AS
             MODIFIED_DATE = SYSDATE
         WHERE PARAM_GROUP = p_group
         AND PARAM_CODE = p_code
+        -- BUSINESS: Only system parameters explicitly flagged as editable (EDITABLE_FLAG = 'Y') may be modified; parameters marked non-editable are protected from update
         AND EDITABLE_FLAG = 'Y';
 
+        -- RULE: A parameter update must match exactly one editable row; if zero rows are updated the parameter either does not exist in the given group/code or has been locked as non-editable
         IF SQL%ROWCOUNT = 0 THEN
+            -- RULE: Attempting to modify a non-existent or non-editable system parameter is a fatal error; callers must not silently ignore this condition
             RAISE_APPLICATION_ERROR(-20900,
                 'Parameter not found or not editable: ' || p_group || '.' || p_code);
         END IF;
@@ -137,6 +140,7 @@ CREATE OR REPLACE PACKAGE BODY HRMS.PKG_COMMON AS
         v_date  DATE := TRUNC(p_start_date);
     BEGIN
         WHILE v_date <= TRUNC(p_end_date) LOOP
+            -- RULE: Saturday and Sunday are not counted as business days; only Monday through Friday increment the business day counter
             IF TO_CHAR(v_date, 'DY', 'NLS_DATE_LANGUAGE=AMERICAN') NOT IN ('SAT', 'SUN') THEN
                 v_count := v_count + 1;
             END IF;
@@ -157,6 +161,7 @@ CREATE OR REPLACE PACKAGE BODY HRMS.PKG_COMMON AS
     BEGIN
         WHILE v_added < p_days LOOP
             v_result := v_result + 1;
+            -- RULE: Saturday and Sunday are skipped when advancing by business days; only weekdays (Monday through Friday) count toward the requested number of days added
             IF TO_CHAR(v_result, 'DY', 'NLS_DATE_LANGUAGE=AMERICAN') NOT IN ('SAT', 'SUN') THEN
                 v_added := v_added + 1;
             END IF;
@@ -171,6 +176,8 @@ CREATE OR REPLACE PACKAGE BODY HRMS.PKG_COMMON AS
         p_date IN DATE DEFAULT SYSDATE
     ) RETURN NUMBER IS
     BEGIN
+        -- CONSTRAINT: The fiscal year boundary is month 10 (October); the organisation's fiscal year begins on October 1
+        -- RULE: A date falling in October or later belongs to the fiscal year of the following calendar year (e.g. October 2024 is in fiscal year 2025)
         IF EXTRACT(MONTH FROM p_date) >= 10 THEN
             RETURN EXTRACT(YEAR FROM p_date) + 1;
         ELSE
@@ -186,6 +193,7 @@ CREATE OR REPLACE PACKAGE BODY HRMS.PKG_COMMON AS
     ) RETURN NUMBER IS
         v_month NUMBER := EXTRACT(MONTH FROM p_date);
     BEGIN
+        -- RULE: Fiscal quarters follow the October 1 fiscal year start: Q1 = October–December, Q2 = January–March, Q3 = April–June, Q4 = July–September
         RETURN CASE
             WHEN v_month IN (10, 11, 12) THEN 1
             WHEN v_month IN (1, 2, 3) THEN 2
@@ -203,9 +211,13 @@ CREATE OR REPLACE PACKAGE BODY HRMS.PKG_COMMON AS
         v_digits VARCHAR2(20);
     BEGIN
         v_digits := REGEXP_REPLACE(p_phone, '[^0-9]', '');
+        -- CONSTRAINT: A standard US domestic phone number must contain exactly 10 digits
+        -- RULE: A 10-digit number is formatted as a US domestic number in (NXX) NXX-XXXX notation
         IF LENGTH(v_digits) = 10 THEN
             RETURN '(' || SUBSTR(v_digits, 1, 3) || ') ' ||
                    SUBSTR(v_digits, 4, 3) || '-' || SUBSTR(v_digits, 7, 4);
+        -- CONSTRAINT: An 11-digit phone number is only recognised as a valid US/Canada international number if it begins with country code '1'
+        -- RULE: An 11-digit number starting with '1' is formatted as a US/Canada international number with a +1 prefix; all other lengths or leading digits are returned unmodified
         ELSIF LENGTH(v_digits) = 11 AND SUBSTR(v_digits, 1, 1) = '1' THEN
             RETURN '+1 (' || SUBSTR(v_digits, 2, 3) || ') ' ||
                    SUBSTR(v_digits, 5, 3) || '-' || SUBSTR(v_digits, 8, 4);
@@ -221,6 +233,8 @@ CREATE OR REPLACE PACKAGE BODY HRMS.PKG_COMMON AS
         p_ssn IN VARCHAR2
     ) RETURN VARCHAR2 IS
     BEGIN
+        -- CONSTRAINT: An SSN must have at least 4 characters for the last-four-digit display to be meaningful
+        -- RULE: A null SSN or one with fewer than 4 characters cannot be partially unmasked; the entire value is replaced with the full mask '***-**-****' to prevent partial PII exposure
         IF p_ssn IS NULL OR LENGTH(p_ssn) < 4 THEN
             RETURN '***-**-****';
         END IF;
@@ -235,6 +249,7 @@ CREATE OR REPLACE PACKAGE BODY HRMS.PKG_COMMON AS
         p_currency_code IN VARCHAR2 DEFAULT 'USD'
     ) RETURN VARCHAR2 IS
     BEGIN
+        -- VALIDATION: Currency symbol is resolved by ISO code: USD maps to '$', EUR maps to the euro sign (U+20AC), GBP maps to the pound sign (U+00A3); any unrecognised code is prepended as a plain text prefix
         RETURN CASE p_currency_code
             WHEN 'USD' THEN '$'
             WHEN 'EUR' THEN CHR(8364)
@@ -252,6 +267,7 @@ CREATE OR REPLACE PACKAGE BODY HRMS.PKG_COMMON AS
         p_format     IN VARCHAR2 DEFAULT 'FL'
     ) RETURN VARCHAR2 IS
     BEGIN
+        -- RULE: Format code 'LF' produces "Last, First" display order; any other value (including the default 'FL') produces "First Last" display order
         IF p_format = 'LF' THEN
             RETURN INITCAP(p_last_name) || ', ' || INITCAP(p_first_name);
         ELSE
@@ -264,6 +280,7 @@ CREATE OR REPLACE PACKAGE BODY HRMS.PKG_COMMON AS
     -- -----------------------------------------------------------------------
     FUNCTION is_valid_email(p_email IN VARCHAR2) RETURN BOOLEAN IS
     BEGIN
+        -- VALIDATION: A valid email address must have a non-empty local part, an '@' symbol, a domain name, and a top-level domain of at least two alphabetic characters
         RETURN REGEXP_LIKE(p_email, '^[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}$');
     END is_valid_email;
 
@@ -271,11 +288,13 @@ CREATE OR REPLACE PACKAGE BODY HRMS.PKG_COMMON AS
         v_digits VARCHAR2(20);
     BEGIN
         v_digits := REGEXP_REPLACE(p_phone, '[^0-9]', '');
+        -- VALIDATION: A valid phone number must contain exactly 10 digits (US domestic) or 11 digits (US/Canada with country code) after all non-numeric characters are stripped
         RETURN LENGTH(v_digits) BETWEEN 10 AND 11;
     END is_valid_phone;
 
     FUNCTION is_valid_ssn(p_ssn IN VARCHAR2) RETURN BOOLEAN IS
     BEGIN
+        -- VALIDATION: A valid SSN must consist of exactly 9 digits after all non-numeric characters (dashes, spaces) are removed
         RETURN REGEXP_LIKE(REGEXP_REPLACE(p_ssn, '[^0-9]', ''), '^\d{9}$');
     END is_valid_ssn;
 

@@ -22,13 +22,17 @@ Writes: annotated_sources/<original_path> for every source file.
 
 import json
 import sys
+import threading
 from pathlib import Path
+from concurrent.futures import ThreadPoolExecutor, as_completed
 
 if hasattr(sys.stdout, "reconfigure"):
     sys.stdout.reconfigure(encoding="utf-8", errors="replace")
 
 sys.path.insert(0, str(Path(__file__).parent))
 from base_runner import call_claude, output_already_exists
+
+_print_lock = threading.Lock()
 
 OUTPUT_MARKER = "annotated_sources"
 
@@ -111,37 +115,46 @@ def run(output_dir: str) -> dict:
 
     annotated_count = 0
     skipped_count = 0
+    counts_lock = threading.Lock()
 
-    for path, content in candidates.items():
-        # Check if already annotated in this run
+    def annotate_one(item):
+        path, content = item
         out_path = annotated_dir / path.replace("/", "_").replace("\\", "_")
         if out_path.exists():
-            skipped_count += 1
-            continue
-
-        print(f"  Annotating: {path} ({len(content)} chars)...")
+            return "skipped"
+        with _print_lock:
+            print(f"  Annotating: {Path(path).name} ({len(content)} chars)...")
         prompt = ANNOTATE_PROMPT.format(file_path=path, content=content[:40000])
-
         try:
             annotated = call_claude(prompt, label=f"Annotate {Path(path).name}", timeout=600)
             if annotated.strip() and len(annotated) > 50:
                 out_path.write_text(annotated, encoding="utf-8")
-                annotated_count += 1
-                # Count how many RULE/CONSTRAINT/BUSINESS/VALIDATION annotations were added
                 rule_count = annotated.count("-- RULE:") + annotated.count("-- CONSTRAINT:") + \
                              annotated.count("-- BUSINESS:") + annotated.count("-- VALIDATION:")
                 orig_count = content.count("-- RULE:") + content.count("-- CONSTRAINT:") + \
                              content.count("-- BUSINESS:") + content.count("-- VALIDATION:")
-                new_rules = rule_count - orig_count
-                print(f"    Done — {new_rules} new rule annotations added")
+                with _print_lock:
+                    print(f"    Done — {rule_count - orig_count} new annotations: {Path(path).name}")
+                return "annotated"
             else:
-                # Save original if Claude returns empty
                 out_path.write_text(content, encoding="utf-8")
-                skipped_count += 1
+                return "skipped"
         except Exception as e:
-            print(f"    Skipped ({e}) — saving original")
+            with _print_lock:
+                print(f"    Skipped ({e}) — saving original: {Path(path).name}")
             out_path.write_text(content, encoding="utf-8")
-            skipped_count += 1
+            return "skipped"
+
+    MAX_WORKERS = 6
+    with ThreadPoolExecutor(max_workers=MAX_WORKERS) as executor:
+        futures = {executor.submit(annotate_one, item): item for item in candidates.items()}
+        for future in as_completed(futures):
+            result = future.result()
+            with counts_lock:
+                if result == "annotated":
+                    annotated_count += 1
+                else:
+                    skipped_count += 1
 
     # Also copy non-annotated files (forms XML, seed data) to annotated_sources unchanged
     for path, content in cache.items():

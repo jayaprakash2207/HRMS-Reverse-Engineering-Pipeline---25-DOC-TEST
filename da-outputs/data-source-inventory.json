@@ -1,76 +1,235 @@
 {
+  "extraction_metadata": {
+    "schema": "HRMS",
+    "database_engine": "Oracle 19c",
+    "extraction_date": "2026-08-04",
+    "method": "CODE-ONLY"
+  },
   "data_sources": [
     {
-      "type": "RDBMS",
-      "engine": "Oracle Database 19c",
+      "id": "DS-01",
+      "name": "HRMS Oracle Schema",
+      "type": "Relational Database",
+      "technology": "Oracle 19c",
+      "connection": {
+        "method": "OCI / JDBC / SQLPlus",
+        "connection_strings_found": false,
+        "note": "config.connection_strings was empty; no connection string found in config.json or environment files"
+      },
       "schema": "HRMS",
-      "role": "System of record — sole data store for the application (no evidence of any secondary datastore, cache, or external DB in this codebase)",
-      "connection": "CODE-ONLY — no connection string found anywhere in Layer 1 config.json (connection_strings: []); no tnsnames.ora/docker-compose.yml in repo. Oracle Forms apps of this era typically resolve TNS aliases from an Oracle client install (tnsnames.ora) outside the source repo — not something a source-code scan can recover. UNKNOWN — reason: connection details live outside the scanned codebase (client-side TNS config, not app config).",
-      "access_pattern": "Oracle Forms 12c client (.fmb/.fmx) + PL/SQL packages, all direct SQL/PLSQL — no ORM, no repository layer, no data access abstraction",
-      "confidence": 0.9
+      "table_count": 30,
+      "access_pattern": "Read-Write",
+      "criticality": "PRIMARY — all application data stored here",
+      "packages_that_access": [
+        "PKG_AUDIT", "PKG_COMMON", "PKG_EMPLOYEE", "PKG_INTEGRATION",
+        "PKG_LEAVE", "PKG_NOTIFICATION", "PKG_PAYROLL", "PKG_PERFORMANCE",
+        "PKG_REPORTING", "PKG_SECURITY", "PKG_VALIDATION"
+      ]
     },
     {
-      "type": "Caching",
-      "finding": "NONE FOUND — no caching class, no Oracle Advanced Queuing, no in-memory cache, no Coherence/TimesTen references anywhere in the scanned source. PKG_EMPLOYEE does hold global package-level state variables (g_current_user, g_current_emp_id, g_current_dept_id) which act as a per-session cache of the logged-in user's identity, scoped to the Forms session's PL/SQL engine lifetime.",
-      "documented_in": "storage-pattern-analysis.md",
-      "confidence": 0.8
+      "id": "DS-02",
+      "name": "GL_FEED_OUT (Oracle Directory Object)",
+      "type": "Flat File — Write-Only Output",
+      "technology": "UTL_FILE / Oracle Directory Object",
+      "connection": {
+        "oracle_directory": "GL_FEED_OUT",
+        "format": "Pipe-delimited text",
+        "direction": "WRITE",
+        "naming_pattern": "GL_FEED_YYYYMMDD.dat",
+        "note": "Physical OS path defined in Oracle DB via CREATE DIRECTORY — not visible in code alone"
+      },
+      "criticality": "HIGH — General Ledger integration output; consumed by ERP/finance system",
+      "produced_by": "PKG_INTEGRATION.generate_gl_journal",
+      "fields": [
+        "JOURNAL_ID", "JOURNAL_DATE", "PERIOD_ID", "GL_ACCOUNT_CODE",
+        "DEBIT_AMOUNT", "CREDIT_AMOUNT", "DESCRIPTION", "REFERENCE"
+      ]
     },
     {
-      "type": "Queue / Async dispatch",
-      "table": "HRMS.NOTIFICATION_QUEUE",
-      "role": "Application-level queue table (STATUS: PENDING/SENT/FAILED/CANCELLED, RETRY_COUNT) — polled by PKG_NOTIFICATION.process_queue every 5 minutes via DBMS_SCHEDULER. Dispatched via UTL_SMTP (NOT UTL_MAIL) to hard-coded smtp.internal.company.com:25. Batch size: 50 per run. Max retries: 3.",
-      "smtp_config": "HARD-CODED in PKG_NOTIFICATION.pkb constants (not read from SYSTEM_PARAMETERS at runtime — RC-004)",
-      "confidence": 0.9,
-      "change_records": ["RC-003", "RC-004", "A-019"]
+      "id": "DS-03",
+      "name": "BENEFITS_FEED_OUT (Oracle Directory Object)",
+      "type": "Flat File — Write-Only Output",
+      "technology": "UTL_FILE / Oracle Directory Object",
+      "connection": {
+        "oracle_directory": "BENEFITS_FEED_OUT",
+        "format": "Fixed-width, 203 characters per record (ADP format)",
+        "direction": "WRITE",
+        "naming_pattern": "BENEFITS_YYYYMMDD.dat",
+        "note": "ADP fixed-width layout; positions hard-coded in PKG_INTEGRATION.generate_benefits_feed"
+      },
+      "criticality": "HIGH — Benefits carrier (ADP) integration; used for enrollment and premium billing",
+      "produced_by": "PKG_INTEGRATION.export_benefits_feed",
+      "record_length": 203,
+      "field_layout": {
+        "note": "CORRECTED RC-006 (DA Agent 2 pass 2): Prior version listed invented positions including SSN_DECRYPTED, RECORD_TYPE, BENEFITS_FLAG, EFFECTIVE_DATE — none present in actual code. Actual fields confirmed from PKG_INTEGRATION.export_benefits_feed SELECT and RPAD writes.",
+        "EMP_NUMBER": {"width": 10, "positions": "1-10"},
+        "FIRST_NAME": {"width": 30, "positions": "11-40"},
+        "LAST_NAME": {"width": 30, "positions": "41-70"},
+        "DATE_OF_BIRTH": {"width": 10, "positions": "71-80", "format": "YYYY-MM-DD"},
+        "HIRE_DATE": {"width": 10, "positions": "81-90", "format": "YYYY-MM-DD"},
+        "EMPLOYMENT_STATUS": {"width": 12, "positions": "91-102"},
+        "MARITAL_STATUS": {"width": 10, "positions": "103-112"},
+        "GENDER": {"width": 1, "positions": "113"},
+        "DEP_FIRST_NAME": {"width": 30, "positions": "114-143"},
+        "DEP_LAST_NAME": {"width": 30, "positions": "144-173"},
+        "RELATIONSHIP": {"width": 20, "positions": "174-193"},
+        "DEP_DOB": {"width": 10, "positions": "194-203", "format": "YYYY-MM-DD"}
+      },
+      "ssn_in_file": false,
+      "ssn_note": "SSN_ENCRYPTED is NOT selected and PKG_SECURITY.decrypt_ssn is NOT called in export_benefits_feed. The file contains PII (names, DOB, hire date, dependent info) but NOT SSN."
     },
     {
-      "type": "External integration (outbound — GL)",
-      "package": "PKG_INTEGRATION.generate_gl_journal",
-      "protocol": "UTL_FILE flat file write",
-      "oracle_directory": "GL_FEED_OUT",
-      "format": "Pipe-delimited (H/D/T header-detail-trailer records)",
-      "filename_pattern": "GL_JOURNAL_{run_id}_{YYYYMMDD}.dat",
-      "consumer": "Oracle Financials batch import",
-      "kill_switch": "SYSTEM_PARAMETERS GL_FEED_STATUS — consulted via PKG_COMMON.get_param before generating",
-      "confidence": 0.9,
-      "change_records": ["E-003", "A-011"]
+      "id": "DS-04",
+      "name": "TIME_ATTENDANCE_IN (Oracle Directory Object)",
+      "type": "Flat File — Read-Only Input",
+      "technology": "UTL_FILE / Oracle Directory Object",
+      "connection": {
+        "oracle_directory": "TIME_ATTENDANCE_IN",
+        "format": "CSV",
+        "direction": "READ",
+        "naming_pattern": "TIME_IMPORT_YYYYMMDD.csv",
+        "note": "Import procedure is a TODO stub — not implemented as of code scan"
+      },
+      "criticality": "MEDIUM — Time and attendance import for hourly payroll; currently unimplemented",
+      "consumed_by": "PKG_INTEGRATION.import_time_attendance (STUB — TODO comment in code)",
+      "status": "NOT_IMPLEMENTED"
     },
     {
-      "type": "External integration (outbound — Benefits)",
-      "package": "PKG_INTEGRATION.export_benefits_feed",
-      "protocol": "UTL_FILE flat file write",
-      "oracle_directory": "BENEFITS_FEED_OUT",
-      "format": "Fixed-width ADP format (fields: EmpNum=10, FName=30, LName=30, DOB=10, HireDate=10, Status=12, MaritalStatus=10, Gender=1, DepFName=30, DepLName=30, Relationship=20, DepDOB=10)",
-      "filename_pattern": "BENEFITS_{YYYYMMDD}.txt",
-      "consumer": "ADP benefits enrollment system",
-      "kill_switch": "SYSTEM_PARAMETERS BENEFITS_FEED_STATUS — NOT consulted by export_benefits_feed (A-010 security/compliance gap)",
-      "pii_risk": "Exports EMPLOYEES + EMPLOYEE_DEPENDENTS PII in plaintext without has_permission check (A-009)",
-      "confidence": 0.9,
-      "change_records": ["E-003", "A-012", "A-009"]
+      "id": "DS-05",
+      "name": "PAY_REGISTER_OUT (Oracle Directory Object)",
+      "type": "Flat File — Write-Only Output",
+      "technology": "UTL_FILE / Oracle Directory Object",
+      "connection": {
+        "oracle_directory": "PAY_REGISTER_OUT",
+        "format": "CSV (10 columns: EMP_NUMBER, EMPLOYEE_NAME double-quoted, DEPARTMENT double-quoted, GROSS_PAY, FED_TAX, STATE_TAX, SS_TAX, MEDICARE, DEDUCTIONS, NET_PAY). Amount mask: FM999999990.00.",
+        "direction": "WRITE",
+        "naming_pattern": "PAY_REGISTER_{run_id}_{YYYYMMDD_HH24MISS}.csv",
+        "note": "CORRECTED by DA Agent 2 (pass 2): prior version stated 'Fixed-width text / PAY_REGISTER_RUN{id}.txt'. Actual PKG_PAYROLL.generate_pay_register (confirmed in PKG_PAYROLL.pkb) produces CSV with timestamp suffix. Producer also corrected: PKG_PAYROLL not PKG_INTEGRATION."
+      },
+      "criticality": "MEDIUM — Payroll audit trail; used for pay stub generation",
+      "produced_by": "PKG_PAYROLL.generate_pay_register"
     },
     {
-      "type": "External integration (inbound — Time/Attendance, STUB)",
-      "package": "PKG_INTEGRATION.import_time_attendance",
-      "protocol": "UTL_FILE flat file read",
-      "oracle_directory": "TIME_ATTENDANCE_IN",
-      "format": "CSV: emp_number,date,hours_regular,hours_overtime",
-      "status": "TODO STUB — procedure reads file lines but makes no database writes. Parsing is not implemented.",
-      "confidence": 1.0,
-      "change_records": ["A-013"]
+      "id": "DS-06",
+      "name": "SMTP Mail Server",
+      "type": "Email",
+      "technology": "UTL_SMTP",
+      "connection": {
+        "host": "smtp.internal.company.com",
+        "port": 25,
+        "auth": "None (unauthenticated relay)",
+        "from_address": "hrms-noreply@company.com",
+        "note": "Credentials not required — unauthenticated internal relay assumed; host/port defined in SYSTEM_PARAMETERS. CORRECTED by DA Agent 2 (pass 2): prior value 'hrms@company.com' — actual seed value in SYSTEM_PARAMETERS (PARAM_GROUP='NOTIFICATION', PARAM_CODE='FROM_ADDRESS') is 'hrms-noreply@company.com'."
+      },
+      "criticality": "MEDIUM — Email delivery for notifications (leave approvals, payslips, password resets, review reminders)",
+      "consumed_by": "PKG_NOTIFICATION.send_email",
+      "data_sent": [
+        "Leave approval/rejection notifications",
+        "Payslip PDFs (encoded in email body)",
+        "Password reset links",
+        "Performance review reminders",
+        "Onboarding welcome emails"
+      ]
     },
     {
-      "type": "External integration (outbound — LDAP/AD, STUB)",
-      "package": "PKG_INTEGRATION.sync_org_structure",
-      "status": "STUB placeholder — single log_info call only, no LDAP/AD connectivity",
-      "confidence": 1.0,
-      "change_records": ["A-014"]
+      "id": "DS-07",
+      "name": "FTP Integration Server",
+      "type": "FTP File Transfer",
+      "technology": "UTL_FILE + SYSTEM_PARAMETERS credentials",
+      "connection": {
+        "credentials_storage": "SYSTEM_PARAMETERS table (PARAM_GROUP='INTEGRATION', PARAM_CODE='FTP_PASSWORD')",
+        "security_risk": "CRITICAL — FTP credentials stored in cleartext in SYSTEM_PARAMETERS; accessible to any DB user with SELECT on SYSTEM_PARAMETERS",
+        "note": "Used for ADP benefits feed transfer"
+      },
+      "criticality": "HIGH — Benefits data transfer to ADP",
+      "consumed_by": "PKG_INTEGRATION.transfer_benefits_feed"
     },
     {
-      "type": "Session store",
-      "table": "HRMS.USER_SESSIONS",
-      "role": "DB-table-backed session tracking for Oracle Forms client sessions (LOGIN_TIME/LOGOUT_TIME/IP_ADDRESS/FORMS_MODULE/SESSION_STATUS), read/written by PKG_SECURITY (is_session_valid, authenticate, logout)",
-      "confidence": 0.9
+      "id": "DS-08",
+      "name": "Oracle Forms 4.x UI Layer",
+      "type": "UI / Oracle Forms",
+      "technology": "Oracle Forms 4.x (.fmb, .pll, .rdf files)",
+      "connection": {
+        "method": "Direct schema access via Oracle Forms runtime",
+        "global_vars": [":GLOBAL.current_user", ":GLOBAL.session_id"]
+      },
+      "criticality": "HIGH — Primary user interface; all HR data entry and reporting occurs here",
+      "modules_found": [
+        "HRMS_COMMON_LIB.pll — common toolbar and session management",
+        "HRMS_VALIDATION_LIB.pll — client-side field validation"
+      ]
+    },
+    {
+      "id": "DS-09",
+      "name": "DBMS_SCHEDULER (implied)",
+      "type": "Scheduled Jobs",
+      "technology": "Oracle DBMS_SCHEDULER",
+      "connection": {
+        "note": "No CREATE_JOB DDL found in scanned files; scheduler jobs are implied by documentation comments and interval-based behavior in packages"
+      },
+      "criticality": "HIGH — Background processing for notifications, leave accruals",
+      "implied_jobs": [
+        {
+          "name": "NOTIF_QUEUE_PROCESSOR",
+          "package_proc": "PKG_NOTIFICATION.process_queue",
+          "implied_interval": "Every 5 minutes",
+          "source": "Comment in PKG_NOTIFICATION: 'intended to be run every 5 minutes by DBMS_SCHEDULER'"
+        },
+        {
+          "name": "MONTHLY_LEAVE_ACCRUAL",
+          "package_proc": "PKG_LEAVE.run_monthly_accrual",
+          "implied_interval": "Monthly (1st of each month)",
+          "source": "Comment in PKG_LEAVE: 'called monthly by scheduler'"
+        },
+        {
+          "name": "HOLIDAY_REMINDER",
+          "package_proc": "PKG_NOTIFICATION (implied)",
+          "implied_interval": "Annually / before holiday dates"
+        }
+      ]
     }
   ],
-  "note_on_caching_cross_reference": "Per skill error-handling rule ('Caching class found in */Services* → document in BOTH data-source-inventory.json AND storage-pattern-analysis.md'): no Services-layer caching class exists in this codebase at all (it is Oracle Forms + PL/SQL, not a service-oriented app), so this rule does not apply structurally. The only 'caching' behavior is PKG_EMPLOYEE's session-scoped global variables, documented in both this file and storage-pattern-analysis.md."
+    {
+      "id": "DS-10",
+      "name": "RPT_* Denormalized Reporting Tables (7 — INFERRED, STUB)",
+      "type": "Relational Database — Denormalized Snapshot Layer",
+      "technology": "Oracle 19c (within HRMS schema)",
+      "connection": {
+        "method": "Within same Oracle schema as OLTP tables",
+        "note": "DDL not found in Tables.sql. Existence in production unconfirmed. PKG_REPORTING.refresh_reporting_tables references them in a comment but its body contains only a log_info call — no DML has ever written to these tables via this procedure."
+      },
+      "implied_tables": [
+        "RPT_HEADCOUNT", "RPT_COMPENSATION", "RPT_TURNOVER", "RPT_NEW_HIRES",
+        "RPT_LEAVE_UTILIZATION", "RPT_PAYROLL_SUMMARY", "RPT_EEO_COMPLIANCE"
+      ],
+      "criticality": "LOW (currently non-functional) — HIGH (if activated, downstream consumers may depend on it)",
+      "produced_by": "PKG_REPORTING.refresh_reporting_tables (STUB — no DML executed)",
+      "consumed_by": "Unknown — no package reads from RPT_* tables in any recovered source file. Possible consumers: Oracle Reports .rdf files, ad-hoc SQL queries, external BI tools.",
+      "refresh_pattern": "Implied truncate-and-repopulate (nightly) — never actually implemented",
+      "source_procedures": [
+        "PKG_REPORTING.headcount_report → RPT_HEADCOUNT",
+        "PKG_REPORTING.compensation_summary → RPT_COMPENSATION",
+        "PKG_REPORTING.turnover_report → RPT_TURNOVER",
+        "PKG_REPORTING.new_hires_report → RPT_NEW_HIRES",
+        "PKG_REPORTING.leave_utilization_report → RPT_LEAVE_UTILIZATION",
+        "PKG_REPORTING.payroll_summary_report → RPT_PAYROLL_SUMMARY",
+        "PKG_REPORTING.eeo_compliance_report → RPT_EEO_COMPLIANCE"
+      ],
+      "migration_note": "If confirmed absent from production, no data migration needed. If confirmed present, each is a separate migration target with column shapes derived from PKG_REPORTING SELECT lists (see schema-catalogue.json inferred_tables and data-dictionary.md RPT_* section). The truncate-repopulate refresh approach must be redesigned for the target platform (ETL job, materialized view, or scheduled procedure).",
+      "open_questions": [
+        "G1-NEW-01: Do the RPT_* tables actually exist in the production Oracle instance? Run: SELECT table_name FROM all_tables WHERE owner='HRMS' AND table_name LIKE 'RPT_%';",
+        "G1-NEW-02: If RPT_* tables exist and have rows, what process populated them? Was refresh_reporting_tables ever fully implemented and later reverted?",
+        "G1-NEW-03: Are any Oracle Reports (.rdf files) or external BI queries reading from RPT_* tables? If so, those consumers will break if the tables do not exist on the migration target."
+      ]
+    }
+  ],
+  "external_dependencies_summary": {
+    "hard_dependencies": ["Oracle 19c DB (DS-01)", "SMTP relay (DS-06)"],
+    "soft_dependencies": ["ADP benefits platform (DS-03, DS-07)", "GL/ERP system (DS-02)", "Time & Attendance system (DS-04 — unimplemented)"],
+    "security_risks": [
+      "FTP credentials in cleartext SYSTEM_PARAMETERS (DS-07)",
+      "SMTP relay is unauthenticated (DS-06)",
+      "Demographic PII (names, DOB, marital status, gender, dependent data) in benefits flat file (DS-03) — NOT SSN (RC-006 corrected)"
+    ]
+  }
 }

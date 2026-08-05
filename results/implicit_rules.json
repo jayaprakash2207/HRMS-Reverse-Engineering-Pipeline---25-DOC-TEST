@@ -1,0 +1,748 @@
+{
+  "lookup_values": [
+    {
+      "type": "EMPLOYMENT_TYPE",
+      "code": "FULL_TIME",
+      "meaning": "Full-time employee (only value present in seed data; no PART_TIME or CONTRACT seeded)",
+      "source_file": "ts-plsql-oracle-forms-hrms/ts-plsql-oracle-forms-hrms-main/data/seed/02_employee_data.sql"
+    },
+    {
+      "type": "EMPLOYMENT_STATUS",
+      "code": "ACTIVE",
+      "meaning": "Currently employed and active (only status seeded; INACTIVE/TERMINATED implied but absent)",
+      "source_file": "ts-plsql-oracle-forms-hrms/ts-plsql-oracle-forms-hrms-main/data/seed/02_employee_data.sql"
+    },
+    {
+      "type": "GENDER",
+      "code": "M",
+      "meaning": "Male",
+      "source_file": "ts-plsql-oracle-forms-hrms/ts-plsql-oracle-forms-hrms-main/data/seed/02_employee_data.sql"
+    },
+    {
+      "type": "GENDER",
+      "code": "F",
+      "meaning": "Female",
+      "source_file": "ts-plsql-oracle-forms-hrms/ts-plsql-oracle-forms-hrms-main/data/seed/02_employee_data.sql"
+    },
+    {
+      "type": "MARITAL_STATUS",
+      "code": "MARRIED",
+      "meaning": "Currently married",
+      "source_file": "ts-plsql-oracle-forms-hrms/ts-plsql-oracle-forms-hrms-main/data/seed/02_employee_data.sql"
+    },
+    {
+      "type": "MARITAL_STATUS",
+      "code": "SINGLE",
+      "meaning": "Not married",
+      "source_file": "ts-plsql-oracle-forms-hrms/ts-plsql-oracle-forms-hrms-main/data/seed/02_employee_data.sql"
+    },
+    {
+      "type": "MARITAL_STATUS",
+      "code": "DIVORCED",
+      "meaning": "Previously married, now divorced",
+      "source_file": "ts-plsql-oracle-forms-hrms/ts-plsql-oracle-forms-hrms-main/data/seed/02_employee_data.sql"
+    },
+    {
+      "type": "ACTIVE_FLAG",
+      "code": "Y",
+      "meaning": "Record is active/enabled (string 'Y', not boolean; 'N' implied for soft-delete)",
+      "source_file": "ts-plsql-oracle-forms-hrms/ts-plsql-oracle-forms-hrms-main/data/seed/01_reference_data.sql"
+    },
+    {
+      "type": "LOCATION_CODE",
+      "code": "HQ",
+      "meaning": "Corporate Headquarters — 100 Main Street, New York, NY 10001, US; phone 212-555-1000",
+      "source_file": "ts-plsql-oracle-forms-hrms/ts-plsql-oracle-forms-hrms-main/data/seed/01_reference_data.sql"
+    },
+    {
+      "type": "LOCATION_CODE",
+      "code": "CHI",
+      "meaning": "Chicago Regional Office — 200 Michigan Avenue, Chicago, IL 60601, US; phone 312-555-2000",
+      "source_file": "ts-plsql-oracle-forms-hrms/ts-plsql-oracle-forms-hrms-main/data/seed/01_reference_data.sql"
+    },
+    {
+      "type": "LOCATION_CODE",
+      "code": "SF",
+      "meaning": "San Francisco Branch — 50 California Street, San Francisco, CA 94111, US; phone 415-555-3000",
+      "source_file": "ts-plsql-oracle-forms-hrms/ts-plsql-oracle-forms-hrms-main/data/seed/01_reference_data.sql"
+    },
+    {
+      "type": "COUNTRY_CODE",
+      "code": "US",
+      "meaning": "United States (only country seeded; system is US-only at baseline)",
+      "source_file": "ts-plsql-oracle-forms-hrms/ts-plsql-oracle-forms-hrms-main/data/seed/01_reference_data.sql"
+    },
+    {
+      "type": "EEO_CATEGORY",
+      "code": "1.1",
+      "meaning": "Executive / Senior Officials and Managers — C-Suite (Grade 10) and VP (Grade 9) titles only",
+      "source_file": "ts-plsql-oracle-forms-hrms/ts-plsql-oracle-forms-hrms-main/data/seed/01_reference_data.sql"
+    },
+    {
+      "type": "EEO_CATEGORY",
+      "code": "1.2",
+      "meaning": "First/Mid-Level Officials and Managers — Director (Grade 8) and Manager (Grade 6) titles",
+      "source_file": "ts-plsql-oracle-forms-hrms/ts-plsql-oracle-forms-hrms-main/data/seed/01_reference_data.sql"
+    },
+    {
+      "type": "EEO_CATEGORY",
+      "code": "2.0",
+      "meaning": "Professionals / Individual Contributors — Senior IC (Grade 4) and Mid-level IC (Grade 3) titles",
+      "source_file": "ts-plsql-oracle-forms-hrms/ts-plsql-oracle-forms-hrms-main/data/seed/01_reference_data.sql"
+    },
+    {
+      "type": "GRADE_LEVEL",
+      "code": "1",
+      "meaning": "Entry Level — MIN_SALARY=35000, MAX_SALARY=55000 (band width $20,000)",
+      "source_file": "ts-plsql-oracle-forms-hrms/ts-plsql-oracle-forms-hrms-main/data/seed/01_reference_data.sql"
+    },
+    {
+      "type": "GRADE_LEVEL",
+      "code": "2",
+      "meaning": "Junior — MIN_SALARY=45000, MAX_SALARY=70000 (band width $25,000)",
+      "source_file": "ts-plsql-oracle-forms-hrms/ts-plsql-oracle-forms-hrms-main/data/seed/01_reference_data.sql"
+    },
+    {
+      "type": "GRADE_LEVEL",
+      "code": "3",
+      "meaning": "Mid-Level — MIN_SALARY=60000, MAX_SALARY=90000 (band width $30,000)",
+      "source_file": "ts-plsql-oracle-forms-hrms/ts-plsql-oracle-forms-hrms-main/data/seed/01_reference_data.sql"
+    },
+    {
+      "type": "GRADE_LEVEL",
+      "code": "4",
+      "meaning": "Senior — MIN_SALARY=80000, MAX_SALARY=120000 (band width $40,000)",
+      "source_file": "ts-plsql-oracle-forms-hrms/ts-plsql-oracle-forms-hrms-main/data/seed/01_reference_data.sql"
+    },
+    {
+      "type": "GRADE_LEVEL",
+      "code": "5",
+      "meaning": "Lead — MIN_SALARY=95000, MAX_SALARY=145000 (band width $50,000)",
+      "source_file": "ts-plsql-oracle-forms-hrms/ts-plsql-oracle-forms-hrms-main/data/seed/01_reference_data.sql"
+    },
+    {
+      "type": "GRADE_LEVEL",
+      "code": "6",
+      "meaning": "Manager — MIN_SALARY=110000, MAX_SALARY=170000 (band width $60,000)",
+      "source_file": "ts-plsql-oracle-forms-hrms/ts-plsql-oracle-forms-hrms-main/data/seed/01_reference_data.sql"
+    },
+    {
+      "type": "GRADE_LEVEL",
+      "code": "7",
+      "meaning": "Senior Manager — MIN_SALARY=130000, MAX_SALARY=200000 (band width $70,000)",
+      "source_file": "ts-plsql-oracle-forms-hrms/ts-plsql-oracle-forms-hrms-main/data/seed/01_reference_data.sql"
+    },
+    {
+      "type": "GRADE_LEVEL",
+      "code": "8",
+      "meaning": "Director — MIN_SALARY=160000, MAX_SALARY=250000 (band width $90,000)",
+      "source_file": "ts-plsql-oracle-forms-hrms/ts-plsql-oracle-forms-hrms-main/data/seed/01_reference_data.sql"
+    },
+    {
+      "type": "GRADE_LEVEL",
+      "code": "9",
+      "meaning": "VP — MIN_SALARY=200000, MAX_SALARY=350000 (band width $150,000)",
+      "source_file": "ts-plsql-oracle-forms-hrms/ts-plsql-oracle-forms-hrms-main/data/seed/01_reference_data.sql"
+    },
+    {
+      "type": "GRADE_LEVEL",
+      "code": "10",
+      "meaning": "C-Suite — MIN_SALARY=300000, MAX_SALARY=600000 (band width $300,000)",
+      "source_file": "ts-plsql-oracle-forms-hrms/ts-plsql-oracle-forms-hrms-main/data/seed/01_reference_data.sql"
+    },
+    {
+      "type": "DEPT_CODE",
+      "code": "EXEC",
+      "meaning": "Executive Office — DEPT_ID=1, CC-1000, PARENT_DEPT_ID=NULL (org root), location HQ",
+      "source_file": "ts-plsql-oracle-forms-hrms/ts-plsql-oracle-forms-hrms-main/data/seed/01_reference_data.sql"
+    },
+    {
+      "type": "DEPT_CODE",
+      "code": "HR",
+      "meaning": "Human Resources — DEPT_ID=10, CC-1100, parent=EXEC, location HQ",
+      "source_file": "ts-plsql-oracle-forms-hrms/ts-plsql-oracle-forms-hrms-main/data/seed/01_reference_data.sql"
+    },
+    {
+      "type": "DEPT_CODE",
+      "code": "FIN",
+      "meaning": "Finance & Accounting — DEPT_ID=20, CC-1200, parent=EXEC, location HQ",
+      "source_file": "ts-plsql-oracle-forms-hrms/ts-plsql-oracle-forms-hrms-main/data/seed/01_reference_data.sql"
+    },
+    {
+      "type": "DEPT_CODE",
+      "code": "IT",
+      "meaning": "Information Technology — DEPT_ID=30, CC-1300, parent=EXEC, location CHI",
+      "source_file": "ts-plsql-oracle-forms-hrms/ts-plsql-oracle-forms-hrms-main/data/seed/01_reference_data.sql"
+    },
+    {
+      "type": "DEPT_CODE",
+      "code": "ITDEV",
+      "meaning": "IT - Development — DEPT_ID=31, CC-1310, parent=IT (30), location CHI",
+      "source_file": "ts-plsql-oracle-forms-hrms/ts-plsql-oracle-forms-hrms-main/data/seed/01_reference_data.sql"
+    },
+    {
+      "type": "DEPT_CODE",
+      "code": "ITOPS",
+      "meaning": "IT - Operations — DEPT_ID=32, CC-1320, parent=IT (30), location CHI",
+      "source_file": "ts-plsql-oracle-forms-hrms/ts-plsql-oracle-forms-hrms-main/data/seed/01_reference_data.sql"
+    },
+    {
+      "type": "DEPT_CODE",
+      "code": "SALES",
+      "meaning": "Sales — DEPT_ID=40, CC-1400, parent=EXEC, location SF",
+      "source_file": "ts-plsql-oracle-forms-hrms/ts-plsql-oracle-forms-hrms-main/data/seed/01_reference_data.sql"
+    },
+    {
+      "type": "DEPT_CODE",
+      "code": "MKT",
+      "meaning": "Marketing — DEPT_ID=50, CC-1500, parent=EXEC, location SF",
+      "source_file": "ts-plsql-oracle-forms-hrms/ts-plsql-oracle-forms-hrms-main/data/seed/01_reference_data.sql"
+    },
+    {
+      "type": "DEPT_CODE",
+      "code": "OPS",
+      "meaning": "Operations — DEPT_ID=60, CC-1600, parent=EXEC, location CHI",
+      "source_file": "ts-plsql-oracle-forms-hrms/ts-plsql-oracle-forms-hrms-main/data/seed/01_reference_data.sql"
+    },
+    {
+      "type": "DEPT_CODE",
+      "code": "LEGAL",
+      "meaning": "Legal & Compliance — DEPT_ID=70, CC-1700, parent=EXEC, location HQ",
+      "source_file": "ts-plsql-oracle-forms-hrms/ts-plsql-oracle-forms-hrms-main/data/seed/01_reference_data.sql"
+    },
+    {
+      "type": "JOB_CODE",
+      "code": "CEO",
+      "meaning": "Chief Executive Officer — JOB_ID=1, GRADE_ID=10 (C-Suite), EEO=1.1",
+      "source_file": "ts-plsql-oracle-forms-hrms/ts-plsql-oracle-forms-hrms-main/data/seed/01_reference_data.sql"
+    },
+    {
+      "type": "JOB_CODE",
+      "code": "CFO",
+      "meaning": "Chief Financial Officer — JOB_ID=2, GRADE_ID=10 (C-Suite), EEO=1.1",
+      "source_file": "ts-plsql-oracle-forms-hrms/ts-plsql-oracle-forms-hrms-main/data/seed/01_reference_data.sql"
+    },
+    {
+      "type": "JOB_CODE",
+      "code": "CIO",
+      "meaning": "Chief Information Officer — JOB_ID=3, GRADE_ID=10 (C-Suite), EEO=1.1",
+      "source_file": "ts-plsql-oracle-forms-hrms/ts-plsql-oracle-forms-hrms-main/data/seed/01_reference_data.sql"
+    },
+    {
+      "type": "JOB_CODE",
+      "code": "VP-HR",
+      "meaning": "VP of Human Resources — JOB_ID=10, GRADE_ID=9, EEO=1.1",
+      "source_file": "ts-plsql-oracle-forms-hrms/ts-plsql-oracle-forms-hrms-main/data/seed/01_reference_data.sql"
+    },
+    {
+      "type": "JOB_CODE",
+      "code": "VP-FIN",
+      "meaning": "VP of Finance — JOB_ID=11, GRADE_ID=9, EEO=1.1",
+      "source_file": "ts-plsql-oracle-forms-hrms/ts-plsql-oracle-forms-hrms-main/data/seed/01_reference_data.sql"
+    },
+    {
+      "type": "JOB_CODE",
+      "code": "VP-SALES",
+      "meaning": "VP of Sales — JOB_ID=12, GRADE_ID=9, EEO=1.1",
+      "source_file": "ts-plsql-oracle-forms-hrms/ts-plsql-oracle-forms-hrms-main/data/seed/01_reference_data.sql"
+    },
+    {
+      "type": "JOB_CODE",
+      "code": "DIR-IT",
+      "meaning": "Director of IT — JOB_ID=20, GRADE_ID=8, EEO=1.2",
+      "source_file": "ts-plsql-oracle-forms-hrms/ts-plsql-oracle-forms-hrms-main/data/seed/01_reference_data.sql"
+    },
+    {
+      "type": "JOB_CODE",
+      "code": "DIR-HR",
+      "meaning": "Director of HR — JOB_ID=21, GRADE_ID=8, EEO=1.2",
+      "source_file": "ts-plsql-oracle-forms-hrms/ts-plsql-oracle-forms-hrms-main/data/seed/01_reference_data.sql"
+    },
+    {
+      "type": "JOB_CODE",
+      "code": "MGR-DEV",
+      "meaning": "Development Manager — JOB_ID=30, GRADE_ID=6, EEO=1.2",
+      "source_file": "ts-plsql-oracle-forms-hrms/ts-plsql-oracle-forms-hrms-main/data/seed/01_reference_data.sql"
+    },
+    {
+      "type": "JOB_CODE",
+      "code": "MGR-OPS",
+      "meaning": "Operations Manager — JOB_ID=31, GRADE_ID=6, EEO=1.2",
+      "source_file": "ts-plsql-oracle-forms-hrms/ts-plsql-oracle-forms-hrms-main/data/seed/01_reference_data.sql"
+    },
+    {
+      "type": "JOB_CODE",
+      "code": "MGR-PAY",
+      "meaning": "Payroll Manager — JOB_ID=32, GRADE_ID=6, EEO=1.2",
+      "source_file": "ts-plsql-oracle-forms-hrms/ts-plsql-oracle-forms-hrms-main/data/seed/01_reference_data.sql"
+    },
+    {
+      "type": "JOB_CODE",
+      "code": "MGR-SALES",
+      "meaning": "Sales Manager — JOB_ID=33, GRADE_ID=6, EEO=1.2",
+      "source_file": "ts-plsql-oracle-forms-hrms/ts-plsql-oracle-forms-hrms-main/data/seed/01_reference_data.sql"
+    },
+    {
+      "type": "JOB_CODE",
+      "code": "SR-DEV",
+      "meaning": "Senior Developer — JOB_ID=40, GRADE_ID=4, EEO=2.0",
+      "source_file": "ts-plsql-oracle-forms-hrms/ts-plsql-oracle-forms-hrms-main/data/seed/01_reference_data.sql"
+    },
+    {
+      "type": "JOB_CODE",
+      "code": "SR-DBA",
+      "meaning": "Senior DBA — JOB_ID=41, GRADE_ID=4, EEO=2.0",
+      "source_file": "ts-plsql-oracle-forms-hrms/ts-plsql-oracle-forms-hrms-main/data/seed/01_reference_data.sql"
+    },
+    {
+      "type": "JOB_CODE",
+      "code": "SR-ACCT",
+      "meaning": "Senior Accountant — JOB_ID=42, GRADE_ID=4, EEO=2.0",
+      "source_file": "ts-plsql-oracle-forms-hrms/ts-plsql-oracle-forms-hrms-main/data/seed/01_reference_data.sql"
+    },
+    {
+      "type": "JOB_CODE",
+      "code": "SR-SALES",
+      "meaning": "Senior Sales Rep — JOB_ID=43, GRADE_ID=4, EEO=2.0",
+      "source_file": "ts-plsql-oracle-forms-hrms/ts-plsql-oracle-forms-hrms-main/data/seed/01_reference_data.sql"
+    },
+    {
+      "type": "JOB_CODE",
+      "code": "DEV",
+      "meaning": "Software Developer — JOB_ID=50, GRADE_ID=3, EEO=2.0",
+      "source_file": "ts-plsql-oracle-forms-hrms/ts-plsql-oracle-forms-hrms-main/data/seed/01_reference_data.sql"
+    },
+    {
+      "type": "JOB_CODE",
+      "code": "QA",
+      "meaning": "QA Analyst — JOB_ID=51, GRADE_ID=3, EEO=2.0",
+      "source_file": "ts-plsql-oracle-forms-hrms/ts-plsql-oracle-forms-hrms-main/data/seed/01_reference_data.sql"
+    },
+    {
+      "type": "JOB_CODE",
+      "code": "ACCT",
+      "meaning": "Accountant — JOB_ID=52, GRADE_ID=3, EEO=2.0",
+      "source_file": "ts-plsql-oracle-forms-hrms/ts-plsql-oracle-forms-hrms-main/data/seed/01_reference_data.sql"
+    },
+    {
+      "type": "JOB_CODE",
+      "code": "HR-SPEC",
+      "meaning": "HR Specialist — JOB_ID=53, GRADE_ID=3, EEO=2.0",
+      "source_file": "ts-plsql-oracle-forms-hrms/ts-plsql-oracle-forms-hrms-main/data/seed/01_reference_data.sql"
+    }
+  ],
+  "reference_rules": [
+    {
+      "rule": "Every adjacent pair of grade levels has an overlapping salary band, allowing lateral transfers without mandatory pay cuts. Overlap grows with seniority: $10K at grades 1–3, $25K at grade 4–5, up to $50K at grades 9–10.",
+      "evidence": "Grade 1 MAX=55000 > Grade 2 MIN=45000; Grade 2 MAX=70000 > Grade 3 MIN=60000; Grade 3 MAX=90000 > Grade 4 MIN=80000; Grade 4 MAX=120000 > Grade 5 MIN=95000; Grade 5 MAX=145000 > Grade 6 MIN=110000; Grade 6 MAX=170000 > Grade 7 MIN=130000; Grade 7 MAX=200000 > Grade 8 MIN=160000; Grade 8 MAX=250000 > Grade 9 MIN=200000; Grade 9 MAX=350000 > Grade 10 MIN=300000",
+      "source_file": "ts-plsql-oracle-forms-hrms/ts-plsql-oracle-forms-hrms-main/data/seed/01_reference_data.sql"
+    },
+    {
+      "rule": "Salary band width grows with grade level, encoding that executive compensation is highly variable while entry-level pay is tightly constrained. Entry Level band is $20K wide; C-Suite band is $300K wide (15x wider).",
+      "evidence": "GRADE_LEVEL=1 width=20000 (35000–55000); GRADE_LEVEL=10 width=300000 (300000–600000)",
+      "source_file": "ts-plsql-oracle-forms-hrms/ts-plsql-oracle-forms-hrms-main/data/seed/01_reference_data.sql"
+    },
+    {
+      "rule": "The minimum salary at any grade is always at least 50% of its maximum, establishing a floor ratio that prevents excessively wide bands from being used to underpay within-band.",
+      "evidence": "Grade 10: MIN=300000 / MAX=600000 = 50.0% (lowest ratio); Grade 1: MIN=35000 / MAX=55000 = 63.6% (highest ratio). All other grades fall between these.",
+      "source_file": "ts-plsql-oracle-forms-hrms/ts-plsql-oracle-forms-hrms-main/data/seed/01_reference_data.sql"
+    },
+    {
+      "rule": "EEO category 1.1 is reserved exclusively for grades 9 (VP) and 10 (C-Suite). Grade 5 (Lead) and grades 1–2 have no EEO category assigned in visible seed data, implying EEO reporting covers only grades 3–4 (2.0), 6–8 (1.2), and 9–10 (1.1).",
+      "evidence": "JOB_TITLES with EEO_CATEGORY='1.1': GRADE_ID IN (9,10). EEO_CATEGORY='1.2': GRADE_ID IN (6,8). EEO_CATEGORY='2.0': GRADE_ID IN (3,4). No EEO_CATEGORY on GRADE_ID IN (1,2,5).",
+      "source_file": "ts-plsql-oracle-forms-hrms/ts-plsql-oracle-forms-hrms-main/data/seed/01_reference_data.sql"
+    },
+    {
+      "rule": "Managers skip Grade 7 (Senior Manager) entirely in the seed job title catalogue — there are Manager titles at Grade 6 and Director titles at Grade 8, but no titles defined for Grade 7. Promotions from Manager to Director therefore skip a grade level.",
+      "evidence": "JOB_TITLES rows: GRADE_ID=6 (MGR-DEV, MGR-OPS, MGR-PAY, MGR-SALES), GRADE_ID=8 (DIR-IT, DIR-HR), zero rows with GRADE_ID=7.",
+      "source_file": "ts-plsql-oracle-forms-hrms/ts-plsql-oracle-forms-hrms-main/data/seed/01_reference_data.sql"
+    },
+    {
+      "rule": "There is no VP defined for Sales, Operations, Legal, or Marketing in the JOB_TITLES seed, despite those departments existing. Only VP-HR (JOB_ID=10), VP-FIN (11), and VP-SALES (12) are seeded — implying a VP layer exists only for HR, Finance, and Sales.",
+      "evidence": "VP-level titles (GRADE_ID=9): JOB_ID=10 (VP-HR), JOB_ID=11 (VP-FIN), JOB_ID=12 (VP-SALES). No VP-IT, VP-OPS, VP-LEGAL, VP-MKT defined.",
+      "source_file": "ts-plsql-oracle-forms-hrms/ts-plsql-oracle-forms-hrms-main/data/seed/01_reference_data.sql"
+    },
+    {
+      "rule": "JOB_ID numbering is tiered by organizational level in blocks of 10: IDs 1–9 = C-Suite, 10–19 = VP, 20–29 = Director, 30–39 = Manager, 40–49 = Senior IC, 50–59 = Mid-level IC, 60–69 = Junior/Entry IC (implied by truncated data). This means any validation of job level can use range checks on JOB_ID.",
+      "evidence": "JOB_ID=1–3 (C-Suite Grade 10); JOB_ID=10–12 (VP Grade 9); JOB_ID=20–21 (Director Grade 8); JOB_ID=30–33 (Manager Grade 6); JOB_ID=40–43 (Senior Grade 4); JOB_ID=50–53 (Mid-level Grade 3); employees reference JOB_ID=61,62 in grade 1–2 range.",
+      "source_file": "ts-plsql-oracle-forms-hrms/ts-plsql-oracle-forms-hrms-main/data/seed/01_reference_data.sql"
+    },
+    {
+      "rule": "DEPT_ID is numbered in multiples of 10 for top-level departments (1, 10, 20, 30, 40, 50, 60, 70) and in consecutive integers for sub-departments (IT=30 → ITDEV=31, ITOPS=32). This encoding means a sub-department's DEPT_ID is always within 9 of its parent's DEPT_ID.",
+      "evidence": "DEPT_ID=1 (EXEC, parent=NULL), DEPT_ID=10 (HR, parent=1), DEPT_ID=20 (FIN, parent=1), DEPT_ID=30 (IT, parent=1), DEPT_ID=31 (ITDEV, parent=30), DEPT_ID=32 (ITOPS, parent=30), DEPT_ID=40 (SALES, parent=1)...",
+      "source_file": "ts-plsql-oracle-forms-hrms/ts-plsql-oracle-forms-hrms-main/data/seed/01_reference_data.sql"
+    },
+    {
+      "rule": "Cost center codes follow a strict hierarchy-encoded convention: CC-{n}000 for top-level (CC-1000=EXEC), CC-{n}{d}00 for second-level (CC-1100=HR, CC-1200=FIN), and CC-{n}{d}{s}0 for third-level sub-departments (CC-1310=ITDEV, CC-1320=ITOPS). This makes cost center codes parseable for hierarchy without a database join.",
+      "evidence": "CC-1000 (EXEC), CC-1100 (HR), CC-1200 (FIN), CC-1300 (IT), CC-1310 (ITDEV), CC-1320 (ITOPS), CC-1400 (SALES), CC-1500 (MKT), CC-1600 (OPS), CC-1700 (LEGAL)",
+      "source_file": "ts-plsql-oracle-forms-hrms/ts-plsql-oracle-forms-hrms-main/data/seed/01_reference_data.sql"
+    },
+    {
+      "rule": "There is exactly one organizational root: EXEC (DEPT_ID=1) is the only department with PARENT_DEPT_ID=NULL. All other departments have a non-null parent, enforcing a single-root tree hierarchy.",
+      "evidence": "Only DEPT_ID=1 has PARENT_DEPT_ID=NULL. All other 9 DEPARTMENTS rows have PARENT_DEPT_ID = 1 or 30.",
+      "source_file": "ts-plsql-oracle-forms-hrms/ts-plsql-oracle-forms-hrms-main/data/seed/01_reference_data.sql"
+    },
+    {
+      "rule": "IT is the only department with sub-departments in the seed data. No other function (HR, Finance, Sales, etc.) has children. IT has exactly two children: ITDEV and ITOPS — a maximum depth of 2 in the visible hierarchy.",
+      "evidence": "PARENT_DEPT_ID=30 appears on DEPT_ID=31 and DEPT_ID=32. No other DEPT_ID appears as a PARENT_DEPT_ID except DEPT_ID=1 and DEPT_ID=30.",
+      "source_file": "ts-plsql-oracle-forms-hrms/ts-plsql-oracle-forms-hrms-main/data/seed/01_reference_data.sql"
+    },
+    {
+      "rule": "Geographic assignment is deterministic by function: HQ (New York) hosts Executive, HR, Finance, and Legal. CHI (Chicago) hosts IT (all sub-departments) and Operations. SF (San Francisco) hosts Sales and Marketing. No department spans multiple locations in seed data.",
+      "evidence": "DEPT_CODE IN (EXEC, HR, FIN, LEGAL) → LOCATION_CODE='HQ'; DEPT_CODE IN (IT, ITDEV, ITOPS, OPS) → LOCATION_CODE='CHI'; DEPT_CODE IN (SALES, MKT) → LOCATION_CODE='SF'",
+      "source_file": "ts-plsql-oracle-forms-hrms/ts-plsql-oracle-forms-hrms-main/data/seed/01_reference_data.sql"
+    },
+    {
+      "rule": "All DEPARTMENTS rows have MANAGER_EMP_ID=NULL in the reference-data seed. This is a deliberate chicken-and-egg deferral: department managers are assigned by UPDATE statements after employees are loaded (script 02+). Any application logic must tolerate NULL manager on departments.",
+      "evidence": "All 10 DEPARTMENTS INSERT statements set MANAGER_EMP_ID=NULL explicitly.",
+      "source_file": "ts-plsql-oracle-forms-hrms/ts-plsql-oracle-forms-hrms-main/data/seed/01_reference_data.sql"
+    },
+    {
+      "rule": "The CEO (EMP_ID=1) is the sole employee with MANAGER_EMP_ID=NULL, establishing the top of the employee reporting chain. All other visible employees have a non-null MANAGER_EMP_ID.",
+      "evidence": "EMP_ID=1 (JAMES RICHARDSON, JOB_ID=1 CEO): MANAGER_EMP_ID=NULL. All other EMPLOYEES rows have a non-null MANAGER_EMP_ID.",
+      "source_file": "ts-plsql-oracle-forms-hrms/ts-plsql-oracle-forms-hrms-main/data/seed/02_employee_data.sql"
+    },
+    {
+      "rule": "Employee numbers are formatted as 'EMP-' followed by a zero-padded 6-digit sequential integer. The format encodes a system capacity of up to 999,999 employees before overflow.",
+      "evidence": "EMP_NUMBER values: 'EMP-000001', 'EMP-000002', 'EMP-000003', 'EMP-000010', 'EMP-000011' ... (6-digit zero-padded)",
+      "source_file": "ts-plsql-oracle-forms-hrms/ts-plsql-oracle-forms-hrms-main/data/seed/02_employee_data.sql"
+    },
+    {
+      "rule": "EMP_NUMBER gaps in the seed data (e.g. EMP-000004 through EMP-000009 are absent) imply EMP_NUMBER is assigned based on EMP_ID directly, not from a separate sequence. Gaps in EMP_ID cause gaps in EMP_NUMBER.",
+      "evidence": "EMP_ID=1→EMP-000001, EMP_ID=2→EMP-000002, EMP_ID=3→EMP-000003, then next is EMP_ID=10→EMP-000010 (IDs 4–9 skipped, matching DEPT_ID-aligned ID assignment pattern).",
+      "source_file": "ts-plsql-oracle-forms-hrms/ts-plsql-oracle-forms-hrms-main/data/seed/02_employee_data.sql"
+    },
+    {
+      "rule": "EMP_ID values are assigned to match DEPT_ID ranges, not from a single global sequence: Executive employees use IDs 1–3, HR employees use IDs 10–12, Finance employees use IDs 20–24, IT employees use IDs 30–37. This ties employee identity to department at creation time.",
+      "evidence": "EMP_ID=1,2,3 in DEPT_ID 1,20,30 (Exec/CFO/CIO); EMP_ID=10,11,12 in DEPT_ID=10 (HR); EMP_ID=20–24 in DEPT_ID=20 (Finance); EMP_ID=30–37 in DEPT_ID=30–31 (IT)",
+      "source_file": "ts-plsql-oracle-forms-hrms/ts-plsql-oracle-forms-hrms-main/data/seed/02_employee_data.sql"
+    },
+    {
+      "rule": "All 25 seeded employees have EMPLOYMENT_TYPE='FULL_TIME' and EMPLOYMENT_STATUS='ACTIVE'. No seed rows for contractors, part-time, on-leave, terminated, or probationary employees — the system baseline assumes a fully active permanent workforce.",
+      "evidence": "EMPLOYMENT_TYPE='FULL_TIME' and EMPLOYMENT_STATUS='ACTIVE' on all visible INSERT INTO EMPLOYEES statements.",
+      "source_file": "ts-plsql-oracle-forms-hrms/ts-plsql-oracle-forms-hrms-main/data/seed/02_employee_data.sql"
+    },
+    {
+      "rule": "All dates are inserted using TO_DATE with format mask 'YYYY-MM-DD', enforcing ISO date format as the canonical input format for all date columns (HIRE_DATE, DATE_OF_BIRTH). CREATED_DATE uses SYSDATE (server time).",
+      "evidence": "HIRE_DATE=TO_DATE('2010-03-15','YYYY-MM-DD'), DATE_OF_BIRTH=TO_DATE('1968-07-22','YYYY-MM-DD'), CREATED_DATE=SYSDATE on all rows.",
+      "source_file": "ts-plsql-oracle-forms-hrms/ts-plsql-oracle-forms-hrms-main/data/seed/02_employee_data.sql"
+    },
+    {
+      "rule": "Seed hire dates span 2010-03-15 (CEO) to 2022-06-15 (Finance junior), a 12-year window. No employee was hired before 2010, establishing 2010 as the implied system go-live or data migration cutoff date.",
+      "evidence": "Earliest HIRE_DATE: TO_DATE('2010-03-15','YYYY-MM-DD') for EMP_ID=1. Latest visible: TO_DATE('2022-06-15','YYYY-MM-DD') for EMP_ID=24.",
+      "source_file": "ts-plsql-oracle-forms-hrms/ts-plsql-oracle-forms-hrms-main/data/seed/02_employee_data.sql"
+    },
+    {
+      "rule": "Seed dates of birth range from 1968-07-22 (CEO, ~57 at 2026) to 1997-10-30 (EMP_ID=24 Andrew Patel, ~28 at 2026). This implies the system supports employees aged approximately 25–60, with no under-18 or over-65 employees in baseline data.",
+      "evidence": "Earliest DATE_OF_BIRTH: TO_DATE('1968-07-22','YYYY-MM-DD') for EMP_ID=1. Latest: TO_DATE('1997-10-30','YYYY-MM-DD') for EMP_ID=24.",
+      "source_file": "ts-plsql-oracle-forms-hrms/ts-plsql-oracle-forms-hrms-main/data/seed/02_employee_data.sql"
+    },
+    {
+      "rule": "Employee location always matches the department's assigned location — no employee in the seed data is assigned to a location that differs from their department's location_code. Cross-location assignments are not represented.",
+      "evidence": "EMP_ID=1 DEPT_ID=1 (EXEC→HQ) LOCATION_CODE='HQ'; EMP_ID=3 DEPT_ID=30 (IT→CHI) LOCATION_CODE='CHI'; EMP_ID=32 DEPT_ID=31 (ITDEV→CHI) LOCATION_CODE='CHI'.",
+      "source_file": "ts-plsql-oracle-forms-hrms/ts-plsql-oracle-forms-hrms-main/data/seed/02_employee_data.sql"
+    },
+    {
+      "rule": "JOB_ID values 61 and 62 are referenced in employee data but are absent from the visible JOB_TITLES seed (which was truncated after JOB_ID=53). Based on the ID-range pattern (60–69 = junior/entry-level ICs) and the context of the employees assigned (Emily Johnson hired 2019 in HR dept, Andrew Patel hired 2022 in Finance dept), these are entry-level or junior roles in the Grade 1–2 range.",
+      "evidence": "EMP_ID=12 EMILY JOHNSON DEPT_ID=10 (HR) JOB_ID=61 hired 2019-01-07; EMP_ID=24 ANDREW PATEL DEPT_ID=20 (Finance) JOB_ID=62 hired 2022-06-15. JOB_TITLES seed is truncated mid-insert after JOB_ID=53.",
+      "source_file": "ts-plsql-oracle-forms-hrms/ts-plsql-oracle-forms-hrms-main/data/seed/02_employee_data.sql"
+    },
+    {
+      "rule": "ACTIVE_FLAG uses single-character string values ('Y'/'N'), not numeric booleans (1/0) or Oracle CHAR(1) boolean conventions. All seed records are 'Y'; 'N' is implied for logical deletes. This is a soft-delete pattern — records are never physically deleted.",
+      "evidence": "ACTIVE_FLAG='Y' on all INSERT statements across both files. Column type and value consistent with VARCHAR2(1) soft-delete convention.",
+      "source_file": "ts-plsql-oracle-forms-hrms/ts-plsql-oracle-forms-hrms-main/data/seed/01_reference_data.sql"
+    },
+    {
+      "rule": "All seed data is attributed to 'SYSTEM' as CREATED_BY, establishing that reference data is system-owned and not user-editable in a self-service workflow. Application logic should prevent non-SYSTEM users from modifying rows where CREATED_BY='SYSTEM'.",
+      "evidence": "CREATED_BY='SYSTEM' on every INSERT statement in both seed files.",
+      "source_file": "ts-plsql-oracle-forms-hrms/ts-plsql-oracle-forms-hrms-main/data/seed/01_reference_data.sql"
+    },
+    {
+      "rule": "The organisation is US-only at baseline: all three locations are in the United States with COUNTRY_CODE='US'. There is no multi-currency, multi-national, or tax-jurisdiction seed data, implying the initial system design targets a single-country payroll.",
+      "evidence": "COUNTRY_CODE='US' on all three LOCATIONS rows (HQ, CHI, SF). No non-US country code appears anywhere in either seed file.",
+      "source_file": "ts-plsql-oracle-forms-hrms/ts-plsql-oracle-forms-hrms-main/data/seed/01_reference_data.sql"
+    },
+    {
+      "rule": "Phone number format follows the North American Numbering Plan (NNN-NNN-NNNN). Location phones encode the area code of their city: HQ uses 212 (New York), CHI uses 312 (Chicago), SF uses 415 (San Francisco). Work phones of employees follow the same area code as their assigned location.",
+      "evidence": "LOCATIONS: HQ PHONE='212-555-1000', CHI PHONE='312-555-2000', SF PHONE='415-555-3000'. EMP_ID=1 (HQ) PHONE_WORK='212-555-1001'; EMP_ID=3 (CHI) PHONE_WORK='312-555-2001'.",
+      "source_file": "ts-plsql-oracle-forms-hrms/ts-plsql-oracle-forms-hrms-main/data/seed/01_reference_data.sql"
+    },
+    {
+      "rule": "Work phone numbers for employees are sequential extensions off the location base number. HQ employee extensions start at 212-555-1001 (CEO), then 1002 (CFO), 1003 (CIO), then 1101 for HR dept, 1201 for Finance, etc. The extension encodes both location and department.",
+      "evidence": "EMP_ID=1 (HQ, EXEC) '212-555-1001'; EMP_ID=2 (HQ, FIN) '212-555-1002'; EMP_ID=10 (HQ, HR) '212-555-1101'; EMP_ID=20 (HQ, FIN) '212-555-1201'; EMP_ID=30 (CHI, IT) '312-555-2101'",
+      "source_file": "ts-plsql-oracle-forms-hrms/ts-plsql-oracle-forms-hrms-main/data/seed/02_employee_data.sql"
+    },
+    {
+      "rule": "Email addresses follow the pattern firstname.lastname@company.com (all lowercase), establishing a deterministic email generation rule. No domain variation by location, department, or employment type.",
+      "evidence": "EMP_ID=1: EMAIL='james.richardson@company.com'; EMP_ID=2: EMAIL='sarah.chen@company.com'; EMP_ID=36: EMAIL='priya.sharma@company.com'",
+      "source_file": "ts-plsql-oracle-forms-hrms/ts-plsql-oracle-forms-hrms-main/data/seed/02_employee_data.sql"
+    },
+    {
+      "rule": "All employee names are stored in ALL CAPS (FIRST_NAME, LAST_NAME). This is a data entry convention or an application-enforced UPPER() constraint, not a display convention — application code must apply INITCAP() or title-case formatting for display.",
+      "evidence": "FIRST_NAME='JAMES', LAST_NAME='RICHARDSON'; FIRST_NAME='SARAH', LAST_NAME='CHEN'; FIRST_NAME='PRIYA', LAST_NAME='SHARMA' — consistently uppercase across all rows.",
+      "source_file": "ts-plsql-oracle-forms-hrms/ts-plsql-oracle-forms-hrms-main/data/seed/02_employee_data.sql"
+    },
+    {
+      "rule": "The reporting chain in the seed data reflects a strict hierarchy where each employee's MANAGER_EMP_ID is always a more senior employee in the same or parent department. Cross-department reporting is used only at the C-Suite level (CFO and CIO report to CEO across department boundaries).",
+      "evidence": "EMP_ID=2 (CFO, FIN dept) MANAGER_EMP_ID=1 (CEO, EXEC dept); EMP_ID=3 (CIO, IT dept) MANAGER_EMP_ID=1 (CEO, EXEC dept). All other employees report to managers within or one level above their department.",
+      "source_file": "ts-plsql-oracle-forms-hrms/ts-plsql-oracle-forms-hrms-main/data/seed/02_employee_data.sql"
+    }
+  ],
+  "form_constraints": [],
+  "comment_rules": [
+    {
+      "rule": "Audit logging must never cause the calling transaction to fail or roll back",
+      "comment_text": "-- Audit logging must never fail the calling transaction",
+      "source_file": "ts-plsql-oracle-forms-hrms/ts-plsql-oracle-forms-hrms-main/plsql/packages/PKG_AUDIT.pkb",
+      "approximate_line": "27"
+    },
+    {
+      "rule": "Audit records are retained for 365 days by default before purging",
+      "comment_text": "p_days_to_keep IN NUMBER DEFAULT 365",
+      "source_file": "ts-plsql-oracle-forms-hrms/ts-plsql-oracle-forms-hrms-main/plsql/packages/PKG_AUDIT.pkb",
+      "approximate_line": "32"
+    },
+    {
+      "rule": "Error logging uses an autonomous transaction so it never rolls back the main unit of work",
+      "comment_text": "-- Uses autonomous transaction so logging never rolls back main work",
+      "source_file": "ts-plsql-oracle-forms-hrms/ts-plsql-oracle-forms-hrms-main/plsql/packages/PKG_COMMON.pkb",
+      "approximate_line": "10"
+    },
+    {
+      "rule": "If the error log insert itself fails, DBMS_OUTPUT is the last-resort fallback",
+      "comment_text": "-- Last resort: write to DBMS_OUTPUT",
+      "source_file": "ts-plsql-oracle-forms-hrms/ts-plsql-oracle-forms-hrms-main/plsql/packages/PKG_COMMON.pkb",
+      "approximate_line": "33"
+    },
+    {
+      "rule": "Fiscal year starts October 1 — a date in Oct/Nov/Dec belongs to the following calendar year",
+      "comment_text": "-- get_fiscal_year (fiscal year starts Oct 1)",
+      "source_file": "ts-plsql-oracle-forms-hrms/ts-plsql-oracle-forms-hrms-main/plsql/packages/PKG_COMMON.pkb",
+      "approximate_line": "155"
+    },
+    {
+      "rule": "Employee number generation has a known race condition under concurrent inserts because no SELECT FOR UPDATE is used",
+      "comment_text": "-- BUG: race condition under concurrent inserts - no SELECT FOR UPDATE",
+      "source_file": "ts-plsql-oracle-forms-hrms/ts-plsql-oracle-forms-hrms-main/plsql/packages/PKG_EMPLOYEE.pkb",
+      "approximate_line": "37"
+    },
+    {
+      "rule": "If MAX-based employee number generation fails, fall back to a sequence-based number",
+      "comment_text": "-- Fallback: use sequence-based number",
+      "source_file": "ts-plsql-oracle-forms-hrms/ts-plsql-oracle-forms-hrms-main/plsql/packages/PKG_EMPLOYEE.pkb",
+      "approximate_line": "53"
+    },
+    {
+      "rule": "A NULL manager is valid and represents a top-level (root) employee in the hierarchy",
+      "comment_text": "-- NULL manager is valid (top-level employee)",
+      "source_file": "ts-plsql-oracle-forms-hrms/ts-plsql-oracle-forms-hrms-main/plsql/packages/PKG_EMPLOYEE.pkb",
+      "approximate_line": "88"
+    },
+    {
+      "rule": "Org hierarchy traversal is capped at 15 levels to prevent infinite loops during circular-reporting detection",
+      "comment_text": "c_max_hierarchy_depth CONSTANT NUMBER := 15;",
+      "source_file": "ts-plsql-oracle-forms-hrms/ts-plsql-oracle-forms-hrms-main/plsql/packages/PKG_EMPLOYEE.pkb",
+      "approximate_line": "8"
+    },
+    {
+      "rule": "Employee history logging must never abort the main transaction",
+      "comment_text": "-- History logging should never fail the main transaction",
+      "source_file": "ts-plsql-oracle-forms-hrms/ts-plsql-oracle-forms-hrms-main/plsql/packages/PKG_EMPLOYEE.pkb",
+      "approximate_line": "150"
+    },
+    {
+      "rule": "A salary outside the job grade range is a soft warning only, not a hard error; the Oracle Forms trigger shows a warning dialog but permits override with manager approval",
+      "comment_text": "-- NOTE: This is a soft warning, not an error\n-- Forms trigger WHEN-VALIDATE-ITEM shows warning dialog\n-- but allows override with manager approval",
+      "source_file": "ts-plsql-oracle-forms-hrms/ts-plsql-oracle-forms-hrms-main/plsql/packages/PKG_EMPLOYEE.pkb",
+      "approximate_line": "177"
+    },
+    {
+      "rule": "There is a circular package dependency between PKG_EMPLOYEE and PKG_PAYROLL for salary validation (known architectural issue)",
+      "comment_text": "--   - Circular dependency with PKG_PAYROLL (salary validation)",
+      "source_file": "ts-plsql-oracle-forms-hrms/ts-plsql-oracle-forms-hrms-main/plsql/packages/PKG_EMPLOYEE.pks",
+      "approximate_line": "13"
+    },
+    {
+      "rule": "The get_org_chart function uses recursive SQL that times out for deep hierarchies (known performance issue)",
+      "comment_text": "--   - get_org_chart uses recursive SQL that times out for deep hierarchies",
+      "source_file": "ts-plsql-oracle-forms-hrms/ts-plsql-oracle-forms-hrms-main/plsql/packages/PKG_EMPLOYEE.pks",
+      "approximate_line": "14"
+    },
+    {
+      "rule": "GL journal output is pipe-delimited and consumed by Oracle Financials batch import",
+      "comment_text": "-- File format: pipe-delimited, consumed by Oracle Financials batch import",
+      "source_file": "ts-plsql-oracle-forms-hrms/ts-plsql-oracle-forms-hrms-main/plsql/packages/PKG_INTEGRATION.pkb",
+      "approximate_line": "20"
+    },
+    {
+      "rule": "Earnings are posted as debits to expense accounts; deductions and taxes are posted as credits to liability accounts",
+      "comment_text": "-- Earnings are debits to expense accounts\n-- Deductions/taxes are credits to liability accounts",
+      "source_file": "ts-plsql-oracle-forms-hrms/ts-plsql-oracle-forms-hrms-main/plsql/packages/PKG_INTEGRATION.pkb",
+      "approximate_line": "58"
+    },
+    {
+      "rule": "Benefits feed uses a legacy fixed-width format specific to the ADP vendor",
+      "comment_text": "-- LEGACY: Fixed-width format, specific to ADP vendor",
+      "source_file": "ts-plsql-oracle-forms-hrms/ts-plsql-oracle-forms-hrms-main/plsql/packages/PKG_INTEGRATION.pkb",
+      "approximate_line": "92"
+    },
+    {
+      "rule": "Benefits feed field widths: EmpNum=10, FName=30, LName=30, DOB=10 characters (fixed-width layout contract with ADP)",
+      "comment_text": "-- Fixed-width format: EmpNum(10) | FName(30) | LName(30) | DOB(10) | ...",
+      "source_file": "ts-plsql-oracle-forms-hrms/ts-plsql-oracle-forms-hrms-main/plsql/packages/PKG_INTEGRATION.pkb",
+      "approximate_line": "116"
+    },
+    {
+      "rule": "TODO: Time-attendance import CSV parsing and database update logic is not yet implemented — the loop is a stub",
+      "comment_text": "-- TODO: Implement actual parsing and database update",
+      "source_file": "ts-plsql-oracle-forms-hrms/ts-plsql-oracle-forms-hrms-main/plsql/packages/PKG_INTEGRATION.pkb",
+      "approximate_line": "152"
+    },
+    {
+      "rule": "Org structure sync with external directory (LDAP/AD) is a placeholder and not yet implemented",
+      "comment_text": "-- Placeholder for org structure sync with external directory (LDAP/AD)",
+      "source_file": "ts-plsql-oracle-forms-hrms/ts-plsql-oracle-forms-hrms-main/plsql/packages/PKG_INTEGRATION.pkb",
+      "approximate_line": "165"
+    },
+    {
+      "rule": "GL posting relies on flat-file exchange via UTL_FILE instead of a direct API (known integration debt)",
+      "comment_text": "--   - GL posting uses flat file exchange (UTL_FILE) instead of API",
+      "source_file": "ts-plsql-oracle-forms-hrms/ts-plsql-oracle-forms-hrms-main/plsql/packages/PKG_INTEGRATION.pks",
+      "approximate_line": "11"
+    },
+    {
+      "rule": "There is no retry logic for failed file transfers (known reliability gap)",
+      "comment_text": "--   - No retry logic for failed file transfers",
+      "source_file": "ts-plsql-oracle-forms-hrms/ts-plsql-oracle-forms-hrms-main/plsql/packages/PKG_INTEGRATION.pks",
+      "approximate_line": "13"
+    },
+    {
+      "rule": "FTP credentials are stored in cleartext in the SYSTEM_PARAMETERS table (security vulnerability)",
+      "comment_text": "--   - FTP credentials stored in SYSTEM_PARAMETERS table (cleartext)",
+      "source_file": "ts-plsql-oracle-forms-hrms/ts-plsql-oracle-forms-hrms-main/plsql/packages/PKG_INTEGRATION.pks",
+      "approximate_line": "14"
+    },
+    {
+      "rule": "Holiday detection does not account for observed holidays — if July 4 falls on Saturday the observed Friday is not excluded from leave day counts",
+      "comment_text": "-- BUG: Does not handle \"observed\" holidays (e.g., if July 4 falls on\n-- Saturday, the observed Friday is not excluded)",
+      "source_file": "ts-plsql-oracle-forms-hrms/ts-plsql-oracle-forms-hrms-main/plsql/packages/PKG_LEAVE.pkb",
+      "approximate_line": "12"
+    },
+    {
+      "rule": "Leave requests may be backdated by a maximum of 5 calendar days; anything older is rejected",
+      "comment_text": "-- Allow backdated requests up to 5 days",
+      "source_file": "ts-plsql-oracle-forms-hrms/ts-plsql-oracle-forms-hrms-main/plsql/packages/PKG_LEAVE.pkb",
+      "approximate_line": "105"
+    },
+    {
+      "rule": "Leave balance check applies only to accrual-based leave types; non-accrual types are unrestricted",
+      "comment_text": "-- Check balance (only for accrual-based leave types)",
+      "source_file": "ts-plsql-oracle-forms-hrms/ts-plsql-oracle-forms-hrms-main/plsql/packages/PKG_LEAVE.pkb",
+      "approximate_line": "120"
+    },
+    {
+      "rule": "Overlapping leave detection does not account for half-day requests — half-days can be booked over each other (known gap)",
+      "comment_text": "--   - Overlapping leave detection does not account for half-day requests",
+      "source_file": "ts-plsql-oracle-forms-hrms/ts-plsql-oracle-forms-hrms-main/plsql/packages/PKG_LEAVE.pks",
+      "approximate_line": "12"
+    },
+    {
+      "rule": "Carryover expiry job is not idempotent — running it twice on the same day can double-expire balances (known bug)",
+      "comment_text": "--   - Carryover expiry job sometimes double-expires if run twice on same day",
+      "source_file": "ts-plsql-oracle-forms-hrms/ts-plsql-oracle-forms-hrms-main/plsql/packages/PKG_LEAVE.pks",
+      "approximate_line": "13"
+    },
+    {
+      "rule": "Holiday detection only checks exact date match; observed/substitute dates are not covered",
+      "comment_text": "--   - Holiday detection only checks exact date match, not observed dates",
+      "source_file": "ts-plsql-oracle-forms-hrms/ts-plsql-oracle-forms-hrms-main/plsql/packages/PKG_LEAVE.pks",
+      "approximate_line": "14"
+    },
+    {
+      "rule": "SMTP configuration is hard-coded in package constants instead of being driven from SYSTEM_PARAMETERS",
+      "comment_text": "-- Hard-coded SMTP config (should be in SYSTEM_PARAMETERS)",
+      "source_file": "ts-plsql-oracle-forms-hrms/ts-plsql-oracle-forms-hrms-main/plsql/packages/PKG_NOTIFICATION.pkb",
+      "approximate_line": "7"
+    },
+    {
+      "rule": "Notification failures must never block business operations — exceptions are swallowed in the queue insert",
+      "comment_text": "-- Notification failures should never block business operations",
+      "source_file": "ts-plsql-oracle-forms-hrms/ts-plsql-oracle-forms-hrms-main/plsql/packages/PKG_NOTIFICATION.pkb",
+      "approximate_line": "43"
+    },
+    {
+      "rule": "Notification queue is processed in batches of 50 (default) every 5 minutes by a DBMS_SCHEDULER job",
+      "comment_text": "-- Called by DBMS_SCHEDULER job every 5 minutes",
+      "source_file": "ts-plsql-oracle-forms-hrms/ts-plsql-oracle-forms-hrms-main/plsql/packages/PKG_NOTIFICATION.pkb",
+      "approximate_line": "55"
+    },
+    {
+      "rule": "Failed notifications are retried a maximum of 3 times before being abandoned",
+      "comment_text": "p_max_retries IN NUMBER DEFAULT 3",
+      "source_file": "ts-plsql-oracle-forms-hrms/ts-plsql-oracle-forms-hrms-main/plsql/packages/PKG_NOTIFICATION.pkb",
+      "approximate_line": "130"
+    },
+    {
+      "rule": "There is no rate limiting on notifications — bulk operations can flood the queue (known scalability gap)",
+      "comment_text": "--   - No rate limiting - bulk operations can flood the queue",
+      "source_file": "ts-plsql-oracle-forms-hrms/ts-plsql-oracle-forms-hrms-main/plsql/packages/PKG_NOTIFICATION.pks",
+      "approximate_line": "12"
+    },
+    {
+      "rule": "2024 Social Security wage base is $168,600 — earnings above this are not subject to SS tax (regulatory threshold)",
+      "comment_text": "c_ss_wage_base_2024   CONSTANT NUMBER := 168600;   -- Social Security wage base",
+      "source_file": "ts-plsql-oracle-forms-hrms/ts-plsql-oracle-forms-hrms-main/plsql/packages/PKG_PAYROLL.pkb",
+      "approximate_line": "7"
+    },
+    {
+      "rule": "Employee Social Security tax rate is 6.2% (regulatory rate)",
+      "comment_text": "c_ss_rate             CONSTANT NUMBER := 0.062;     -- 6.2% employee share",
+      "source_file": "ts-plsql-oracle-forms-hrms/ts-plsql-oracle-forms-hrms-main/plsql/packages/PKG_PAYROLL.pkb",
+      "approximate_line": "8"
+    },
+    {
+      "rule": "Employee Medicare tax rate is 1.45% (regulatory rate)",
+      "comment_text": "c_medicare_rate       CONSTANT NUMBER := 0.0145;    -- 1.45% employee share",
+      "source_file": "ts-plsql-oracle-forms-hrms/ts-plsql-oracle-forms-hrms-main/plsql/packages/PKG_PAYROLL.pkb",
+      "approximate_line": "9"
+    },
+    {
+      "rule": "Additional Medicare surtax of 0.9% applies to earnings above $200,000 (ACA regulatory requirement)",
+      "comment_text": "c_medicare_addl_rate  CONSTANT NUMBER := 0.009;     -- Additional Medicare tax\nc_medicare_addl_threshold CONSTANT NUMBER := 200000; -- Threshold for additional Medicare",
+      "source_file": "ts-plsql-oracle-forms-hrms/ts-plsql-oracle-forms-hrms-main/plsql/packages/PKG_PAYROLL.pkb",
+      "approximate_line": "10"
+    },
+    {
+      "rule": "Federal standard deduction is $14,600 for single filers and $29,200 for married filers (IRS 2024 figures)",
+      "comment_text": "c_standard_deduction_single CONSTANT NUMBER := 14600;\nc_standard_deduction_married CONSTANT NUMBER := 29200;",
+      "source_file": "ts-plsql-oracle-forms-hrms/ts-plsql-oracle-forms-hrms-main/plsql/packages/PKG_PAYROLL.pkb",
+      "approximate_line": "12"
+    },
+    {
+      "rule": "Each withholding allowance reduces taxable income by $4,300",
+      "comment_text": "c_allowance_amount    CONSTANT NUMBER := 4300;      -- Per-allowance reduction",
+      "source_file": "ts-plsql-oracle-forms-hrms/ts-plsql-oracle-forms-hrms-main/plsql/packages/PKG_PAYROLL.pkb",
+      "approximate_line": "14"
+    },
+    {
+      "rule": "If a scheduled pay date falls on a weekend it is moved to the preceding Friday",
+      "comment_text": "-- If pay date falls on weekend, move to Friday",
+      "source_file": "ts-plsql-oracle-forms-hrms/ts-plsql-oracle-forms-hrms-main/plsql/packages/PKG_PAYROLL.pkb",
+      "approximate_line": "82"
+    },
+    {
+      "rule": "For biweekly pay frequency, the pay date is 5 calendar days after the end of the pay period",
+      "comment_text": "v_pay_date := v_end_date + 5; -- Pay 5 days after period end",
+      "source_file": "ts-plsql-oracle-forms-hrms/ts-plsql-oracle-forms-hrms-main/plsql/packages/PKG_PAYROLL.pkb",
+      "approximate_line": "107"
+    }
+  ],
+  "schema_constraints": [],
+  "summary": {
+    "seed_files_scanned": 2,
+    "form_files_scanned": 6,
+    "plsql_files_scanned": 22,
+    "schema_files_scanned": 11,
+    "total_rules_found": 127
+  }
+}

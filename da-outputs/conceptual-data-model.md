@@ -1,63 +1,151 @@
-# Conceptual Data Model — HRMS
+# HRMS Conceptual Data Model
 
-Business-language description of the concepts this system manages and how they relate. No table names, column types, or FK syntax below — see data-dictionary.md and erd.md for the technical mapping.
+**Schema:** HRMS  **Extracted:** 2026-08-04  **Method:** CODE-ONLY
 
-## Core concepts
+Business language only. No table names, column names, or FK syntax. Describes what the business manages, not how the database stores it.
 
-**A Person** who works for the company is a **Worker**. Every Worker has one current **Job** (a role with a title, a family/track, and a compensation grade), belongs to one **Organizational Unit**, works out of one **Office**, and — except for the very top of the company — reports to exactly one other Worker (their manager). Organizational Units can themselves nest under a parent unit, forming a company hierarchy, and each has a home office, a cost-tracking code, and a named head.
+---
 
-A Worker's **Compensation Grade** defines an acceptable salary band for their role; grades also carry a name (Entry Level, Senior, Director, ...) and whether overtime pay applies.
+## 1. Organisation Structure
 
-Every Worker has personal identity information (legal name, date of birth, government ID, contact details, home address, an official photo, and free-form notes kept by HR) and an employment record (when they were hired, their current employment status — active, on leave, suspended, or terminated — and, if applicable, when and why they left). A Worker's government ID is treated as sensitive and stored encrypted; it can be decrypted only through a controlled security process.
+The company is divided into **Departments**, each of which may belong to a parent Department, forming a hierarchy of any depth. Each Department is anchored to a physical **Location** (an office or work site). A Department may have a designated **Manager** — an employee who leads that team.
 
-A Worker may have zero or more **Dependents** (family members who might be covered by benefits) and zero or more **Emergency Contacts** (people to notify in a crisis) — neither of these people are Workers themselves and have no login of their own.
+**Locations** represent the company's physical offices. Each has an address and time zone. The location an employee belongs to determines which public holidays apply to them.
 
-Whenever a Worker's status, department, or job changes, the intent is to keep a permanent **Change Record** capturing the before/after values and the reason — this is one of two competing change-tracking mechanisms in the system (see the Known Tension note below).
+---
 
-## Compensation
+## 2. Jobs and Pay Grades
 
-Each Worker has a **Salary History** — one entry per period their pay rate was in effect, including the reason for each change (annual review, promotion, new hire, ...) and who approved it.
+Every role in the company is defined as a **Job Title**, grouped into **Job Families** (e.g., Engineering, Finance, HR). Each Job Title is assigned to a **Pay Grade**, which defines the acceptable salary range (minimum, midpoint, and maximum).
 
-Beyond base salary, a Worker's total pay is built from a catalogue of **Pay Components** — earnings, deductions, taxes, and benefits — each with its own calculation rule (a flat amount, a percentage, an hours-based rate, or a formula) and whether it's taxable, pre-tax, or employer-paid. A Worker can be individually enrolled into specific Pay Components with their own overrides (e.g. a specific 401(k) contribution percentage).
+Pay Grades carry a numeric Grade Level (1-10). This level governs what the employee can do in the system: higher grades unlock broader access to HR functions.
 
-Pay is issued on a schedule of **Pay Periods**, grouped into **Payroll Runs** (regular, supplemental, bonus, or final/off-cycle). Each run produces a **Payroll Result** per Worker per Pay Component (hours, rate, amount, year-to-date total), which rolls up into run-level totals for gross pay, deductions, net pay, and employer cost.
+---
 
-A Worker's **Tax Profile** (filing status, allowances, extra withholding, exemption status) is tracked per tax year and is used against a table of **Tax Brackets** (which vary by year, filing status, and — for state tax — by state) to compute withholding.
+## 3. Employees
 
-A Worker can register one or more **Bank Accounts** for direct deposit, with a defined split (full amount, a fixed amount, a percentage, or "whatever's left") and a priority order when more than one account is used.
+An **Employee** is the central concept of the system. Every employee has:
+- Personal details: name, contact information, home address
+- Sensitive personal information: date of birth, gender, marital status, nationality, and Social Security Number (stored encrypted)
+- Employment details: hire date, job assignment, department, location, manager, and employment type (full-time, part-time, or contractor)
+- An employment status: Active, Terminated, or On Leave
 
-## Time off
+Employees are never permanently deleted. A terminated employee's record remains in the system with a Terminated status.
 
-The company recognizes a fixed set of **Leave Types** (paid time off, sick leave, compensatory time, family/medical leave, jury duty, bereavement), each with its own rules: whether it's paid, whether it accrues over time (and at what rate/frequency), a maximum balance, carryover limits and expiry, a minimum tenure before it can be used, and whether it needs approval or supporting documentation.
+Each employee may have:
+- **Dependants** - family members registered for benefits purposes
+- **Emergency Contacts** - people to call in an emergency
+- **Employment History** - a full trail of department, job, salary, and status changes over time
 
-Each Worker has a running **Leave Balance** per leave type per calendar year (opening balance, amount accrued, amount used, manual adjustments, amount pending approval, and a computed amount currently available), plus a log of individual **Accrual Events** posted over time.
+---
 
-A Worker requests time off via a **Leave Request** (dates, whether it's a half day, a reason, an optional supporting document, and an approval workflow tracked through pending/approved/rejected/cancelled/taken states, with a designated approver — typically the Worker's manager).
+## 4. Salary and Compensation
 
-The company also maintains a shared **Holiday Calendar**, optionally scoped to a specific office, with support for floating holidays.
+Each employee has a **Salary** - the agreed base pay. When salary changes, the prior record is closed and a new one begins on a specific date. Full history is retained.
 
-## Performance management
+A salary must fall within the minimum and maximum for the employee's Pay Grade. The **Compa-Ratio** measures how an employee's salary compares to the midpoint of their grade (100 = at midpoint; above 100 = above midpoint).
 
-The company runs periodic **Review Cycles** (e.g. an annual cycle) with defined windows for self-review, manager review, and calibration. Within a cycle, each Worker gets one **Performance Review** conducted by a specific reviewer (usually their manager), moving through stages from not-started to self-review, manager-review, a scheduled discussion, completion, and the Worker's acknowledgement. A review captures an overall rating, narrative sections (self-assessment, manager assessment, strengths, areas for improvement, a development plan, and the Worker's own comments), and — after a calibration step — a possibly-adjusted final rating.
+Employees may also receive or incur **Pay Elements**: earnings add-ons (car allowance, overtime), benefit deductions (health insurance, retirement contribution), and statutory deductions (taxes, Social Security, Medicare).
 
-Within a review, a Worker can have multiple **Performance Goals**, each with a title, description, category (business, development, leadership, innovation, or compliance — though the current data-entry screen can only assign three of these five categories), a relative weight, a target date, a progress percentage, and both a self-rating and a manager rating.
+---
 
-## Access, security, and oversight
+## 5. Payroll
 
-Every Worker who uses the system logs in with a username and password (currently hashed with an outdated, weak algorithm — a flagged security concern) and gets a tracked **Session** (start time, end time, originating network address, which part of the system they opened). What a Worker is allowed to see or do is decided per-module-and-action by a permission check tied to their identity — there is no visible, dedicated table of named roles or permissions in the data model; that logic appears to live entirely inside program code rather than as governable data.
+Payroll is organised around **Pay Periods** - defined windows (typically monthly) tied to a Fiscal Quarter and Fiscal Year. Note: the fiscal year starts on 1 October (e.g., October 2024 falls in FY 2025).
 
-A centralized **Audit Trail** records who changed what, when, and (for a few specific kinds of changes — pay rate changes, leave status changes, and organizational unit changes) what the values were before and after. This is the second of the two competing change-tracking mechanisms in the system.
+For each Pay Period, the payroll team initiates a **Payroll Run**. The calculation processes each active employee's base salary, applies pay elements in priority order, and computes federal tax (using 2024 US brackets), state income tax (flat rates by state), Social Security (6.2% up to $168,600 wage base), and Medicare (1.45% base + 0.9% above $200,000).
 
-**Pending Approvals** — leave requests awaiting a decision and performance reviews awaiting manager sign-off — are surfaced together as a single unified queue for approvers, regardless of which business area they came from.
+Payroll results are recorded per employee and per pay component. A Run must be approved before it is final. Approved runs can be reversed if an error is found.
 
-**Configuration** for the whole system (company name, default pay frequency, fiscal year start, session timeout, minimum password length, outbound mail settings, and whether the general-ledger and benefits-carrier feeds are currently turned on) is stored as a flat set of named parameters grouped by category, rather than as dedicated settings per module.
+---
 
-A general-purpose **Reference List** mechanism exists for simple named/coded dropdown values that don't warrant their own dedicated concept — its actual contents were not observable in this pass.
+## 6. Leave and Absence
 
-An **Outbound Notification** queue holds messages (email, in-app, or SMS) destined for a Worker or an external address, with delivery status and retry tracking, decoupling the business event that triggered a notification from its actual delivery.
+The company offers several **Leave Types** - categories of absence with rules governing:
+- Whether leave accrues monthly or is granted as a fixed annual entitlement
+- Maximum balance and carryover limits
+- Whether manager approval is required
+- Minimum employment tenure before the type may be used
 
-## Known tensions in the conceptual model (worth resolving, not just documenting)
+Each employee holds a **Leave Balance** per Leave Type per calendar year, tracking days opened, accrued, used, pending approval, and available.
 
-- **Two change-history mechanisms compete for the same job**: a Worker-specific, richly-typed Change Record concept, and a generic cross-cutting Audit Trail concept. Today, the generic Audit Trail is the one that actually works for the few areas it covers (pay, leave status, organizational units); the Worker-specific Change Record is currently broken by an implementation defect (see data-quality-report.md) even though it was clearly designed to be the primary, more detailed mechanism.
-- **"Available leave balance" has two different definitions** depending on whether you look at the balance record directly or at the leave summary presented elsewhere — one subtracts pending requests, the other doesn't.
-- **Access control exists only as code, not as governable data** — there is no table representing "roles" or "permissions" that a non-developer could inspect or change; this is the single biggest gap for anyone trying to answer "who can do what" from the data model alone.
+An employee submits a **Leave Request** specifying dates and days. The request moves through a workflow: Pending, then Approved or Rejected, and optionally Cancelled. Approved leave reduces the balance. Cancellation returns the days.
+
+Business days are calculated excluding weekends and location-aware **Holidays** (a holiday may apply globally or to a specific office). Monthly accrual is processed in batch.
+
+---
+
+## 7. Performance Management
+
+Performance is managed in **Review Cycles** (typically annual). When a cycle opens, a **Performance Review** is created for each active employee who has a manager.
+
+Each review follows a workflow:
+1. Not Started
+2. Employee completes a **Self-Assessment** (written narrative)
+3. Manager completes their assessment and assigns an **Overall Rating** (1.0-5.0), mapped to a label (Unsatisfactory, Needs Improvement, Meets Expectations, Exceeds Expectations, Exceptional)
+4. Review marked Completed
+5. Employee **Acknowledges** the completed review
+
+Employees also maintain **Performance Goals** within their review - specific objectives with target dates, progress percentages, and contribution weights.
+
+---
+
+## 8. Notifications
+
+The system sends email **Notifications** for key events (new hire, leave decision, review creation, etc.). Notifications are queued and dispatched in batches via a company email server. Failed notifications are retried up to three times.
+
+---
+
+## 9. System Configuration and Security
+
+**System Parameters** store company-wide configuration: email server details, session timeout, file integration paths, and more. Some parameters are read-only system constants; others are editable at runtime by administrators.
+
+**User Sessions** track when employees log in and out. Each session expires 30 minutes after login (non-sliding). System access is grade-based: higher Grade Level = broader permissions.
+
+An **Audit Log** records all significant data changes, exports, logins, and errors. Records are retained for a configurable number of days (default 365) before automatic purge.
+
+**Lookup Values** provide configurable picklist values used by the system's forms and drop-down menus.
+
+---
+
+## Key Relationships
+
+| Who / What | Relationship | Who / What |
+|---|---|---|
+| Department | belongs to (parent) | Department |
+| Department | is located at | Location |
+| Department | is led by | Employee (Manager) |
+| Job Title | is graded at | Pay Grade |
+| Employee | works in | Department |
+| Employee | holds | Job Title |
+| Employee | reports to | Employee (Manager) |
+| Employee | is located at | Location |
+| Employee | has | Dependants |
+| Employee | has | Emergency Contacts |
+| Employee | has a history of | Employment History Events |
+| Employee | has a current | Salary |
+| Employee | earns or incurs | Pay Elements |
+| Employee | is included in | Payroll Runs |
+| Employee | holds | Leave Balances (per type, per year) |
+| Employee | submits | Leave Requests |
+| Employee | is reviewed in | Performance Reviews |
+| Employee | sets | Performance Goals |
+| Employee | receives | Notifications |
+| Payroll Run | covers | Pay Period |
+| Leave Request | is of | Leave Type |
+| Performance Review | belongs to | Review Cycle |
+| Performance Goal | belongs to | Performance Review |
+
+---
+
+## Business Constraints (Plain Language)
+
+- An employee cannot be permanently deleted - only deactivated or terminated.
+- A terminated employee cannot be directly reactivated; they must be formally rehired.
+- A salary must fall within the Pay Grade band.
+- A leave request may not overlap with another pending or approved request for the same employee.
+- Leave may not be backdated more than 5 calendar days.
+- Some leave types require a minimum employment tenure before use.
+- A payroll run must reach Calculated status before it can be Approved.
+- Performance ratings must fall between 1.0 and 5.0.
+- The fiscal year starts 1 October (October-December belong to the next calendar year's FY).

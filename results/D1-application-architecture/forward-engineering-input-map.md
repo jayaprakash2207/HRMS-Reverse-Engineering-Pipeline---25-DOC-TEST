@@ -1,168 +1,243 @@
-# Forward Engineering Input Map
-**System:** HRMS v4.2  
-**Stage:** Stage 11 — Forward Engineering Map  
-**Date:** 2026-08-03
+# Forward Engineering Input Map — HRMS Oracle Forms Application
 
-This document maps the current legacy architecture to recommended target-state patterns and services. It is intended as input to D2 (Domain Model Extraction) and D3 (Modernization Blueprint) phases.
-
----
-
-## Target Architecture Summary
-
-**Pattern:** Modular Monolith → Microservices (strangler fig, incremental)  
-**Database:** PostgreSQL (per-service) or Oracle DB with separated schemas  
-**Presentation:** React/Vue SPA + REST API (replaces Oracle Forms)  
-**Auth:** OAuth2 / OIDC Identity Provider (replaces PKG_SECURITY)  
-**Messaging:** Async event bus (replaces PRAGMA AUTONOMOUS_TRANSACTION pattern)  
-**Scheduling:** Cloud-native scheduler (replaces DBMS_SCHEDULER)  
-**Notifications:** Managed email service (replaces UTL_SMTP)  
+**Extractor:** AA Agent 1 — Application Architecture Extractor  
+**Date:** 2026-08-04  
+**Purpose:** Maps each legacy component to its recommended target architecture equivalent. This document feeds directly into the Design and Implementation phases of the modernization project.
 
 ---
 
-## Module-to-Service Mapping
+## 1. Target Architecture Overview
 
-### MOD-01 Employee → EmployeeService
-
-| Legacy Component | Target Replacement |
-|-----------------|-------------------|
-| PKG_EMPLOYEE (18 procedures) | `EmployeeService` REST API |
-| HRMS_EMPLOYEE.fmb | React `EmployeeManagement` SPA page |
-| EMPLOYEES, EMPLOYEE_HISTORY, EMPLOYEE_DEPENDENTS, EMERGENCY_CONTACTS tables | PostgreSQL `employee_db` schema |
-| TRG_EMPLOYEES_VALIDATE | Application-layer validation; retain DB constraints |
-| TRG_EMPLOYEES_AUDIT | Domain event → AuditService |
-
-**Key migration notes:**
-- Fix SQL injection in search_employees before API exposure
-- Replace generate_emp_number MAX+1 with DB sequence
-- Implement COBRA notification, access revocation, final pay (currently TODO)
-- Break circular dependency with PayrollService via SalaryCreatedEvent
-
-**Proposed API endpoints:**
-```
-POST   /employees                    → create_employee
-PUT    /employees/{id}               → update_employee
-POST   /employees/{id}/terminate     → terminate_employee
-POST   /employees/{id}/rehire        → rehire_employee
-GET    /employees?filter=...         → search_employees (parameterized)
-GET    /employees/{id}/org-chart     → get_org_chart
-GET    /employees/{id}/history       → get_employee_history
-```
+| Tier | Legacy | Target |
+|------|--------|--------|
+| UI | Oracle Forms 12c (.fmb) | React / Angular SPA or Next.js |
+| API | PL/SQL packages (direct DB call from Forms) | RESTful microservices (Java/Spring Boot, Node.js, or Python FastAPI) |
+| Auth | PKG_SECURITY + Oracle Forms globals | OAuth2 / OIDC (Keycloak or Auth0) |
+| Data | Oracle RDBMS HRMS schema | Oracle DB (retain) or PostgreSQL (migrate) |
+| Integration | UTL_FILE flat files + UTL_SMTP | REST APIs + message broker (Kafka or RabbitMQ) |
+| Audit | AUDIT_LOG table + PKG_AUDIT | Append-only event store or audit service |
+| Scheduler | DBMS_SCHEDULER (implied) | Kubernetes CronJob or cloud-native scheduler |
 
 ---
 
-### MOD-02 Payroll → PayrollService
+## 2. Module-to-Service Mapping
 
-| Legacy Component | Target Replacement |
-|-----------------|-------------------|
-| PKG_PAYROLL (15 procedures) | `PayrollService` REST API |
-| HRMS_PAYROLL.fmb | React `PayrollProcessing` SPA page |
-| PAYROLL_RUNS, PAYROLL_DETAILS, SALARY_RECORDS, etc. | PostgreSQL `payroll_db` schema |
-| Hard-coded tax brackets | `TaxConfigService` + TAX_BRACKETS table with effective dates |
-| UTL_FILE GL journal | REST call to Oracle Financials API (or managed ETL) |
-| UTL_FILE ADP benefits feed | Configurable benefits integration adapter |
+### 2.1 Employee Module (MOD-001 → Employee Service)
 
-**Key migration notes:**
-- Replace partial commits with transactional payroll calculation (single unit of work)
-- Replace cursor FOR loop with bulk processing
-- Move tax brackets and FICA wage base to TaxConfigService
-- Replace UTL_FILE with API calls or managed file transfer
-- Listen for `EmployeeCreatedEvent` to create initial salary record (break circular dep)
+**New Service:** `employee-service`  
+**API Base Path:** `/api/v1/employees`
 
-**Critical pre-conditions:**
-1. Tax bracket table must be populated with multi-year data before migration
-2. GL integration contract with Oracle Financials must be documented
+| Legacy Procedure | Target API Endpoint | Method | Notes |
+|---|---|---|---|
+| PKG_EMPLOYEE.create_employee | POST /employees | POST | Input validation in API layer |
+| PKG_EMPLOYEE.update_employee | PATCH /employees/{id} | PATCH | |
+| PKG_EMPLOYEE.get_employee | GET /employees/{id} | GET | |
+| PKG_EMPLOYEE.get_employee_by_number | GET /employees?empNumber={n} | GET | |
+| PKG_EMPLOYEE.search_employees | GET /employees/search?lastName=&firstName=&deptId= | GET | Fix SQL injection: use ORM/parameterized queries |
+| PKG_EMPLOYEE.transfer_employee | POST /employees/{id}/transfers | POST | Event emitted on transfer |
+| PKG_EMPLOYEE.promote_employee | POST /employees/{id}/promotions | POST | |
+| PKG_EMPLOYEE.terminate_employee | POST /employees/{id}/terminations | POST | Complete TODO items before migration |
+| PKG_EMPLOYEE.rehire_employee | POST /employees/{id}/rehires | POST | |
+| PKG_EMPLOYEE.get_org_chart | GET /employees/{id}/org-chart?maxDepth={n} | GET | Implement with graph DB or recursive CTE with timeout |
+| PKG_EMPLOYEE.get_direct_reports | GET /employees/{id}/direct-reports | GET | |
+| PKG_EMPLOYEE.is_active | Internalized — not a public API | N/A | Called by Payroll service via service-to-service call |
 
----
+**Data Ownership:** EMPLOYEES, EMPLOYEE_HISTORY, DEPARTMENTS, LOCATIONS, JOB_TITLES, JOB_GRADES tables.
 
-### MOD-03 Leave → LeaveService
-
-| Legacy Component | Target Replacement |
-|-----------------|-------------------|
-| PKG_LEAVE (14 procedures) | `LeaveService` REST API |
-| HRMS_LEAVE.fmb | React `LeaveManagement` SPA page |
-| LEAVE_TYPES, LEAVE_BALANCES, LEAVE_REQUESTS, LEAVE_ACCRUAL_LOG, HOLIDAYS | PostgreSQL `leave_db` schema |
-| DBMS_SCHEDULER run_monthly_accrual | Cloud scheduler (cron) → `LeaveAccrualJob` |
-
-**Key migration notes:**
-- Fix expire_carryover idempotency before migration
-- Fix calculate_business_days observed holiday handling
-- Subscribe to `EmployeeTerminatedEvent` to cancel pending leave (remove direct PKG_EMPLOYEE → PKG_LEAVE call)
-- Fix VW_LEAVE_SUMMARY AVAILABLE formula before migrating leave balance data
+**Events Emitted:**
+- `employee.created` — on hire
+- `employee.transferred` — on transfer
+- `employee.promoted` — on promotion
+- `employee.terminated` — on termination
+- `employee.rehired` — on rehire
 
 ---
 
-### MOD-04 Performance → PerformanceService
+### 2.2 Leave Module (MOD-002 → Leave Service)
 
-| Legacy Component | Target Replacement |
-|-----------------|-------------------|
-| PKG_PERFORMANCE (12 procedures) | `PerformanceService` REST API |
-| HRMS_PERFORMANCE.fmb | React `PerformanceReviews` SPA page |
-| REVIEW_CYCLES, PERFORMANCE_REVIEWS, PERFORMANCE_GOALS | PostgreSQL `performance_db` schema |
+**New Service:** `leave-service`  
+**API Base Path:** `/api/v1/leave`
 
-**Key migration notes:**
-- Move rating label thresholds to configuration (currently hard-coded CASE expression)
-- Goals currently not deletable (DeleteAllowed=No in form) — carry this constraint to new service
+| Legacy Procedure | Target API Endpoint | Method | Notes |
+|---|---|---|---|
+| PKG_LEAVE.submit_leave_request | POST /leave/requests | POST | |
+| PKG_LEAVE.approve_leave_request | POST /leave/requests/{id}/approve | POST | |
+| PKG_LEAVE.reject_leave_request | POST /leave/requests/{id}/reject | POST | |
+| PKG_LEAVE.cancel_leave_request | POST /leave/requests/{id}/cancel | POST | |
+| PKG_LEAVE.get_leave_balance | GET /leave/balances/{empId}?year= | GET | |
+| PKG_LEAVE.get_pending_requests | GET /leave/requests?approver={id}&status=PENDING | GET | |
+| PKG_LEAVE.get_team_calendar | GET /leave/calendar?manager={id}&from=&to= | GET | |
+| PKG_LEAVE.run_monthly_accrual | Internal scheduled task (monthly) | N/A | Kubernetes CronJob |
+| PKG_LEAVE.process_carryover | Internal scheduled task (annual) | N/A | Kubernetes CronJob |
 
----
+**Data Ownership:** LEAVE_TYPES, LEAVE_BALANCES, LEAVE_REQUESTS, LEAVE_ACCRUAL_LOG, HOLIDAYS tables.
 
-### MOD-05 Security → IdentityService (IdP)
-
-| Legacy Component | Target Replacement |
-|-----------------|-------------------|
-| PKG_SECURITY.authenticate | OAuth2/OIDC Provider (Azure AD, Okta, Auth0) |
-| PKG_SECURITY.is_session_valid | JWT validation middleware |
-| PKG_SECURITY.has_permission | Role-based access control (RBAC) with permissions claims in JWT |
-| PKG_SECURITY.encrypt_ssn / decrypt_ssn | AWS KMS / Azure Key Vault + application-layer encryption |
-| PKG_SECURITY.hash_password | bcrypt / Argon2 in IdP |
-| USER_SESSIONS table | IdP session management |
-| :GLOBAL.session_id in Forms | JWT Bearer token in HTTP header |
-
-**Key migration notes:**
-- Hard-coded encryption key must be rotated BEFORE migration; all SSNs re-encrypted
-- Grade-based RBAC must be mapped to explicit role definitions (HR_ADMIN, PAYROLL_ADMIN, EMPLOYEE, MANAGER)
-- PKG_SECURITY.authenticate stub means current auth is broken — this is actually a migration enabler (less legacy to replicate)
+**Events Consumed:** `employee.terminated` (to cancel pending leave)  
+**Events Emitted:** `leave.submitted`, `leave.approved`, `leave.rejected`, `leave.cancelled`
 
 ---
 
-### MOD-06 Integration / Cross-Cutting → Shared Services
+### 2.3 Payroll Module (MOD-003 → Payroll Service or SaaS)
 
-| Legacy Component | Target Replacement |
-|-----------------|-------------------|
-| PKG_NOTIFICATION + DBMS_SCHEDULER | Message queue (SQS/RabbitMQ) + `NotificationService` + SES/SendGrid |
-| PKG_AUDIT | Event-sourced `AuditService` with append-only store |
-| PKG_COMMON | Standard library functions (date utils, formatting) inlined into each service |
-| PKG_VALIDATION | Input validation in each service's API layer (Joi, Zod, Bean Validation) |
-| PKG_REPORTING | Dedicated BI tool (Metabase, Power BI) connected to read replica |
-| PKG_INTEGRATION | `IntegrationService` with pluggable adapters per vendor |
-| HRMS_COMMON_LIB.pll | React shared hooks/components library |
-| HRMS_VALIDATION_LIB.pll | Zod/Yup schemas in React form library |
+**Recommendation:** Replace with payroll SaaS (ADP Workforce Now API, Paylocity, Gusto) rather than building a custom service. Custom payroll tax calculation is high-compliance-risk.
+
+If custom service is required:
+
+**New Service:** `payroll-service`  
+**API Base Path:** `/api/v1/payroll`
+
+| Legacy Procedure | Target API Endpoint | Method | Notes |
+|---|---|---|---|
+| PKG_PAYROLL.create_payroll_run | POST /payroll/runs | POST | |
+| PKG_PAYROLL.calculate_payroll | POST /payroll/runs/{id}/calculate | POST | Async job — return 202 Accepted + job ID |
+| PKG_PAYROLL.approve_payroll | POST /payroll/runs/{id}/approve | POST | |
+| PKG_PAYROLL.get_payslip | GET /payroll/payslips/{runId}/{empId} | GET | Fix YTD placeholder before migration |
+| PKG_PAYROLL.get_ytd_earnings | GET /payroll/ytd/{empId}?year= | GET | |
+| Tax calculation | External tax engine (e.g., Avalara, Vertex) | N/A | Replace hard-coded brackets |
+
+**Critical Migration Requirements:**
+- Replace hard-coded 2024 tax brackets with external tax engine API
+- Implement YTD calculation (currently placeholder zeros)
+- Rewrite as async job (not synchronous blocking call)
+- Implement ACH direct deposit disbursement: EMPLOYEE_BANK_ACCOUNTS is fully designed but zero code reads it. Target system must add bank account CRUD, split-deposit resolution (PRIORITY_ORDER, DEPOSIT_TYPE logic), prenote/pre-notification workflow, and NACHA file generation or payroll SaaS API call. See AV-024, RISK-013.
+- Identify and document bank account decryption path (ACCOUNT_NUMBER_ENC) before migration — decryption key/mechanism is absent from all source packages. See AV-025, RISK-014.
+
+**New APIs Required (not present in legacy codebase):**
+
+| Target API Endpoint | Method | Purpose |
+|---|---|---|
+| POST /payroll/employees/{id}/bank-accounts | POST | Add direct deposit account |
+| PUT /payroll/employees/{id}/bank-accounts/{acctId} | PUT | Update account or deposit split |
+| DELETE /payroll/employees/{id}/bank-accounts/{acctId} | DELETE | Deactivate account |
+| GET /payroll/employees/{id}/bank-accounts | GET | List active bank accounts |
+| POST /payroll/runs/{id}/disburse | POST | Trigger ACH disbursement after approval |
 
 ---
 
-## Data Migration Considerations
+### 2.4 Performance Module (MOD-004 → Performance Service)
 
-| Table | Rows (est.) | Migration Notes |
-|-------|-------------|-----------------|
-| EMPLOYEES | unknown | Include TERMINATED employees (soft-delete pattern — retain history) |
-| SALARY_RECORDS | unknown | Multiple records per employee (history); carry all |
-| LEAVE_BALANCES | unknown | Recalculate AVAILABLE before migration using correct formula |
-| AUDIT_LOG | potentially millions | Migrate to time-series audit store; may need archival strategy |
-| SSN data (encrypted) | unknown | Must re-encrypt with new key before migration |
-| TAX_BRACKETS | currently unused by code | Populate with historical + current year data |
+**New Service:** `performance-service`  
+**API Base Path:** `/api/v1/performance`
+
+| Legacy Procedure | Target API Endpoint | Method | Notes |
+|---|---|---|---|
+| PKG_PERFORMANCE.create_review_cycle | POST /performance/cycles | POST | |
+| PKG_PERFORMANCE.open_review_cycle | POST /performance/cycles/{id}/open | POST | |
+| PKG_PERFORMANCE.close_review_cycle | POST /performance/cycles/{id}/close | POST | |
+| PKG_PERFORMANCE.submit_self_assessment | POST /performance/reviews/{id}/self-assessment | POST | |
+| PKG_PERFORMANCE.submit_manager_review | POST /performance/reviews/{id}/manager-review | POST | |
+| PKG_PERFORMANCE.acknowledge_review | POST /performance/reviews/{id}/acknowledge | POST | |
+| PKG_PERFORMANCE.add_goal | POST /performance/reviews/{id}/goals | POST | |
+| PKG_PERFORMANCE.get_rating_distribution | GET /performance/cycles/{id}/rating-distribution | GET | |
+| PKG_PERFORMANCE.generate_reviews_for_cycle | POST /performance/cycles/{id}/generate-reviews | POST | Async job for large orgs |
 
 ---
 
-## Pre-Migration Mandatory Tasks
+### 2.5 Reporting Module (MOD-005 → BI Integration)
 
-These must be completed before any service extraction begins:
+**Recommendation:** Decommission PKG_REPORTING. Expose read endpoints from each service and connect a BI tool (Power BI, Oracle Analytics Cloud, Metabase).
 
-1. **[SECURITY]** Fix PKG_SECURITY.authenticate stub — implement actual password verification  
-2. **[SECURITY]** Rotate AES encryption key; re-encrypt all SSNs  
-3. **[SECURITY]** Fix SQL injection in PKG_EMPLOYEE.search_employees  
-4. **[COMPLIANCE]** Implement COBRA notification in terminate_employee  
-5. **[COMPLIANCE]** Implement system access revocation in terminate_employee  
-6. **[DATA]** Fix VW_LEAVE_SUMMARY AVAILABLE formula  
-7. **[DATA]** Fix expire_carryover idempotency bug  
-8. **[OPS]** Extract DBMS_SCHEDULER job DDL into source control  
-9. **[OPS]** Document Oracle Directory object filesystem paths  
-10. **[OPS]** Locate USER_CREDENTIALS table DDL (not found in repo)  
+| Legacy Procedure | Target Approach |
+|---|---|
+| PKG_REPORTING.headcount_report | Power BI dataset from Employee Service |
+| PKG_REPORTING.compensation_summary | Power BI dataset from Employee + Payroll Service |
+| PKG_REPORTING.turnover_report | Power BI dataset from Employee Service events |
+| PKG_REPORTING.leave_utilization_report | Power BI dataset from Leave Service |
+| PKG_REPORTING.payroll_summary_report | Power BI dataset from Payroll Service |
+| PKG_REPORTING.eeo_compliance_report | Power BI dataset — requires EEO data (GENDER, ETHNICITY from EMPLOYEES) |
+
+---
+
+### 2.6 Integration Module (MOD-006 → Integration Middleware)
+
+| Legacy Integration | Current Mechanism | Target Mechanism |
+|---|---|---|
+| Oracle Financials GL | Flat file (UTL_FILE pipe-delimited) | Oracle Financials REST API or Oracle Integration Cloud |
+| ADP Benefits | Fixed-width FTP file | ADP API (ADP Marketplace REST APIs) |
+| Time & Attendance | TODO stub (not implemented) | Time system REST API |
+
+**New Component:** `integration-service` or Oracle Integration Cloud (OIC) flows per external system.
+
+---
+
+### 2.7 Notification Module (MOD-007 → Notification Service)
+
+**New Service:** `notification-service`  
+**Mechanism:** Replace UTL_SMTP with email provider API (SendGrid, AWS SES, Mailgun).
+
+| Legacy | Target |
+|---|---|
+| NOTIFICATION_QUEUE table | Message broker topic (Kafka `notifications` topic) |
+| UTL_SMTP | SendGrid / AWS SES REST API |
+| SMS type (unimplemented) | Twilio API |
+| IN_APP type (unimplemented) | WebSocket push or Server-Sent Events |
+
+---
+
+### 2.8 Audit Module (MOD-008 → Audit Service)
+
+**New Component:** `audit-service` or structured event log.
+
+| Legacy | Target |
+|---|---|
+| AUDIT_LOG table | Append-only event store (EventStoreDB, or Kafka compacted topic) |
+| PKG_AUDIT.log_action | Each service emits audit events on state change |
+| PKG_AUDIT.purge_old_records | Retention policy in event store (e.g., 7-year GDPR retention) |
+| PKG_AUDIT.get_change_history | GET /audit/changes?entity=EMPLOYEES&recordId={id}&from=&to= |
+
+---
+
+### 2.9 Security Module (MOD-009 → Identity Service)
+
+| Legacy | Target |
+|---|---|
+| PKG_SECURITY.authenticate | OAuth2 /token endpoint (Keycloak or Auth0) |
+| PKG_SECURITY.is_session_valid | JWT token validation (middleware in each service) |
+| PKG_SECURITY.has_permission | RBAC claims in JWT token |
+| PKG_SECURITY.encrypt_ssn / decrypt_ssn | AWS KMS or HashiCorp Vault transit encryption |
+| PKG_SECURITY.hash_password | bcrypt (rounds=12) |
+| USER_SESSIONS table | OAuth2 refresh tokens (stateless JWT access tokens) |
+
+---
+
+### 2.10 Common Module (MOD-011 → Shared Library + Config Service)
+
+| Legacy | Target |
+|---|---|
+| PKG_COMMON.get_param / set_param | Config service (Spring Cloud Config, or AWS Parameter Store) |
+| PKG_COMMON date utilities | Standard library functions per language |
+| PKG_COMMON.format_* | Shared utility library (npm package or Maven artifact) |
+| PKG_COMMON.is_valid_* | Shared validation library (resolve client/server drift at this point) |
+| PKG_COMMON.log_error / log_info | Structured logging (JSON → ELK Stack / CloudWatch) |
+
+---
+
+## 3. Data Migration Notes
+
+| Table Group | Target | Migration Notes |
+|---|---|---|
+| EMPLOYEES, EMPLOYEE_HISTORY, DEPARTMENTS, JOB_TITLES, JOB_GRADES, LOCATIONS | Employee Service DB | Decrypt SSNs during migration with new key (resolve VIO-001 first) |
+| SALARY_RECORDS, PAY_ELEMENTS, EMPLOYEE_PAY_ELEMENTS, PAY_PERIODS, PAYROLL_RUNS, PAYROLL_DETAILS, TAX_BRACKETS | Payroll Service DB or SaaS import | TAX_BRACKETS must be populated with historical data |
+| EMPLOYEE_BANK_ACCOUNTS | Payroll Service DB or SaaS import | ACCOUNT_NUMBER_ENC must be decrypted before migration (decryption key/mechanism not found in source — resolve RISK-014 first). Validate split-deposit logic: every employee should have exactly one FULL or REMAINDER account and no conflicting DEPOSIT_PERCENTAGE/DEPOSIT_AMOUNT sums. PRENOTE_SENT flags should be audited against actual ACH prenote history before import. |
+| LEAVE_TYPES, LEAVE_BALANCES, LEAVE_REQUESTS, LEAVE_ACCRUAL_LOG, HOLIDAYS | Leave Service DB | LEAVE_BALANCES are point-in-time snapshots — migrate last in cycle |
+| REVIEW_CYCLES, PERFORMANCE_REVIEWS, PERFORMANCE_GOALS | Performance Service DB | |
+| AUDIT_LOG | Audit Service / event store | Preserve for compliance; do not delete |
+| NOTIFICATION_QUEUE | Message broker | Drain queue before migration |
+| USER_SESSIONS | Discard | Replace with OAuth2 tokens |
+| SYSTEM_PARAMETERS | Config service | Scrub FTP credentials before migration |
+| LOOKUP_VALUES | Per-service reference data | |
+
+---
+
+## 4. Oracle Forms UI Migration
+
+| Legacy Form | Target Web Component | Framework |
+|---|---|---|
+| HRMS_LOGIN.fmb | Login page with OAuth2 redirect | React |
+| HRMS_MENU.fmb | Navigation shell / sidebar | React |
+| HRMS_EMPLOYEE.fmb | Employee management module | React |
+| HRMS_PAYROLL.fmb | Payroll management module | React |
+| HRMS_LEAVE.fmb | Leave self-service portal | React |
+| HRMS_PERFORMANCE.fmb | Performance review module | React |
+| HRMS_REPORTS.fmb (not in source) | BI tool embedded reports | Power BI or Metabase |
+| HRMS_ADMIN.fmb (not in source) | Admin console | React |

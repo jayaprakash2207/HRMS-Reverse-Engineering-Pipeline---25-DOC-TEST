@@ -1,84 +1,49 @@
----
-title: HRMS Key Call Flows
----
 sequenceDiagram
-    autonumber
+    participant F as HRMS_LOGIN.fmb
+    participant SEC as PKG_SECURITY
+    participant MENU as HRMS_MENU.fmb
+    participant EMP as HRMS_EMPLOYEE.fmb
+    participant PKG_EMP as PKG_EMPLOYEE
+    participant PKG_PAY as PKG_PAYROLL
+    participant PKG_AUD as PKG_AUDIT
+    participant PKG_NOT as PKG_NOTIFICATION
+    participant Q as NOTIFICATION_QUEUE
+    participant SMTP as UTL_SMTP
 
-    box "Presentation"
-        participant FORM as Oracle Forms
-        participant CLIB as HRMS_COMMON_LIB
+    note over F,SMTP: Flow 1 — User Login
+    F->>SEC: authenticate(email, password)
+    note right of SEC: ⚠ Password check NOT implemented
+    SEC-->>F: session_id, emp_id
+    F->>F: SET GLOBAL.session_id / current_user / current_emp_id
+    F->>MENU: OPEN_FORM('HRMS_MENU')
+    MENU->>SEC: has_permission(session_id, 'PAYROLL', 'VIEW')
+    SEC-->>MENU: TRUE/FALSE
+    MENU->>MENU: SETPROPERTY menu items enabled/disabled
+
+    note over EMP,PKG_NOT: Flow 2 — Hire New Employee
+    EMP->>EMP: PRE-INSERT: fetch SEQ_EMPLOYEE.NEXTVAL
+    EMP->>PKG_EMP: generate_emp_number()
+    note right of PKG_EMP: ⚠ Race condition — no SELECT FOR UPDATE
+    PKG_EMP-->>EMP: emp_number
+    EMP->>PKG_EMP: create_employee(...)
+    PKG_EMP->>PKG_PAY: create_salary_record(emp_id, salary)
+    note right of PKG_PAY: Circular dependency
+    PKG_PAY-->>PKG_EMP: OK
+    PKG_EMP->>PKG_AUD: log_action('EMPLOYEE','INSERT',emp_id)
+    note right of PKG_AUD: AUTONOMOUS_TRANSACTION
+    PKG_AUD-->>PKG_EMP: OK
+    PKG_EMP->>PKG_NOT: send_notification('WELCOME', emp_id)
+    note right of PKG_NOT: AUTONOMOUS_TRANSACTION — queues to NOTIFICATION_QUEUE
+    PKG_NOT->>Q: INSERT (STATUS=PENDING)
+    PKG_NOT-->>PKG_EMP: OK (never fails)
+    PKG_EMP->>PKG_NOT: send_notification('HR_ALERT', ...)
+    PKG_NOT->>Q: INSERT (STATUS=PENDING)
+
+    note over Q,SMTP: Flow 3 — Process Notification Queue (every 5 min)
+    Q->>PKG_NOT: DBMS_SCHEDULER triggers process_queue
+    loop For each PENDING notification (max 50)
+        PKG_NOT->>SMTP: UTL_SMTP.open_connection (new per email ⚠)
+        PKG_NOT->>SMTP: UTL_SMTP.write_data / RCPT_TO / MAIL_FROM
+        SMTP-->>PKG_NOT: OK or error
+        PKG_NOT->>Q: UPDATE STATUS = SENT (or FAILED + increment RETRY_COUNT)
     end
-    box "Business Logic"
-        participant SEC as PKG_SECURITY
-        participant EMP as PKG_EMPLOYEE
-        participant PAY as PKG_PAYROLL
-        participant LEAVE as PKG_LEAVE
-        participant PERF as PKG_PERFORMANCE
-        participant NOTIF as PKG_NOTIFICATION
-        participant INTEG as PKG_INTEGRATION
-        participant AUDIT as PKG_AUDIT
-    end
-    box "Data"
-        participant DB as HRMS Oracle Schema
-    end
-
-    Note over FORM,DB: FLOW-01: User Login
-
-    FORM->>SEC: authenticate(username, password)
-    SEC->>DB: SELECT EMPLOYEES where USERNAME (stub: no hash check)
-    SEC->>DB: INSERT USER_SESSIONS
-    SEC-->>FORM: session_id
-    FORM->>FORM: Set :GLOBAL.session_id / current_user / current_emp_id
-    FORM->>CLIB: check_session on each navigation
-    CLIB->>SEC: is_session_valid(session_id) [30-min timeout from LOGIN_TIME]
-
-    Note over FORM,DB: FLOW-02: Hire New Employee
-
-    FORM->>EMP: create_employee(name, dept, job, hire_date, salary)
-    EMP->>EMP: generate_emp_number() ⚠ race condition — no SELECT FOR UPDATE
-    EMP->>DB: [TRG_EMPLOYEES_VALIDATE] BEFORE INSERT — checks HIRE_DATE ≤ SYSDATE+180
-    EMP->>DB: INSERT EMPLOYEES
-    EMP->>AUDIT: log_action (AUTONOMOUS TXN)
-    EMP->>PAY: create_salary_record(emp_id, salary) ⚠ CYCLE-01
-    PAY->>DB: UPDATE SALARY_RECORDS end_date prior active record
-    PAY->>DB: INSERT SALARY_RECORDS
-    EMP-->>FORM: emp_id
-
-    Note over FORM,DB: FLOW-04 / FLOW-05: Payroll Calculate → Approve → GL Export
-
-    FORM->>PAY: calculate_payroll(run_id)
-    PAY->>DB: UPDATE PAYROLL_RUNS STATUS='PROCESSING'
-    loop Per employee (row-by-row ⚠ no BULK COLLECT)
-        PAY->>PAY: calculate_gross_pay / federal_tax ⚠ hard-coded 2024 / state_tax / FICA
-        PAY->>DB: INSERT PAYROLL_DETAILS
-        PAY->>DB: COMMIT every 50 rows ⚠ partial commit anti-pattern
-    end
-    PAY->>DB: UPDATE PAYROLL_RUNS STATUS='CALCULATED'
-    FORM->>PAY: approve_payroll(run_id)
-    PAY->>DB: UPDATE PAYROLL_RUNS STATUS='APPROVED'
-    PAY->>INTEG: generate_gl_journal(run_id)
-    INTEG->>DB: SELECT PAYROLL_RUNS / PAYROLL_DETAILS
-    INTEG-->>INTEG: UTL_FILE write pipe-delimited GL journal to GL_FEED_OUT
-
-    Note over FORM,DB: FLOW-06: Submit Leave Request
-
-    FORM->>LEAVE: submit_leave_request(emp_id, type, start, end, reason)
-    LEAVE->>LEAVE: Validate: active employee, leave type active, tenure, backdating ≤5 days
-    LEAVE->>LEAVE: calculate_business_days() ⚠ observed holidays not handled
-    LEAVE->>LEAVE: check_leave_overlap() [private]
-    LEAVE->>DB: INSERT LEAVE_REQUESTS STATUS='PENDING'
-    LEAVE->>DB: UPDATE LEAVE_BALANCES PENDING_DAYS+
-    LEAVE->>NOTIF: send_notification to manager (AUTONOMOUS TXN → queue)
-    LEAVE->>AUDIT: log_action
-    LEAVE-->>FORM: request_id
-
-    Note over FORM,DB: FLOW-09: Notification Dispatch (Background — every 5 min)
-
-    DB-->>NOTIF: [DBMS_SCHEDULER fires process_queue]
-    NOTIF->>DB: SELECT top 50 PENDING EMAIL notifications
-    loop Per notification
-        NOTIF-->>NOTIF: UTL_SMTP.OPEN_CONNECTION ⚠ new TCP per email
-        NOTIF-->>NOTIF: HELO / MAIL / RCPT / WRITE_DATA / QUIT
-        NOTIF->>DB: UPDATE STATUS='SENT' or STATUS='FAILED'
-    end
-    NOTIF->>DB: COMMIT batch

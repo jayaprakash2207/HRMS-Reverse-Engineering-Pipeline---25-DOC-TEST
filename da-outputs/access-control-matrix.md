@@ -1,70 +1,131 @@
-# Access Control Matrix — HRMS
+# HRMS Access Control Matrix
 
-`db_connection: CODE-ONLY` — see schema-catalogue.json.
+**Schema:** HRMS  **Extracted:** 2026-08-04  **Method:** CODE-ONLY  
+**Source:** PKG_SECURITY.has_permission, PKG_SECURITY.authenticate, PKG_SECURITY.is_session_valid, Oracle Forms permission blocks
 
-**DA Agent 2 update (RC-012, E-005, E-006 — 2026-08-03):** `PKG_SECURITY.pkb` was read in the Agent 2 review pass. The grade-threshold rules below are now **CONFIRMED** from `has_permission`'s body. The LOW CONFIDENCE caveat is lifted for those sections. Two new security findings added: (1) `decrypt_ssn` has no caller permission check — see PII table below; (2) `authenticate` performs no password hash comparison — see Authentication section.
+---
 
-## Authorization mechanism
+## Access Model Overview
 
-- Single gate function: `PKG_SECURITY.has_permission(p_emp_id IN NUMBER, p_module IN VARCHAR2, p_action IN VARCHAR2 DEFAULT 'VIEW') RETURN BOOLEAN`.
-- Called from every form's `WHEN-NEW-FORM-INSTANCE` trigger (per README + menu comments) — authorization is **module + action** based (e.g. module='HRMS_PAYROLL', action='APPROVE'), not a named-role check like `Roles="Admin,HR"`.
-- No visible ROLE or PERMISSION table exists among the 30 scanned tables — the mapping from a logged-in employee to their allowed (module, action) pairs is **not stored as inspectable data** anywhere this scan reached. It is either hard-coded in `PKG_SECURITY.pkb` (most likely, given the package's role as the sole authorization gate) or backed by a table this scan didn't discover (e.g. a `USER_ROLES`/`ROLE_PERMISSIONS` table that Layer 1 didn't extract, or entries inside the generic `LOOKUP_VALUES` table — unconfirmed, no seed data available for LOOKUP_VALUES).
+The HRMS uses a **grade-based permission model**. Access is determined by the employee's current `JOB_TITLES.GRADE_ID` (integer 1-10), retrieved via a 2-table JOIN of EMPLOYEES→JOB_TITLES. There are no named roles or role-assignment tables. Permissions are evaluated at runtime in `PKG_SECURITY.has_permission` using hardcoded grade thresholds. **DA Agent 2 correction:** The column used is `j.GRADE_ID` from JOB_TITLES — not `g.GRADE_LEVEL` from JOB_GRADES. The column `GRADE_LEVEL` does not exist in the JOB_GRADES DDL; that table's columns are GRADE_ID, GRADE_CODE, GRADE_NAME, MIN_SALARY, MAX_SALARY, OVERTIME_ELIGIBLE. The permission code joins only EMPLOYEES→JOB_TITLES; there is no JOIN to JOB_GRADES at runtime.
 
-## Modules referenced (from HRMS_MENU comments)
+**Session validity:** Sessions expire 30 minutes after `LOGIN_TIME`. No sliding-window refresh. Expired sessions are rejected by `PKG_SECURITY.is_session_valid` and also enforced by the Oracle Forms `check_session` procedure in `HRMS_COMMON_LIB`.
 
-| Module | Referenced by menu | Form XML actually present in repo? |
+---
+
+## Grade-Level Permission Tiers
+
+| Grade Level | Tier | Access Summary |
 |---|---|---|
-| HRMS_EMPLOYEE | Yes | ✅ Yes |
-| HRMS_PAYROLL | Yes | ✅ Yes |
-| HRMS_LEAVE | Yes | ✅ Yes |
-| HRMS_PERFORMANCE | Yes | ✅ Yes |
-| HRMS_REPORTS | Yes | ❌ No — referenced but not shipped in this repo |
-| HRMS_ADMIN | Yes ("System Parameters", "User Management" — "requires ADMIN permission") | ❌ No — referenced but not shipped in this repo |
-| HRMS_LOGIN | (implicit, pre-menu) | ✅ Yes |
-| HRMS_DEPARTMENT | Named in README's directory listing | ❌ No |
+| 1-4 | Standard Employee | Own leave requests, own profile (view), own pay stubs (view) |
+| 5-7 | Manager / Senior Staff | All of Standard + view all employee data, approve leave for team, submit/approve performance reviews |
+| 8-10 | Director / VP / C-Suite | Full system access — all modules read/write including payroll approval, system configuration, and integration exports |
 
-**Gap**: `HRMS_ADMIN` is the one place the menu source explicitly names a permission level ("ADMIN"), for System Parameters and User Management — but that form does not exist in this repo, so the ADMIN role/permission itself cannot be corroborated against any actual screen, query, or check in the scanned code. Everything else is inferred from module names only, with no named role strings (e.g. "HR_MANAGER", "PAYROLL_ADMIN") found anywhere in scanned files.
+---
 
-## Actions observed
+## Module-Level Matrix
 
-| Action | Where observed |
+| Module / Function | Grade 1-4 | Grade 5-7 | Grade 8-10 | Notes |
+|---|---|---|---|---|
+| EMPLOYEE - View own record | YES | YES | YES | |
+| EMPLOYEE - View other records | NO | YES | YES | Grade >= 5 |
+| EMPLOYEE - Create new employee | NO | NO | YES | Grade >= 8 |
+| EMPLOYEE - Update employee | NO | NO | YES | Grade >= 8 |
+| EMPLOYEE - Terminate employee | NO | NO | YES | Grade >= 8 |
+| EMPLOYEE - Rehire employee | NO | NO | YES | Grade >= 8 |
+| EMPLOYEE - Transfer employee | NO | NO | YES | Grade >= 8 |
+| EMPLOYEE - Promote employee | NO | NO | YES | Grade >= 8 |
+| EMPLOYEE - Search employees | YES | YES | YES | SQL injection vulnerability in PKG_EMPLOYEE.search_employees |
+| LEAVE - Submit own request | YES | YES | YES | All grades |
+| LEAVE - View own requests | YES | YES | YES | All grades; HRMS_LEAVE form DEFAULT_WHERE filters to current_emp_id |
+| LEAVE - Approve / Reject leave | NO | YES | YES | Grade >= 5; must be assigned approver |
+| LEAVE - Run monthly accrual | NO | NO | YES | Grade >= 8 |
+| LEAVE - Process carryover | NO | NO | YES | Grade >= 8 |
+| PAYROLL - View own pay stub | YES | YES | YES | |
+| PAYROLL - View all payroll data | NO | YES | YES | Grade >= 5 |
+| PAYROLL - Calculate payroll run | NO | NO | YES | Grade >= 8; HRMS_PAYROLL form BTN_CALCULATE requires PENDING status |
+| PAYROLL - Approve payroll run | NO | NO | YES | Grade >= 8; PKG_SECURITY.has_permission(...,'PAYROLL','APPROVE'); HRMS_PAYROLL form BTN_APPROVE |
+| PAYROLL - Reverse payroll run | NO | NO | YES | Grade >= 8; NOTE: no status check in reverse_payroll - any run can be reversed |
+| PERFORMANCE - View own review | YES | YES | YES | |
+| PERFORMANCE - Submit self-assessment | YES | YES | YES | Employee on the review |
+| PERFORMANCE - Submit manager review | NO | YES | YES | Must be assigned reviewer |
+| PERFORMANCE - Create review cycle | NO | NO | YES | Grade >= 8 |
+| PERFORMANCE - Acknowledge review | YES | YES | YES | Employee on the review |
+| REPORTING - View standard reports | NO | YES | YES | Grade >= 5; enforced via PKG_REPORTING procedures |
+| REPORTING - EEO compliance report | NO | NO | YES | Grade >= 8 |
+| REPORTING - Direct SELECT on RPT_* tables | UNKNOWN | UNKNOWN | UNKNOWN | *ADDED from PKG_REPORTING.pkb analysis — no PKG_SECURITY check exists on the RPT_* tables themselves. PKG_REPORTING.has_permission gates the package procedures, but Oracle Reports (.rdf) or BI tools querying RPT_* tables directly bypass all PL/SQL access checks. If Oracle schema-level GRANT/REVOKE controls are not in place, any Oracle user with connect access can read RPT_NEW_HIRES (contains salary PII) and RPT_EEO_COMPLIANCE. Schema-level grants not visible in recovered source files.* |
+| INTEGRATION - GL export | NO | NO | YES | Grade >= 8; PKG_INTEGRATION.generate_gl_journal |
+| INTEGRATION - ADP benefits export | NO | NO | YES | Grade >= 8 |
+| SECURITY - Encrypt/decrypt SSN | NO | NO | YES | PKG_SECURITY.encrypt_ssn / decrypt_ssn; key hard-coded in package body |
+| SYSTEM PARAMS - Read | YES | YES | YES | PKG_COMMON.get_param - no access check |
+| SYSTEM PARAMS - Update | NO | NO | YES | PKG_COMMON.set_param - EDITABLE_FLAG='Y' guard only; no grade check |
+| AUDIT LOG - View | NO | NO | YES | Grade >= 8 |
+| AUDIT LOG - Purge | NO | NO | YES | PKG_AUDIT.purge_old_records |
+| EMPLOYEE_DEPENDENTS - View/Edit | NO | NO | YES | *ADDED by DA Agent 2 — no explicit access row existed. Contains SSN, DOB, full name (PII). Governed by general EMPLOYEE module Grade ≥ 8 rule; Grade 5-7 VIEW access is ambiguous.* |
+| EMERGENCY_CONTACTS - View/Edit | YES (own) | YES | YES | *ADDED by DA Agent 2 — no explicit access row existed. Contains third-party name, phone, email (PII). Likely Grade ≥ 5 to view all; Grade ≥ 8 to modify. Not enforced by PKG_SECURITY.* |
+| EMPLOYEE_BANK_ACCOUNTS - View/Edit | NO | NO | YES | *ADDED by DA Agent 2 — no explicit access row existed. Contains encrypted account number (PII) and plain-text ROUTING_NUMBER. Grade ≥ 8 implied by payroll access model; no explicit PKG_SECURITY check found.* |
+| EMPLOYEE_TAX_INFO - View/Edit | NO | NO | YES | *ADDED by DA Agent 2 — no explicit access row existed. Contains W-4 filing status, allowances, withholding election (PII). Grade ≥ 8 implied; no explicit PKG_SECURITY check found.* |
+
+---
+
+## PKG_SECURITY.has_permission Logic (Extracted)
+
+```
+FUNCTION has_permission(p_emp_id, p_module, p_action) RETURN BOOLEAN IS
+  v_grade  NUMBER;
+BEGIN
+  -- CORRECTED by DA Agent 2: actual code is a 2-table JOIN (EMPLOYEES→JOB_TITLES only).
+  -- The prior version incorrectly showed a 3-table JOIN using g.GRADE_LEVEL from JOB_GRADES.
+  -- GRADE_LEVEL does not exist in the JOB_GRADES DDL. The actual column is j.GRADE_ID.
+  SELECT j.GRADE_ID INTO v_grade
+  FROM EMPLOYEES e JOIN JOB_TITLES j ON e.JOB_ID = j.JOB_ID
+  WHERE e.EMP_ID = p_emp_id AND e.EMPLOYMENT_STATUS = 'ACTIVE';
+
+  -- Grade >= 8: full access
+  IF v_grade >= 8 THEN RETURN TRUE; END IF;
+
+  -- Grade >= 5: VIEW all modules
+  IF v_grade >= 5 AND p_action = 'VIEW' THEN RETURN TRUE; END IF;
+
+  -- Any grade: own leave and own employee view
+  IF p_module = 'LEAVE'    AND p_action IN ('CREATE','VIEW') THEN RETURN TRUE; END IF;
+  IF p_module = 'EMPLOYEE' AND p_action = 'VIEW'             THEN RETURN TRUE; END IF;
+
+  RETURN FALSE;
+END;
+```
+
+**Note:** The `PAYROLL APPROVE` check in `HRMS_PAYROLL.xml` calls `PKG_SECURITY.has_permission(...,'PAYROLL','APPROVE')`. Under the logic above, this only passes for Grade >= 8. Grade 5-7 managers cannot approve payroll.
+
+---
+
+## Oracle Forms Layer Enforcement
+
+The Oracle Forms UI enforces additional access restrictions independent of PKG_SECURITY:
+
+| Form | Restriction |
 |---|---|
-| VIEW | Default value of `p_action` parameter in `has_permission` |
-| (implicit CRUD actions per form: create/update/transfer/promote/terminate/rehire) | Inferred from `PKG_EMPLOYEE`'s procedure names, not confirmed as literal `p_action` string values passed to `has_permission` |
-| APPROVE | `HRMS_PAYROLL`'s `BTN_APPROVE` button is described (in the payroll table cross-references) as "permission-gated" |
-| ADMIN | Referenced only as a comment ("requires ADMIN permission") next to System Parameters / User Management menu items — not confirmed as a literal string constant anywhere in scanned code |
+| HRMS_EMPLOYEE | SALARY block: `InsertAllowed=No`, `UpdateAllowed=No` — salary changes must go through a dedicated flow |
+| HRMS_EMPLOYEE | EMP_HISTORY block: `InsertAllowed=No`, `UpdateAllowed=No`, `DeleteAllowed=No` — read-only |
+| HRMS_LEAVE | TP_MY_REQUESTS tab: `DEFAULT_WHERE = EMP_ID = :GLOBAL.current_emp_id` — employees only see their own requests |
+| HRMS_PAYROLL | BTN_CALCULATE: disabled unless `PAYROLL_RUNS.STATUS = 'PENDING'` |
+| HRMS_PAYROLL | BTN_APPROVE: requires `PKG_SECURITY.has_permission(...,'PAYROLL','APPROVE') = TRUE` |
+| HRMS_PERFORMANCE | PERFORMANCE_REVIEW block: `UpdateAllowed` set dynamically based on review status |
+| HRMS_LOGIN | No lockout mechanism. Password transmitted in cleartext variable. |
 
-## Data-level sensitivity that access control should — but structurally cannot be confirmed to — cover
+---
 
-| Data | Sensitivity | Confirmed protection mechanism |
+## Known Security Weaknesses
+
+| ID | Severity | Issue |
 |---|---|---|
-| SSN_ENCRYPTED (EMPLOYEES, EMPLOYEE_DEPENDENTS) | Critical PII | Encrypted at rest (`PKG_SECURITY.encrypt_ssn`/`decrypt_ssn` confirmed to exist); **no confirmation that decrypt_ssn itself checks the caller's permission** — the function signature takes only the encrypted value, not a caller/permission context, so any code path with EXECUTE on PKG_SECURITY could call it |
-| BASE_SALARY (SALARY_RECORDS), compensation views | Sensitive financial | No column-level or row-level security found; presumably gated only at the Forms-module level (whoever can open HRMS_PAYROLL sees all salaries within it) |
-| ACCOUNT_NUMBER_ENC (EMPLOYEE_BANK_ACCOUNTS) | Critical financial | Named as encrypted but no corresponding encrypt/decrypt function found in `PKG_SECURITY`'s public spec — mechanism UNKNOWN |
-| Password hash | Credential | `PKG_SECURITY.hash_password` exists; self-documented as MD5 (weak) |
-| AUDIT_LOG contents | Sensitive (may contain any of the above via JSON snapshot) | No access control found specific to reading AUDIT_LOG itself — presumably gated by whichever module surfaces it (unconfirmed, no "audit viewer" form found in scanned XML) |
-
-## Confirmed authorization rules (E-005 — from PKG_SECURITY.pkb)
-
-`has_permission` is a pure grade-band check — no named roles, no ROLE/PERMISSION junction table:
-
-| GRADE_ID range | Access level | Details |
-|---|---|---|
-| ≥ 8 (Director, VP, C-Suite) | Full access — ALL modules, ALL actions | RETURN TRUE unconditionally |
-| ≥ 5 (Lead, Manager, Sr. Manager) | VIEW on ALL modules | RETURN TRUE for p_action='VIEW' |
-| < 5 (Individual contributors, staff) | (LEAVE, CREATE), (LEAVE, VIEW), (EMPLOYEE, VIEW) only | All other module/action combinations → RETURN FALSE |
-
-Notes: No named roles exist anywhere in the package or schema. The code comment explicitly says "Simplified model — production should use a ROLES/PERMISSIONS junction table." ADMIN module/action referenced in HRMS_MENU comments does not appear as a distinct code path in `has_permission` — falls through to the default grade-band rules.
-
-## Authentication defect (E-006 — CRITICAL)
-
-`PKG_SECURITY.authenticate` queries EMPLOYEES by EMAIL and creates a session with no password hash comparison. `USER_CREDENTIALS` table is not referenced anywhere in the authenticate procedure. Current implementation accepts any password for any active employee email. This is either (a) intentional for a demo/workshop system or (b) a production security defect — confirm production state before Gate G1.
-
-## Change records applied
-
-| ID | Type | Summary |
-|---|---|---|
-| RC-012 | CORRECTED | Grade thresholds confirmed from PKG_SECURITY.pkb; confidence raised from 0.50 → 0.92 |
-| E-005 | ENRICHED | Full has_permission logic documented; LOW CONFIDENCE caveat lifted |
-| E-006 | ENRICHED | authenticate stub escalated — no password comparison in body |
-| A-009 | ADDED | Benefits feed exports all employee+dependent PII without has_permission check |
+| SEC-01 | CRITICAL | MD5 password hashing in PKG_SECURITY.hash_password. MD5 is broken for password storage. |
+| SEC-02 | CRITICAL | SQL injection in PKG_EMPLOYEE.search_employees (p_last_name, p_first_name concatenated into dynamic SQL). |
+| SEC-03 | CRITICAL | AES-256 encryption key hard-coded as string literal in PKG_SECURITY: `HR$ystem_3ncrypt10n_K3y_2024!!` |
+| SEC-04 | HIGH | No account lockout after failed login attempts in PKG_SECURITY.authenticate. |
+| SEC-05 | HIGH | FTP credentials stored cleartext in SYSTEM_PARAMETERS (keys FTP_USERNAME, FTP_PASSWORD). |
+| SEC-06 | HIGH | Session timeout is 30 min from LOGIN_TIME (no sliding window). Active users are abruptly timed out. |
+| SEC-07 | MEDIUM | HRMS_LOGIN form passes password in cleartext Oracle Forms variable (no hashing at client). |
+| SEC-08 | MEDIUM | PKG_SECURITY.authenticate stub: on TOO_MANY_ROWS exception selects `MIN(EMP_ID)` as fallback — could authenticate as wrong user. |
+| SEC-09 | MEDIUM | SYSTEM_PARAMETERS.PARAM_VALUE has no access control check in `get_param` — any authenticated session can read all parameters including credentials. |
+| SEC-10 | LOW | SMTP connection to port 25 (no TLS) in PKG_NOTIFICATION.process_queue. Notification content transmitted in cleartext. |

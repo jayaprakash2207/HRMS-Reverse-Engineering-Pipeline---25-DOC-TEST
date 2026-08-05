@@ -1,124 +1,118 @@
-# Architecture Pattern Report
-**System:** HRMS v4.2  
-**Stage:** Stage 7 — Architecture Pattern Detection  
-**Date:** 2026-08-03
+# Architecture Pattern Report — HRMS Oracle Forms Application
+
+**Extractor:** AA Agent 1 — Application Architecture Extractor  
+**Date:** 2026-08-04  
+**Confidence:** 0.96  
 
 ---
 
-## Primary Pattern: Layered Monolith (N-Tier) with Big Ball of Mud characteristics
+## 1. Primary Detected Pattern: N-Tier Monolith (3-Tier)
 
-### Pattern Summary
+**Pattern:** Three-tier monolithic architecture  
+**Confidence:** 0.96  
+**Evidence:**
 
-The HRMS is a **two-tier client-server monolith** with a Layered Monolith structure:
+| Tier | Technology | Components |
+|------|-----------|------------|
+| Presentation | Oracle Forms 12c (12.2.1.4) | 6 .fmb forms, 2 .pll libraries, 1 .mmb menu |
+| Application Logic | Oracle PL/SQL packages (11 packages) | PKG_EMPLOYEE, PKG_PAYROLL, PKG_LEAVE, PKG_PERFORMANCE, PKG_NOTIFICATION, PKG_INTEGRATION, PKG_AUDIT, PKG_SECURITY, PKG_VALIDATION, PKG_COMMON, PKG_REPORTING |
+| Data | Oracle RDBMS HRMS schema | 22 tables, 6 views, 29 sequences, 6 triggers |
 
-| Tier | Technology | Role |
-|------|------------|------|
-| Presentation | Oracle Forms 12c (Java applet) | All user interaction; thin business logic in form triggers |
-| Business Logic + Data | Oracle Database (PL/SQL packages) | All business rules, validation, integration, scheduling |
-| External | UTL_FILE flat files, UTL_SMTP | Oracle Financials, ADP, SMTP relay |
-
-The application exhibits strong characteristics of the **Layered N-Tier** pattern (presentation → business logic → data) but with significant **Big Ball of Mud** elements caused by years of organic growth.
-
----
-
-## Layered Architecture Evidence
-
-**Layer 1: Presentation (Oracle Forms)**  
-- 6 scanned Forms (.fmb), 2 PLL libraries  
-- Forms are thin delegates: button triggers call PL/SQL packages  
-- `HRMS_COMMON_LIB.pll` provides toolbar, session-check, and error handling  
-- `HRMS_VALIDATION_LIB.pll` provides client-side field validation  
-- Evidence: All BTN_*.WHEN-BUTTON-PRESSED triggers call specific PKG_* procedures
-
-**Layer 2: Business Logic (PL/SQL Packages)**  
-- 11 packages, ~130 procedures/functions  
-- All business rules, calculations, state transitions, and workflow orchestration  
-- Evidence: PKG_PAYROLL.calculate_payroll, PKG_LEAVE.submit_leave_request, PKG_SECURITY.authenticate
-
-**Layer 3: Data (Oracle Tables/Views/Triggers)**  
-- 26 tables, 6 views, 6 triggers, 29 sequences  
-- DB triggers enforce referential constraints and automatic audit logging  
-- Evidence: TRG_EMPLOYEES_VALIDATE, TRG_EMPLOYEES_AUDIT, VW_ORG_HIERARCHY
+All three tiers are deployed as a single logical unit. The Oracle Forms application connects directly to the Oracle database — there is no intermediate web service or REST API layer.
 
 ---
 
-## Big Ball of Mud Evidence
+## 2. Secondary Detected Pattern: Big Ball of Mud (Partial)
 
-Despite the nominal layering, several Big Ball of Mud anti-patterns are present:
+**Pattern:** Big Ball of Mud — localized to Integration and cross-cutting modules  
+**Confidence:** 0.72  
+**Evidence:**
+- PKG_INTEGRATION has no retry logic, no error escalation, and an unimplemented feature (import_time_attendance TODO stub)
+- PKG_SECURITY contains an authentication stub — the password verification logic is incomplete
+- PKG_PAYROLL has hard-coded 2024 tax brackets ignoring the TAX_BRACKETS table that was clearly designed to hold this data
+- PKG_REPORTING.refresh_reporting_tables is an unimplemented stub
+- TRG_EMP_BEFORE_INSERT duplicates business logic from PKG_EMPLOYEE (noted in trigger comment as anti-pattern)
+- Circular dependency between PKG_EMPLOYEE and PKG_PAYROLL is a structural integrity violation
 
-**1. Business logic in presentation layer**  
-Hire date validation (90-day limit) is encoded in HRMS_EMPLOYEE.fmb form trigger, duplicating (and contradicting) the DB trigger rule. Forms are not pure presentation.
-
-**2. Cross-layer shortcuts (DB triggers → PL/SQL packages)**  
-TRG_EMPLOYEES_AUDIT calls PKG_AUDIT.log_action, coupling the data layer to the business logic layer. This creates a hidden execution path invisible to the forms layer.
-
-**3. No API boundary between layers**  
-Oracle Forms directly calls PL/SQL procedures by name. There is no service interface, no contract versioning, no API gateway. Changes to PL/SQL procedure signatures require coordinated form updates.
-
-**4. Shared mutable state via package globals**  
-PKG_EMPLOYEE uses package-level variables (g_current_user, g_current_emp_id) and Oracle Forms uses :GLOBAL.session_id / :GLOBAL.current_user. Both are process-scoped globals that create implicit coupling.
-
-**5. Infrastructure code mixed into domain packages**  
-Every domain package (Employee, Payroll, Leave, Performance) directly calls PKG_AUDIT.log_action and PKG_NOTIFICATION.send_notification. There is no domain event bus — audit and notification are wired into every procedure body.
+These are localized failures within an otherwise disciplined 3-tier design, rather than a system-wide Big Ball of Mud pattern.
 
 ---
 
-## Secondary Patterns Detected
+## 3. Supporting Patterns Detected
 
-### Transaction Script
-- PKG_PAYROLL.calculate_payroll, PKG_LEAVE.run_monthly_accrual  
-- Each procedure is a top-to-bottom imperative script with explicit SQL and control flow  
-- No domain object model; data is passed as scalar parameters and returned in REF CURSORs
+### 3.1 Repository Pattern (partial)
+**Confidence:** 0.80  
+PL/SQL packages act as logical repositories for their domain entities (PKG_EMPLOYEE wraps EMPLOYEES table access, PKG_LEAVE wraps LEAVE_REQUESTS, etc.). However, the pattern is impure — some forms issue direct SQL against tables (e.g., HRMS_LOGIN form queries HRMS.EMPLOYEES directly; HRMS_EMPLOYEE form's QueryDataSourceName=HRMS.EMPLOYEES bypasses the package).
 
-### Repository Pattern (partial)
-- PKG_EMPLOYEE, PKG_PAYROLL, PKG_LEAVE each own their data access (INSERT/UPDATE/SELECT) within their procedures  
-- No separation of concerns: the package is simultaneously the service, the repository, and the domain object
+### 3.2 Façade Pattern
+**Confidence:** 0.88  
+PKG_COMMON serves as a system-wide utility façade (17 public methods), accessed by all 10 other packages. This is a deliberate design choice — all date math, formatting, and parameter lookups are centralized. The downside is that PKG_COMMON becomes the highest-coupled node in the dependency graph (afferent coupling = 11).
 
-### Façade Pattern
-- PKG_COMMON is a façade over shared utilities (logging, config, date math, formatting)
-- HRMS_COMMON_LIB.pll is a façade over PKG_SECURITY.is_session_valid and PKG_COMMON.log_error for the Forms layer
+### 3.3 Observer / Asynchronous Queue Pattern
+**Confidence:** 0.92  
+PKG_NOTIFICATION implements a queue-based observer: business events enqueue notifications using PRAGMA AUTONOMOUS_TRANSACTION (so the enqueue never fails the caller), and a separate DBMS_SCHEDULER job processes the queue independently. This is a sound architectural choice for cross-cutting notifications.
 
-### Async Queue Pattern
-- PKG_NOTIFICATION implements a simple async notification queue via NOTIFICATION_QUEUE table  
-- Producer (send_notification with PRAGMA AUTONOMOUS_TRANSACTION) is decoupled from consumer (process_queue via DBMS_SCHEDULER)  
-- Pattern is sound; implementation has issues (SMTP config hard-coded, no connection pooling)
+### 3.4 Soft Delete Pattern
+**Confidence:** 0.99  
+Physical deletion of EMPLOYEES records is blocked by TRG_EMP_INSTEAD_OF_DELETE (raises ORA-20504). Termination sets ACTIVE_FLAG='N' and EMPLOYMENT_STATUS='TERMINATED'. All active-employee queries filter on EMPLOYMENT_STATUS='ACTIVE' or ACTIVE_FLAG='Y'. This is a deliberate and consistently applied pattern.
 
-### Soft Delete Pattern
-- EMPLOYEES table uses ACTIVE_FLAG='N' and EMPLOYMENT_STATUS='TERMINATED' instead of DELETE  
-- All queries filter on EMPLOYMENT_STATUS='ACTIVE' or use VW_ACTIVE_EMPLOYEES  
-- Consistent throughout the codebase
+### 3.5 Audit Log Pattern (CRUD audit table)
+**Confidence:** 0.99  
+All DML on significant tables routes through PKG_AUDIT.log_action (via package calls and three DB-level triggers). AUDIT_LOG stores old/new values as VARCHAR2. The pattern is sound, but silent failure swallowing in log_action means audit gaps are possible without warning.
 
-### Audit Trail Pattern
-- Every DML on EMPLOYEES, SALARY_RECORDS, LEAVE_REQUESTS is captured by database triggers that call PKG_AUDIT.log_action (PRAGMA AUTONOMOUS_TRANSACTION)  
-- AUDIT_LOG table records: table_name, record_id, action, old_values (CLOB), new_values (CLOB), user, IP, session  
-- Pattern is consistent; implementation is brittle (AUDIT_LOG lock could cascade to all DML)
+### 3.6 Session Token Pattern
+**Confidence:** 0.96  
+PKG_SECURITY.authenticate creates a session row in USER_SESSIONS and returns a numeric session_id stored in Oracle Forms global variables. All forms validate the session token on each significant action via HRMS_COMMON_LIB.check_session. Weakness: session timeout is based on LOGIN_TIME, not last activity — enforcing a hard 30-minute wall-clock limit regardless of use.
 
 ---
 
-## Observed Anti-Patterns
+## 4. Anti-Patterns Detected
 
-| Anti-Pattern | Instance | Evidence |
-|--------------|----------|----------|
-| Partial Commit | calculate_payroll COMMIT every 50 rows | PKG_PAYROLL.pkb |
-| Partial Commit | run_monthly_accrual COMMIT every 100 rows | PKG_LEAVE.pkb |
-| Magic Numbers | ELEMENT_IDs 100-103 in reporting | PKG_REPORTING.pkb |
-| Magic Numbers | GRADE_ID thresholds 5, 8 in security | PKG_SECURITY.pkb |
-| Hard-coded Config | SMTP host, tax brackets, FICA wage base | PKG_NOTIFICATION.pkb, PKG_PAYROLL.pkb |
-| God Package | PKG_COMMON — 16 functions, called by 9 packages | PKG_COMMON.pks |
-| Circular Dependency | PKG_EMPLOYEE ↔ PKG_PAYROLL | PKG_EMPLOYEE.pks comment |
-| Stub Implementation | import_time_attendance, sync_org_structure | PKG_INTEGRATION.pkb |
+| Anti-pattern | Location | Evidence |
+|---|---|---|
+| Circular Dependency | PKG_EMPLOYEE ↔ PKG_PAYROLL | create_employee calls create_salary_record; calculate_payroll calls is_active |
+| God Package | PKG_COMMON | Afferent coupling = 11; 17 diverse methods |
+| Magic Numbers / Hard-Coded Config | PKG_PAYROLL, PKG_SECURITY, PKG_NOTIFICATION | 2024 tax brackets; AES key literal; SMTP hostname hard-coded |
+| Duplicate Business Logic | TRG_EMP_BEFORE_INSERT vs PKG_EMPLOYEE | Hire date validation and email uniqueness in both trigger and package |
+| Validation Drift | HRMS_VALIDATION_LIB vs PKG_VALIDATION/PKG_COMMON | Email subdomain handling, SSN all-zero check differ between client and server |
+| Row-by-Row Cursor Processing | PKG_PAYROLL.calculate_payroll, PKG_PERFORMANCE.generate_reviews_for_cycle | No BULK COLLECT + FORALL pattern used |
+| TODO Stubs in Production Code | PKG_INTEGRATION.import_time_attendance, PKG_EMPLOYEE.terminate_employee | Incomplete features deployed |
+| Direct Table Access from UI | HRMS_LOGIN form, HRMS_EMPLOYEE form (QueryDataSourceName) | Bypasses package abstraction layer |
+| Cleartext Credentials | SYSTEM_PARAMETERS (FTP credentials) | FTP password stored in plaintext in a DB table |
+| Partial Commit Anti-pattern | PKG_PAYROLL.calculate_payroll, PKG_LEAVE.run_monthly_accrual | COMMIT every N rows leaves state partially updated on failure |
 
 ---
 
-## Architecture Quality Assessment
+## 5. Layer Violations
 
-| Dimension | Score | Rationale |
-|-----------|-------|-----------|
-| Modularity | 4/10 | Six logical modules identified but tightly coupled via shared tables and direct package calls |
-| Testability | 2/10 | No unit tests found; circular dependency; PL/SQL without test harness; Oracle Forms unautomatable |
-| Deployability | 3/10 | Single Oracle schema deployment; no CI/CD evidence; Forms binary deployment manual |
-| Observability | 5/10 | AUDIT_LOG is thorough; no structured metrics or distributed tracing |
-| Security | 2/10 | Hard-coded key, broken auth stub, SQL injection, MD5 passwords — multiple critical issues |
-| Data Integrity | 5/10 | DB triggers enforce audit; partial commits undermine transactional integrity |
-| Scalability | 2/10 | Oracle Forms is not horizontally scalable; single DB schema; no caching layer |
-| Maintainability | 4/10 | Package structure is clear; hard-coded values and TODO stubs reduce maintainability |
+| Violation | From | To | Description |
+|---|---|---|---|
+| LV-001 | Presentation | Data | HRMS_LOGIN form directly queries HRMS.EMPLOYEES (SELECT EMP_ID WHERE EMAIL = :username). Should go via PKG_EMPLOYEE.get_employee_by_number. |
+| LV-002 | Presentation | Data | HRMS_EMPLOYEE form uses QueryDataSourceName=HRMS.EMPLOYEES — Oracle Forms direct block-to-table binding bypasses PKG_EMPLOYEE. |
+| LV-003 | Presentation | Data | HRMS_VALIDATION_LIB.validate_salary_range executes SELECT directly against JOB_GRADES table. |
+| LV-004 | Data Access | Application Service | TRG_EMP_BEFORE_INSERT duplicates hire date and email uniqueness logic from PKG_EMPLOYEE (trigger comment acknowledges this). |
+| LV-005 | Application Service | Application Service (cross-module) | PKG_VALIDATION.is_business_day directly queries the HOLIDAYS table (owned by Leave module), creating a cross-module data dependency. |
+
+---
+
+## 6. Technology Observations
+
+- **Oracle Forms 12c (12.2.1.4):** End-of-Premier Support. Oracle Forms is a legacy technology with no cloud-native deployment path. The Java applet delivery mechanism is deprecated in modern browsers.
+- **PL/SQL as Application Layer:** Business logic is 100% in the Oracle database server. This is common for legacy Oracle apps but creates vendor lock-in and prevents horizontal scaling.
+- **No Service Bus / API Gateway:** All integration is flat-file based (UTL_FILE). There is no REST, SOAP, or messaging middleware.
+- **No ORM:** Direct SQL throughout. Schema changes require coordinated updates to all packages.
+- **No Unit Test Framework:** No utPLSQL or other PL/SQL test framework found in source.
+
+---
+
+## 7. Forward Engineering Implications
+
+| Finding | Implication |
+|---|---|
+| 3-tier monolith | Can be strangled module-by-module. Employee and Leave are the best first candidates (loosest coupling). |
+| All business logic in PL/SQL | Migrating to microservices requires re-implementing all 11 packages in a new language. The packages are well-structured and provide a clear service contract. |
+| No REST API layer | Adding an API gateway (e.g., Oracle REST Data Services) as a strangler proxy is the lowest-risk first step. |
+| Hard-coded AES key | Must be rotated before any migration work begins. Re-encryption of SSN data required. |
+| Circular dependency | Must be broken before PKG_EMPLOYEE and PKG_PAYROLL can be split into independent services. |
+| Flat-file integrations | Each flat-file integration must be replaced with API calls during migration. ADP and Oracle Financials both offer REST APIs. |
+| Oracle Forms UI | Requires full rewrite — no transpilation path from Forms to web UI. |

@@ -4,13 +4,21 @@ CREATE OR REPLACE PACKAGE BODY HRMS.PKG_PAYROLL AS
 -- ============================================================================
 
     -- Constants
+    -- CONSTRAINT: 2024 Social Security wage base; earnings above this amount are exempt from SS tax
     c_ss_wage_base_2024   CONSTANT NUMBER := 168600;   -- Social Security wage base
+    -- CONSTRAINT: Employee share of Social Security tax is 6.2% of wages up to the wage base
     c_ss_rate             CONSTANT NUMBER := 0.062;     -- 6.2% employee share
+    -- CONSTRAINT: Employee share of standard Medicare tax is 1.45% of all wages with no cap
     c_medicare_rate       CONSTANT NUMBER := 0.0145;    -- 1.45% employee share
+    -- CONSTRAINT: Additional Medicare surtax rate of 0.9% applies above the high-earner threshold
     c_medicare_addl_rate  CONSTANT NUMBER := 0.009;     -- Additional Medicare tax
+    -- CONSTRAINT: Annual earnings above $200,000 trigger the additional 0.9% Medicare surtax
     c_medicare_addl_threshold CONSTANT NUMBER := 200000; -- Threshold for additional Medicare
+    -- CONSTRAINT: 2024 standard deduction for single or non-jointly-filing taxpayers is $14,600
     c_standard_deduction_single CONSTANT NUMBER := 14600;
+    -- CONSTRAINT: 2024 standard deduction for married filing jointly taxpayers is $29,200
     c_standard_deduction_married CONSTANT NUMBER := 29200;
+    -- CONSTRAINT: Each W-4 withholding allowance reduces annualised taxable income by $4,300
     c_allowance_amount    CONSTANT NUMBER := 4300;      -- Per-allowance reduction
 
     -- -----------------------------------------------------------------------
@@ -27,11 +35,15 @@ CREATE OR REPLACE PACKAGE BODY HRMS.PKG_PAYROLL AS
         p_user           IN VARCHAR2 DEFAULT USER
     ) IS
     BEGIN
+        -- RULE: Base salary must be a positive number; zero or negative values are not permitted
+        -- RULE: Salary must be positive — raises error -20101 if violated
         IF p_base_salary <= 0 THEN
             RAISE_APPLICATION_ERROR(-20101, 'Salary must be positive: ' || p_base_salary);
         END IF;
 
         -- End-date current active salary
+        -- BUSINESS: Targets the currently active salary record (ACTIVE_FLAG = 'Y') that predates
+        --           the new effective date, end-dating it the day before the new record takes effect
         UPDATE SALARY_RECORDS
         SET END_DATE = p_effective_date - 1,
             ACTIVE_FLAG = 'N',
@@ -65,6 +77,9 @@ CREATE OR REPLACE PACKAGE BODY HRMS.PKG_PAYROLL AS
     ) RETURN NUMBER IS
         v_salary NUMBER;
     BEGIN
+        -- BUSINESS: Retrieves only the salary record that is currently active (ACTIVE_FLAG = 'Y'),
+        --           has already taken effect (EFFECTIVE_DATE <= today), and has not yet expired
+        --           (END_DATE is open-ended or extends beyond today)
         SELECT BASE_SALARY INTO v_salary
         FROM SALARY_RECORDS
         WHERE EMP_ID = p_emp_id
@@ -89,6 +104,9 @@ CREATE OR REPLACE PACKAGE BODY HRMS.PKG_PAYROLL AS
     ) RETURN NUMBER IS
         v_salary NUMBER;
     BEGIN
+        -- BUSINESS: Retrieves the salary record effective on a specific point-in-time date;
+        --           the record must have taken effect on or before that date and must not have
+        --           expired before that date (END_DATE covers the query date or is open-ended)
         SELECT BASE_SALARY INTO v_salary
         FROM SALARY_RECORDS
         WHERE EMP_ID = p_emp_id
@@ -117,6 +135,7 @@ CREATE OR REPLACE PACKAGE BODY HRMS.PKG_PAYROLL AS
         v_pay_date   DATE;
         v_period_num NUMBER := 0;
     BEGIN
+        -- RULE: Monthly pay periods run from the 1st to the last calendar day of each month
         IF p_frequency = 'MONTHLY' THEN
             FOR i IN 1..12 LOOP
                 v_start_date := TO_DATE(p_year || '-' || LPAD(i, 2, '0') || '-01', 'YYYY-MM-DD');
@@ -124,8 +143,10 @@ CREATE OR REPLACE PACKAGE BODY HRMS.PKG_PAYROLL AS
                 v_pay_date := v_end_date;
 
                 -- If pay date falls on weekend, move to Friday
+                -- RULE: When the monthly pay date falls on a Saturday, it is moved back one day to Friday
                 IF TO_CHAR(v_pay_date, 'DY') = 'SAT' THEN
                     v_pay_date := v_pay_date - 1;
+                -- RULE: When the monthly pay date falls on a Sunday, it is moved back two days to Friday
                 ELSIF TO_CHAR(v_pay_date, 'DY') = 'SUN' THEN
                     v_pay_date := v_pay_date - 2;
                 END IF;
@@ -145,6 +166,8 @@ CREATE OR REPLACE PACKAGE BODY HRMS.PKG_PAYROLL AS
                 );
             END LOOP;
 
+        -- RULE: Biweekly pay periods are 14 days long, anchored so that the pay date falls on a Friday;
+        --       the cycle starts by locating the first Friday of the year and backing up 13 days
         ELSIF p_frequency = 'BIWEEKLY' THEN
             v_start_date := TO_DATE(p_year || '-01-01', 'YYYY-MM-DD');
             -- Find first Friday
@@ -155,9 +178,12 @@ CREATE OR REPLACE PACKAGE BODY HRMS.PKG_PAYROLL AS
 
             WHILE EXTRACT(YEAR FROM v_start_date) <= p_year LOOP
                 v_end_date := v_start_date + 13;
+                -- CONSTRAINT: Biweekly pay date is 5 calendar days after the period end date
                 v_pay_date := v_end_date + 5; -- Pay 5 days after period end
                 v_period_num := v_period_num + 1;
 
+                -- RULE: A biweekly period is included in the year's set if either the period start
+                --       date or the period end date falls within the target calendar year
                 IF EXTRACT(YEAR FROM v_start_date) = p_year OR
                    EXTRACT(YEAR FROM v_end_date) = p_year THEN
 
@@ -195,6 +221,8 @@ CREATE OR REPLACE PACKAGE BODY HRMS.PKG_PAYROLL AS
         WHERE PERIOD_ID = p_period_id
         FOR UPDATE;
 
+        -- RULE: A pay period that is already in CLOSED status cannot be closed again
+        -- RULE: Attempting to close an already-closed period raises error -20102
         IF v_status = 'CLOSED' THEN
             RAISE_APPLICATION_ERROR(-20102, 'Period already closed: ' || p_period_id);
         END IF;
@@ -214,6 +242,8 @@ CREATE OR REPLACE PACKAGE BODY HRMS.PKG_PAYROLL AS
     FUNCTION get_current_period RETURN NUMBER IS
         v_period_id NUMBER;
     BEGIN
+        -- BUSINESS: Current pay period is defined as an OPEN period whose date range
+        --           (PERIOD_START_DATE through PERIOD_END_DATE) includes today's date
         SELECT PERIOD_ID INTO v_period_id
         FROM PAY_PERIODS
         WHERE SYSDATE BETWEEN PERIOD_START_DATE AND PERIOD_END_DATE
@@ -242,6 +272,8 @@ CREATE OR REPLACE PACKAGE BODY HRMS.PKG_PAYROLL AS
         FROM PAY_PERIODS
         WHERE PERIOD_ID = p_period_id;
 
+        -- RULE: A payroll run cannot be created against a pay period that has already been closed
+        -- RULE: Attempting to create a run for a closed period raises error -20102
         IF v_status = 'CLOSED' THEN
             RAISE_APPLICATION_ERROR(-20102,
                 'Cannot create run for closed period: ' || p_period_id);
@@ -293,6 +325,8 @@ CREATE OR REPLACE PACKAGE BODY HRMS.PKG_PAYROLL AS
 
         -- Process each active employee
         -- BUG: Cursor loop - should use BULK COLLECT + FORALL
+        -- BUSINESS: Only employees with EMPLOYMENT_STATUS = 'ACTIVE' and ACTIVE_FLAG = 'Y'
+        --           are included in payroll processing; terminated or suspended employees are excluded
         FOR emp_rec IN (
             SELECT e.EMP_ID
             FROM EMPLOYEES e
@@ -321,12 +355,18 @@ CREATE OR REPLACE PACKAGE BODY HRMS.PKG_PAYROLL AS
 
             -- Commit every 50 employees to avoid long transactions
             -- ISSUE: Partial commits mean a failure leaves payroll half-calculated
+            -- CONSTRAINT: Payroll changes are committed to the database every 50 employees processed
             IF MOD(v_emp_count, 50) = 0 THEN
                 COMMIT;
             END IF;
         END LOOP;
 
         -- Update run totals
+        -- RULE: If any employee-level errors were encountered, the entire payroll run is marked ERROR;
+        --       only a fully error-free run transitions to CALCULATED status
+        -- BUSINESS: Run gross total sums only EARNING-type detail lines; deduction total sums
+        --           DEDUCTION and TAX lines; net pay combines earnings minus deductions and taxes;
+        --           all three aggregates exclude lines in ERROR status
         UPDATE PAYROLL_RUNS SET
             STATUS = CASE WHEN v_error_count > 0 THEN 'ERROR' ELSE 'CALCULATED' END,
             EMPLOYEE_COUNT = v_emp_count,
@@ -381,6 +421,9 @@ CREATE OR REPLACE PACKAGE BODY HRMS.PKG_PAYROLL AS
         FROM PAY_PERIODS
         WHERE PERIOD_ID = p_period_id;
 
+        -- RULE: Gross pay per period is calculated by dividing annual salary by the number of
+        --       pay periods per year: 52 for weekly, 26 for biweekly, 24 for semimonthly,
+        --       12 for monthly; unrecognised frequencies default to 12 periods per year
         -- Determine periods per year
         v_periods_per_year := CASE v_pay_frequency
             WHEN 'WEEKLY' THEN 52
@@ -393,6 +436,9 @@ CREATE OR REPLACE PACKAGE BODY HRMS.PKG_PAYROLL AS
         -- Get current annual salary
         v_annual_salary := get_salary_as_of(p_emp_id, v_period_end);
 
+        -- RULE: An employee must have an active salary record as of the period end date
+        --       to be processed in payroll; a zero result from get_salary_as_of means no record was found
+        -- RULE: Employee with no salary record on the period end date cannot be processed — raises error -20104
         IF v_annual_salary = 0 THEN
             RAISE_APPLICATION_ERROR(-20104,
                 'No active salary record for employee ' || p_emp_id);
@@ -414,6 +460,8 @@ CREATE OR REPLACE PACKAGE BODY HRMS.PKG_PAYROLL AS
         v_ytd_gross := get_ytd_earnings(p_emp_id, EXTRACT(YEAR FROM v_period_end));
 
         -- Get employee tax info
+        -- BUSINESS: W-4 tax elections are matched to the employee and the tax year of the pay period;
+        --           only the active record (ACTIVE_FLAG = 'Y') for that year is used
         BEGIN
             SELECT FILING_STATUS, FEDERAL_ALLOWANCES, STATE_CODE,
                    STATE_ALLOWANCES, ADDITIONAL_FED_WH
@@ -426,6 +474,8 @@ CREATE OR REPLACE PACKAGE BODY HRMS.PKG_PAYROLL AS
         EXCEPTION
             WHEN NO_DATA_FOUND THEN
                 -- Default values if no W-4 on file
+                -- RULE: If no W-4 is on file for the current tax year, the employee is treated
+                --       as SINGLE with zero allowances and no additional withholding
                 v_filing_status := 'SINGLE';
                 v_fed_allowances := 0;
                 v_state_code := NULL;
@@ -440,6 +490,7 @@ CREATE OR REPLACE PACKAGE BODY HRMS.PKG_PAYROLL AS
             v_addl_fed_wh, v_pay_frequency
         );
 
+        -- RULE: Federal income tax withholding is only recorded when the calculated amount is greater than zero
         IF v_federal_tax > 0 THEN
             INSERT INTO PAYROLL_DETAILS (
                 DETAIL_ID, RUN_ID, EMP_ID, ELEMENT_ID, ELEMENT_TYPE,
@@ -452,12 +503,15 @@ CREATE OR REPLACE PACKAGE BODY HRMS.PKG_PAYROLL AS
         END IF;
 
         -- Calculate state tax
+        -- RULE: State income tax is only calculated and withheld when the employee has a
+        --       state code on their tax record; employees with no state code have no state withholding
         IF v_state_code IS NOT NULL THEN
             v_state_tax := calculate_state_tax(
                 v_taxable_income, v_state_code, v_filing_status,
                 v_state_allowances, v_pay_frequency
             );
 
+            -- RULE: State income tax withholding is only recorded when the calculated amount is greater than zero
             IF v_state_tax > 0 THEN
                 INSERT INTO PAYROLL_DETAILS (
                     DETAIL_ID, RUN_ID, EMP_ID, ELEMENT_ID, ELEMENT_TYPE,
@@ -473,6 +527,9 @@ CREATE OR REPLACE PACKAGE BODY HRMS.PKG_PAYROLL AS
         -- Calculate FICA (Social Security)
         v_ss_tax := calculate_fica(v_period_gross, v_ytd_gross);
 
+        -- RULE: Social Security withholding is only recorded when there is a taxable wage amount
+        --       remaining below the annual wage base; no entry is created if the employee has already
+        --       exceeded the wage base year-to-date
         IF v_ss_tax > 0 THEN
             INSERT INTO PAYROLL_DETAILS (
                 DETAIL_ID, RUN_ID, EMP_ID, ELEMENT_ID, ELEMENT_TYPE,
@@ -487,6 +544,7 @@ CREATE OR REPLACE PACKAGE BODY HRMS.PKG_PAYROLL AS
         -- Calculate Medicare
         v_medicare_tax := calculate_medicare(v_period_gross, v_ytd_gross);
 
+        -- RULE: Medicare withholding is only recorded when the calculated amount is greater than zero
         IF v_medicare_tax > 0 THEN
             INSERT INTO PAYROLL_DETAILS (
                 DETAIL_ID, RUN_ID, EMP_ID, ELEMENT_ID, ELEMENT_TYPE,
@@ -499,6 +557,10 @@ CREATE OR REPLACE PACKAGE BODY HRMS.PKG_PAYROLL AS
         END IF;
 
         -- Process employee-specific deductions (benefits, 401k, etc.)
+        -- BUSINESS: Only active (ACTIVE_FLAG = 'Y') deduction and benefit elements are applied;
+        --           the element must have taken effect on or before the period end date and must
+        --           not have expired before the period start date; elements are applied in
+        --           PRIORITY_ORDER sequence
         FOR ded_rec IN (
             SELECT epe.ELEMENT_ID, epe.AMOUNT, epe.PERCENTAGE,
                    epe.OVERRIDE_AMOUNT, pe.ELEMENT_CODE, pe.ELEMENT_TYPE,
@@ -517,10 +579,16 @@ CREATE OR REPLACE PACKAGE BODY HRMS.PKG_PAYROLL AS
                 v_ded_amount NUMBER;
             BEGIN
                 -- Calculate deduction amount based on type
+                -- RULE: An employee-level override amount takes absolute precedence over any
+                --       standard calculation method for that deduction element
                 IF ded_rec.OVERRIDE_AMOUNT IS NOT NULL THEN
                     v_ded_amount := ded_rec.OVERRIDE_AMOUNT;
+                -- RULE: For FLAT deductions, use the employee's specific amount; if none is set,
+                --       fall back to the element's default flat amount
                 ELSIF ded_rec.CALCULATION_TYPE = 'FLAT' THEN
                     v_ded_amount := NVL(ded_rec.AMOUNT, ded_rec.DEFAULT_AMOUNT);
+                -- RULE: For PERCENTAGE deductions, apply the employee's rate (or the element default
+                --       rate if none is set) against the current period gross pay
                 ELSIF ded_rec.CALCULATION_TYPE = 'PERCENTAGE' THEN
                     v_ded_amount := ROUND(v_period_gross *
                         NVL(ded_rec.PERCENTAGE, ded_rec.DEFAULT_PERCENTAGE) / 100, 2);
@@ -528,6 +596,8 @@ CREATE OR REPLACE PACKAGE BODY HRMS.PKG_PAYROLL AS
                     v_ded_amount := NVL(ded_rec.AMOUNT, 0);
                 END IF;
 
+                -- RULE: Only positive deduction amounts are written to payroll details;
+                --       zero or negative calculated amounts are silently discarded
                 IF v_ded_amount > 0 THEN
                     INSERT INTO PAYROLL_DETAILS (
                         DETAIL_ID, RUN_ID, EMP_ID, ELEMENT_ID, ELEMENT_TYPE,
@@ -563,6 +633,9 @@ CREATE OR REPLACE PACKAGE BODY HRMS.PKG_PAYROLL AS
         WHERE RUN_ID = p_run_id
         FOR UPDATE;
 
+        -- RULE: A payroll run can only be approved when it is in CALCULATED status; runs
+        --       in PENDING, ERROR, APPROVED, or REVERSED status cannot be approved
+        -- RULE: Attempting to approve a run that is not in CALCULATED status raises error -20103
         IF v_status NOT IN ('CALCULATED') THEN
             RAISE_APPLICATION_ERROR(-20103,
                 'Cannot approve run in status: ' || v_status);
@@ -629,19 +702,29 @@ CREATE OR REPLACE PACKAGE BODY HRMS.PKG_PAYROLL AS
         v_annualized := p_taxable_income * v_periods;
 
         -- Subtract standard deduction and allowances
+        -- RULE: Employees filing as MARRIED_JOINT receive the married standard deduction ($29,200);
+        --       all other filing statuses (SINGLE, MARRIED_SEPARATE, etc.) receive the single
+        --       standard deduction ($14,600) — both are 2024 IRS values
         v_std_deduction := CASE
             WHEN p_filing_status IN ('MARRIED_JOINT') THEN c_standard_deduction_married
             ELSE c_standard_deduction_single
         END;
 
+        -- RULE: Each W-4 withholding allowance reduces the employee's annualised taxable income
+        --       by $4,300 before applying federal tax brackets
         v_taxable := v_annualized - v_std_deduction - (p_allowances * c_allowance_amount);
 
+        -- RULE: If annualised income after applying the standard deduction and allowances is zero
+        --       or negative, no federal income tax is withheld
         IF v_taxable <= 0 THEN
             RETURN 0;
         END IF;
 
         -- 2024 Federal tax brackets (Single)
         -- TODO: Read from TAX_BRACKETS table instead of hard-coding
+        -- RULE: SINGLE and MARRIED_SEPARATE filers are taxed under the 2024 seven-bracket
+        --       progressive schedule: 10% up to $11,600; 12% up to $47,150; 22% up to $100,525;
+        --       24% up to $191,950; 32% up to $243,725; 35% up to $609,350; 37% above $609,350
         IF p_filing_status = 'SINGLE' OR p_filing_status = 'MARRIED_SEPARATE' THEN
             IF v_taxable <= 11600 THEN
                 v_tax := v_taxable * 0.10;
@@ -658,6 +741,9 @@ CREATE OR REPLACE PACKAGE BODY HRMS.PKG_PAYROLL AS
             ELSE
                 v_tax := 183647.25 + (v_taxable - 609350) * 0.37;
             END IF;
+        -- RULE: MARRIED_JOINT filers are taxed under the 2024 seven-bracket progressive schedule
+        --       with doubled thresholds: 10% up to $23,200; 12% up to $94,300; 22% up to $201,050;
+        --       24% up to $383,900; 32% up to $487,450; 35% up to $731,200; 37% above $731,200
         ELSIF p_filing_status = 'MARRIED_JOINT' THEN
             IF v_taxable <= 23200 THEN
                 v_tax := v_taxable * 0.10;
@@ -680,6 +766,8 @@ CREATE OR REPLACE PACKAGE BODY HRMS.PKG_PAYROLL AS
         v_tax := ROUND(v_tax / v_periods, 2);
 
         -- Add additional withholding
+        -- VALIDATION: Any additional per-period withholding amount from the employee's W-4 is added
+        --             on top of the calculated tax; NULL is treated as zero (no additional withholding)
         v_tax := v_tax + NVL(p_additional_wh, 0);
 
         RETURN v_tax;
@@ -700,6 +788,11 @@ CREATE OR REPLACE PACKAGE BODY HRMS.PKG_PAYROLL AS
         v_rate NUMBER;
     BEGIN
         -- Simplified flat rates by state (actual implementation would be bracket-based)
+        -- RULE: Employees working in TX, FL, or WA have no state income tax withheld because
+        --       those states impose no personal income tax; employees in unrecognised states
+        --       are defaulted to a 5% flat withholding rate
+        -- CONSTRAINT: State flat withholding rates: CA 7.25%, NY 6.85%, IL 4.95%, PA 3.07%,
+        --             OH 4.00%, NJ 6.37%, MA 5.00%; TX/FL/WA = 0%; unknown states default to 5.00%
         v_rate := CASE p_state_code
             WHEN 'CA' THEN 0.0725
             WHEN 'NY' THEN 0.0685
@@ -726,10 +819,16 @@ CREATE OR REPLACE PACKAGE BODY HRMS.PKG_PAYROLL AS
     ) RETURN NUMBER IS
         v_taxable NUMBER;
     BEGIN
+        -- RULE: Once an employee's year-to-date earnings equal or exceed the Social Security
+        --       wage base ($168,600 for 2024), no further Social Security tax is withheld
+        --       for the remainder of the calendar year
         IF p_ytd_gross >= c_ss_wage_base_2024 THEN
             RETURN 0; -- Already exceeded wage base
         END IF;
 
+        -- RULE: If a pay period would cause year-to-date earnings to cross the wage base,
+        --       only the portion of gross pay that brings YTD earnings up to (but not over)
+        --       the wage base is subject to Social Security tax
         v_taxable := LEAST(p_gross_pay, c_ss_wage_base_2024 - p_ytd_gross);
         RETURN ROUND(v_taxable * c_ss_rate, 2);
     END calculate_fica;
@@ -747,9 +846,15 @@ CREATE OR REPLACE PACKAGE BODY HRMS.PKG_PAYROLL AS
         v_base_tax := ROUND(p_gross_pay * c_medicare_rate, 2);
 
         -- Additional Medicare tax on high earners
+        -- RULE: When an employee's cumulative year-to-date earnings plus the current period gross
+        --       exceed $200,000, the additional 0.9% Medicare surtax begins to apply
         IF p_ytd_gross + p_gross_pay > c_medicare_addl_threshold THEN
+            -- RULE: If the employee's YTD earnings have already exceeded $200,000 before this
+            --       period, the additional 0.9% Medicare surtax applies to the entire period gross pay
             IF p_ytd_gross >= c_medicare_addl_threshold THEN
                 v_addl_tax := ROUND(p_gross_pay * c_medicare_addl_rate, 2);
+            -- RULE: If the $200,000 threshold is crossed during this pay period, only the portion
+            --       of earnings above $200,000 is subject to the additional 0.9% Medicare surtax
             ELSE
                 v_addl_tax := ROUND(
                     (p_ytd_gross + p_gross_pay - c_medicare_addl_threshold) * c_medicare_addl_rate, 2);
@@ -773,7 +878,9 @@ CREATE OR REPLACE PACKAGE BODY HRMS.PKG_PAYROLL AS
                    e.EMP_NUMBER,
                    e.FIRST_NAME || ' ' || e.LAST_NAME AS EMP_NAME,
                    pp.PERIOD_NAME,
+                   -- BUSINESS: Gross pay is the sum of all EARNING-type detail lines for the employee
                    SUM(CASE WHEN pd.ELEMENT_TYPE = 'EARNING' THEN pd.AMOUNT ELSE 0 END) AS GROSS_PAY,
+                   -- BUSINESS: Total deductions aggregate all DEDUCTION, TAX, and BENEFIT lines
                    SUM(CASE WHEN pd.ELEMENT_TYPE IN ('DEDUCTION', 'TAX', 'BENEFIT')
                             THEN ABS(pd.AMOUNT) ELSE 0 END) AS TOTAL_DEDUCTIONS,
                    SUM(pd.AMOUNT) AS NET_PAY,
@@ -787,6 +894,8 @@ CREATE OR REPLACE PACKAGE BODY HRMS.PKG_PAYROLL AS
             JOIN EMPLOYEES e ON pd.EMP_ID = e.EMP_ID
             JOIN PAYROLL_RUNS pr ON pd.RUN_ID = pr.RUN_ID
             JOIN PAY_PERIODS pp ON pr.PERIOD_ID = pp.PERIOD_ID
+            -- BUSINESS: Payslip excludes any detail lines that failed processing (STATUS = 'ERROR');
+            --           result can be filtered to a single employee or returned for all employees
             WHERE pd.RUN_ID = p_run_id
             AND pd.STATUS != 'ERROR'
             AND (p_emp_id IS NULL OR pd.EMP_ID = p_emp_id)
@@ -805,6 +914,9 @@ CREATE OR REPLACE PACKAGE BODY HRMS.PKG_PAYROLL AS
     ) RETURN NUMBER IS
         v_ytd NUMBER;
     BEGIN
+        -- BUSINESS: Year-to-date earnings are the sum of successfully CALCULATED EARNING-type
+        --           detail lines whose pay period start date falls within the specified tax year;
+        --           lines in ERROR or REVERSED status are excluded
         SELECT NVL(SUM(pd.AMOUNT), 0)
         INTO v_ytd
         FROM PAYROLL_DETAILS pd
@@ -861,6 +973,8 @@ CREATE OR REPLACE PACKAGE BODY HRMS.PKG_PAYROLL AS
             FROM PAYROLL_DETAILS pd
             JOIN EMPLOYEES e ON pd.EMP_ID = e.EMP_ID
             JOIN DEPARTMENTS d ON e.DEPT_ID = d.DEPT_ID
+            -- BUSINESS: Pay register excludes detail lines in ERROR status; one row per employee
+            --           per department, covering all element types for the given payroll run
             WHERE pd.RUN_ID = p_run_id
             AND pd.STATUS != 'ERROR'
             GROUP BY e.EMP_NUMBER, e.FIRST_NAME || ' ' || e.LAST_NAME, d.DEPT_NAME
