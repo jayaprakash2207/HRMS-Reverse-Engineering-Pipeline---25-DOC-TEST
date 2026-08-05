@@ -23,6 +23,20 @@
 
 ---
 
+## 🚦 Current Pipeline Status (as of 2026-08-05)
+
+> **For teammates picking this up — read [TEAM_CONTEXT.md](TEAM_CONTEXT.md) first.**
+
+| Step | Description | Status |
+|------|-------------|--------|
+| Steps 1–13 | Source extraction, caching, annotation, deep scan, BA/DA/TA/AA analysis, cross-validation | ✅ **Complete** |
+| Step 14 | Foundation docs (25 documents + Knowledge Graph) | ⚠️ **Partial** — 12/25 docs generated, 13 missing |
+| Step 15 | Gap Hunter (self-healing loop) | ❌ **Not run** |
+
+**To finish:** Delete stale raw outputs and re-run, OR run `python generate_missing_docs.py` for just the missing 13 docs. See [TEAM_CONTEXT.md](TEAM_CONTEXT.md) for exact commands.
+
+---
+
 ## ✨ What This Does
 
 Point this pipeline at your **Oracle Forms + PL/SQL legacy HRMS source code** and it:

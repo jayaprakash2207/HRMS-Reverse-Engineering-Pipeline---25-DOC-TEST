@@ -1,154 +1,219 @@
 # Team Context — Oracle HRMS Reverse Engineering Pipeline
+# HANDOVER GUIDE — Read this before touching anything
 
-This file is for teammates picking up this project. Read this before touching any code.
+Last updated: 2026-08-05
+Status: **PARTIALLY COMPLETE — teammate needs to finish Step 14 docs + Step 15**
 
 ---
 
 ## What This Project Does
 
-Fully automated reverse engineering of an Oracle Forms + PL/SQL legacy HRMS codebase into 25 architecture documents + an Enterprise Knowledge Graph. Target accuracy: **98–100%**.
+Fully automated reverse engineering of an Oracle Forms + PL/SQL legacy HRMS codebase.
+It reads 42 source files and produces 25 architecture documents + an Enterprise Knowledge Graph
+using Claude AI — zero manual work.
 
-**Run it:**
+**Run command:**
 ```bash
-python run.py --source "path/to/oracle-hrms-source" --output ./results
-```
-
-See [README.md](README.md) for full instructions.
-
----
-
-## Pipeline Steps (15 total)
-
-```
-Step 0    Rule Annotator    — auto-injects -- RULE: comments into PL/SQL source copies
-Step 1    Layer 1           — deterministic extraction (no AI)
-Step 2    Scan Once         — cache every file into file_cache.json (all 42 files)
-Step 3    Scan Agent        — deep extract all files via Claude (chunked + self-correcting)
-Step 3.5  Implicit Rules    — extract rules from seed data / Oracle Forms / PL/SQL comments
-Step 4–5  Business Analysis  (Agent 1 → Agent 2 + edge-case pass)   ┐
-Step 6–7  Data Analysis      (Agent 1 → Agent 2 + edge-case pass)   ├─ parallel
-Step 8–10 Technology Analysis(Agent 1 → Batch1 → Batch2 + edge)    ┤
-Step 11–12 Application Analysis (Agent 1 → Agent 2 + edge-case)    ┘
-Step 13   Cross Validator   — cross-track gap check and fill
-Step 14   Foundation        — Knowledge Graph + 25 documents + verification (3 calls)
-Step 15   Gap Hunter        — self-healing loop, fills remaining weakness markers
+cd automated-reverse-engineering-pipeline-main
+python run.py --source "./source" --output ./results
 ```
 
 ---
 
-## 8 Accuracy Improvements (all built into this version)
+## CURRENT STATE — What Is Done vs What Is Pending
 
-| # | File | What it does | Gain |
-|---|------|-------------|:----:|
-| 1 | `pipeline/rule_annotator_runner.py` | Step 0 — auto-injects `-- RULE:` comments from code logic | +5% |
-| 2 | `pipeline/base_runner.py` | Windowed gap detection — scans ALL output (not just first 60k chars) | +3% |
-| 3 | `pipeline/scan_agent_runner.py` | Truncation detection — re-scans files whose extraction < 30% of source | +5% |
-| 4 | `pipeline/implicit_rules_runner.py` | Step 3.5 — seed lookups, Forms constraints, PL/SQL comments, SQL constraints | +2% |
-| 5 | All 4 Agent 2 runners | Edge-case second pass + merge — catches what first pass missed | +2% |
-| 6 | `pipeline/cross_validator_runner.py` | Step 13 — cross-track gaps: AA procedure not in BA, DA table not in BA rule | +4% |
-| 7 | `pipeline/foundation_runner.py` | Foundation Call 3 — cross-checks all 25 docs vs original agent outputs | +4% |
-| 8 | `pipeline/gap_hunter_runner.py` | Step 15 — self-healing loop, fills MISSING/TBD/unknown markers, 3 rounds | +3% |
+### ✅ FULLY COMPLETE (Steps 1–13)
 
-**Before: ~80% → After: ~98–100%**
+| Step | Output | Status |
+|------|--------|--------|
+| Step 1 — Source Extraction | results/Source_Extraction/ | ✅ Done |
+| Step 2 — File Cache | results/file_cache.json (366KB, 42 files) | ✅ Done |
+| Step 0 — Rule Annotator | results/annotated_sources/ (29 files annotated) | ✅ Done |
+| Step 3 — Deep Scan | results/DEEP_SCAN_OUTPUT.md | ✅ Done |
+| Step 3.5 — Implicit Rules | results/implicit_rules.json (310 rules) | ✅ Done |
+| Steps 4–5 — BA Track | results/Business_Analysis/ | ✅ Done |
+| Steps 6–7 — DA Track | results/Data_Analysis/ | ✅ Done |
+| Steps 8–10 — TA Track | results/Technology_Analysis/ | ✅ Done |
+| Steps 11–12 — AA Track | results/Application_Analysis/ | ✅ Done |
+| Step 13 — Cross Validator | results/cross_validation_report.json | ✅ Done |
 
----
+### ⚠️ PARTIALLY COMPLETE (Step 14)
 
-## Output Files
+Step 14 ran but Claude ran out of context mid-way. Only 12 of 25 documents were generated.
 
-After a complete run, `results/` contains:
-
+**Generated (keep these):**
 ```
-file_cache.json                  — raw content of all 42 source files
-DEEP_SCAN_OUTPUT.md              — deep extracted content
-annotated_index.json             — index of rule-annotated source copies
-implicit_rules.json              — implicit business rules
-cross_validation_report.json     — cross-track gap report
-gap_hunter_report.json           — self-healing pass report
+results/ForwardEngineering_Docs/
+  01_BRD.md                          ← partial content, needs expansion
+  01_BRD_SUPPLEMENT.md               ← verified supplement
+  04_BUSINESS_PROCESS_MODEL.md
+  05_DOMAIN_MODEL.md
+  06_DATA_DICTIONARY.md              ← good, 486 lines
+  09_DATA_FLOW_DIAGRAM.md            ← thin, needs expansion
+  10_SERVICE_CATALOG.md              ← good, 369 lines
+  13_SECURITY_ARCHITECTURE.md        ← good, 190 lines
+  17_FORWARD_ENGINEERING_READINESS_REPORT.md
+  18_DEPLOYMENT_ARCHITECTURE.md
+  19_FRONTEND_ARCHITECTURE.md
+  20_UI_UX_SPECIFICATION.md
 
-Business_Analysis/
-  BA_Structural_Scout.md
-  BA_Deep_Analyst.md
+results/Foundation_KnowledgeGraph/
+  ENTERPRISE_KNOWLEDGE_GRAPH.json    ← generated
+```
 
-Data_Analysis/
-  DA_Data_Extractor.md
-  DA_Data_Reviewer.md
-
-Technology_Analysis/
-  TA_Stack_Scout.md
-  TA_Deep_Analyst.md
-
-Application_Analysis/
-  AA_App_Extractor.md
-  AA_Quality_Review.md
+**MISSING (need to generate these 13 docs):**
+```
+ForwardEngineering_Docs/
+  02_BUSINESS_CAPABILITY_MODEL.md
+  03_USE_CASE_SPECIFICATION.md
+  07_DATA_MODEL_SPECIFICATION.md
+  08_ERD.md
+  11_API_CONTRACT_SPECIFICATION.md
+  12_TECHNOLOGY_BLUEPRINT.md
+  14_NFR_SPECIFICATION.md
+  15_FORWARD_ENGINEERING_SPECIFICATION.md
+  16_GENERATION_MANIFEST.json
 
 Foundation_KnowledgeGraph/
-  ENTERPRISE_KNOWLEDGE_GRAPH.json
   CANONICAL_ENTERPRISE_MODEL.md
   ARCHITECTURE_INVENTORY.md
   TRACEABILITY_MATRIX.md
   FORWARD_ENGINEERING_INPUT_MAP.md
-
-ForwardEngineering_Docs/
-  01_BRD.md  →  20_UI_UX_SPECIFICATION.md   (20 documents)
 ```
+
+### ❌ NOT RUN (Step 15)
+
+Step 15 (Gap Hunter) has not been run. Run it after Step 14 is complete.
 
 ---
 
-## How to Run (for new teammates)
+## HOW TO PICK UP AND FINISH
+
+### Option A — Re-run full pipeline (simplest, ~2 hours)
+Steps 1–13 will all skip instantly (already done). Only Steps 14–15 will run.
 
 ```bash
-git clone https://github.com/jayaprakash2207/oracle-reverse-engg-correction-1.git
-cd oracle-reverse-engg-correction-1
-pip install -r requirements.txt
-npm install -g @anthropic-ai/claude-code
-claude login
-
-# Full pipeline (~2.5 hours)
-python run.py --source "path/to/oracle-hrms-source" --output ./results
-
-# OR track by track (recommended — each ~15-45 min)
-python run.py --source <path> --output ./results --track setup        # steps 1–3
-python run.py --source <path> --output ./results --track business     # steps 4–5
-python run.py --source <path> --output ./results --track data         # steps 6–7
-python run.py --source <path> --output ./results --track technology   # steps 8–10
-python run.py --source <path> --output ./results --track application  # steps 11–12
-python run.py --source <path> --output ./results --track validate     # step 13
-python run.py --source <path> --output ./results --track foundation   # steps 14–15
+python run.py --source "./source" --output ./results
 ```
 
-**If interrupted — just re-run the same command. Every step is checkpointed to disk.**
+**BUT FIRST — delete the stale Step 14 raw outputs so it regenerates cleanly:**
+```bash
+del results\Foundation_Raw_Output_Part1.md
+del results\Foundation_Raw_Output_Part2.md
+del results\Foundation_Raw_Output_Part3.md
+rmdir /s /q results\ForwardEngineering_Docs
+rmdir /s /q results\Foundation_KnowledgeGraph
+python run.py --source "./source" --output ./results
+```
+
+### Option B — Generate only missing docs (~40 min)
+Use the script already created for this:
+
+```bash
+python generate_missing_docs.py
+```
+
+This script reads all existing analysis results and calls Claude only for the
+13 missing documents. No full re-run needed. **The prompts are fixed to force
+Claude to output raw Markdown directly (not describe what it wrote).**
+
+Then run Step 15 manually:
+```bash
+python pipeline/gap_hunter_runner.py --output ./results
+```
 
 ---
 
-## Known Issues Fixed
+## KEY FILES TO KNOW
 
-- `PIPELINE_CLAUDE_MODEL` must be empty or unset — do NOT set it to a specific model name
-- `scan_runner.py` validation bug fixed — previously crashed Step 2 on every run
-- All 6 Oracle Forms `.xml` files confirmed readable via content sniffing
-- All 42 source files confirmed cached and validated at Step 2
-
----
-
-## Architecture — Key Files
-
-| File | Purpose |
-|------|---------|
-| `run.py` | Master orchestrator — 15 steps, 7 tracks, parallel threading |
-| `pipeline/rule_annotator_runner.py` | Step 0 — auto rule annotation |
-| `pipeline/base_runner.py` | Core: call_claude(), windowed gap detection, fallback chain |
-| `pipeline/scan_runner.py` | Step 2 — file caching + validation (42 files) |
-| `pipeline/scan_agent_runner.py` | Step 3 — chunked deep scan + self-correction + truncation detection |
-| `pipeline/implicit_rules_runner.py` | Step 3.5 — implicit rule extraction |
-| `pipeline/cross_validator_runner.py` | Step 13 — cross-track validation |
-| `pipeline/foundation_runner.py` | Step 14 — Foundation synthesis (3 calls) |
-| `pipeline/gap_hunter_runner.py` | Step 15 — self-healing gap loop |
-| `pipeline/runners/` | 9 analysis agents (BA/DA/TA/AA × Agent1+Agent2, TA split into 3) |
-| `Prompts_Ready_To_Use/` | 8 Claude system prompts for all agents |
-| `docs/` | Project memory and context files |
+| File | What it does |
+|------|-------------|
+| `run.py` | Master orchestrator — runs all 15 steps |
+| `pipeline/base_runner.py` | call_claude() function — all AI calls go through here |
+| `pipeline/rule_annotator_runner.py` | Step 0 — parallelized (6 threads), annotates PL/SQL files |
+| `pipeline/foundation_runner.py` | Step 14 — generates 25 docs (3 Claude calls) |
+| `pipeline/gap_hunter_runner.py` | Step 15 — self-healing loop |
+| `generate_missing_docs.py` | Utility — generates missing Step 14 docs individually |
+| `reextract_foundation_docs.py` | Utility — re-parses raw foundation outputs to extract docs |
+| `results/file_cache.json` | All 42 source files cached — pipeline reads from here, not source/ |
+| `results/cross_validation_report.json` | 18 gaps + 7 contradictions found across tracks |
 
 ---
 
-## Questions?
+## IMPORTANT KNOWN ISSUES
 
-Contact: Jaya Prakash (repo owner)
-Repo: https://github.com/jayaprakash2207/oracle-reverse-engg-correction-1
+### 1. Step 14 context overflow
+Step 14 sends huge context (all 8 analysis outputs) to Claude in 3 calls.
+Claude sometimes runs out of context and produces partial output with no doc markers.
+**Fix:** Run `generate_missing_docs.py` which generates each doc individually.
+
+### 2. Claude describes instead of writing
+Sometimes Claude responds with "Here is the document I wrote..." instead of
+outputting the actual document. `generate_missing_docs.py` has auto-retry logic for this.
+If it happens again, the fix is adding this to the start of the prompt:
+```
+Output ONLY the raw Markdown. Start with # title on line 1. No preamble.
+```
+
+### 3. Step 0 timeout
+Step 0 (Rule Annotator) was increased to 7200s timeout in run.py.
+It uses 6 parallel threads and takes ~25 min. Do not reduce the timeout.
+
+### 4. Resume safety
+Every step checks if output exists before running. To force a step to re-run,
+delete its output file/folder first.
+
+---
+
+## RESULTS SUMMARY (what was found)
+
+- **42 source files** analysed (22 PL/SQL packages, 6 Oracle Forms, 11 SQL schema, triggers, seed data)
+- **140 business rules** extracted (BA track)
+- **310 implicit rules** extracted (Step 3.5)
+- **30 database tables** mapped (DA track)
+- **18 gaps** found between analysis tracks (13 auto-resolved)
+- **7 contradictions** found between tracks (e.g. hire date: 90 days in form vs 180 days in trigger)
+- **33 quality findings** + 25 architecture violations + 14 risks (AA track)
+
+### Critical findings for the new system:
+1. `HEAD_OF_HOUSEHOLD` employees pay $0 federal tax (critical bug in PKG_PAYROLL)
+2. `EMPLOYEE_HISTORY` column mismatch — trigger references columns that don't exist in DDL (ORA-00904)
+3. `rehire_employee` procedure is completely broken — trigger blocks it
+4. AES-256 encryption key is hardcoded in PKG_SECURITY (security risk)
+5. Race condition in `generate_emp_number` — no SELECT FOR UPDATE
+
+---
+
+## PIPELINE ARCHITECTURE
+
+```
+source/ (42 files)
+    │
+    ▼
+Step 1 → Step 2 (file_cache.json) → Step 0 (annotate) → Step 3 (deep scan) → Step 3.5 (implicit rules)
+    │
+    ├── BA Track (Steps 4–5)  ─┐
+    ├── DA Track (Steps 6–7)   ├── run in parallel threads
+    ├── TA Track (Steps 8–10)  │
+    └── AA Track (Steps 11–12) ┘
+    │
+    ▼
+Step 13 (Cross Validator — finds gaps/contradictions between tracks)
+    │
+    ▼
+Step 14 (Foundation — 25 documents + Knowledge Graph)
+    │
+    ▼
+Step 15 (Gap Hunter — self-healing loop)
+    │
+    ▼
+results/ (50+ output files)
+```
+
+---
+
+## CONTACTS
+
+- Repo owner: Jaya Prakash
+- Repo: https://github.com/jayaprakash2207/oracle-reverse-engg-correction-1
+- Word document (full pipeline explanation): ORACLE_HRMS_PIPELINE_EXPLAINED.docx
