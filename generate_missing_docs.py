@@ -23,10 +23,12 @@ KG missing:
 import sys
 from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).parent / "pipeline"))
+# Always resolve relative to this script — works from any working directory
+BASE_DIR = Path(__file__).parent.resolve()
+sys.path.insert(0, str(BASE_DIR / "pipeline"))
 from base_runner import call_claude
 
-RESULTS = Path("results")
+RESULTS = BASE_DIR / "results"
 FWDENG  = RESULTS / "ForwardEngineering_Docs"
 KG_DIR  = RESULTS / "Foundation_KnowledgeGraph"
 FWDENG.mkdir(exist_ok=True)

@@ -32,3 +32,16 @@ Thumbs.db
 # ── Misc output files at repo root ─────────────────────────────────────────────
 PROJECT_END_TO_END.md
 sdlc_skill_file_template_v2.md
+
+# ── Word lock files (created when .docx is open in Word) ────────────────────
+~$*.docx
+~$*.xlsx
+~$*.pptx
+
+# ── Foundation raw outputs (intermediate Claude responses, not needed by teammates) ──
+results/Foundation_Raw_Output_Part1.md
+results/Foundation_Raw_Output_Part2.md
+results/Foundation_Raw_Output_Part3.md
+
+# ── Claude Code internal ─────────────────────────────────────────────────────
+.claude/
