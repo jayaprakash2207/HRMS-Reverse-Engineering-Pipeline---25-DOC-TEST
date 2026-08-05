@@ -31,10 +31,10 @@
 |------|-------------|--------|
 | Steps 1–13 | Source extraction, caching, annotation, deep scan, BA/DA/TA/AA analysis, cross-validation | ✅ **Complete** |
 | Step 14 | Foundation docs (25 documents + Knowledge Graph) | ✅ **Complete** — all 25 docs generated (400–1963 lines each) |
-| Step 15 | Gap Hunter (self-healing loop) | ⚠️ **Pending** — has a file-overwrite bug, needs fix before running |
+| Step 15 | Gap Hunter (self-healing loop) | ✅ **Complete** — 256 gaps filled across 21 documents in 3 rounds |
 | Human Review | 6 structured review files in `docs/` | ✅ **Ready** — pre-populated with all real findings |
 
-**Next action for teammate:** Fix the file-overwrite bug in `pipeline/gap_hunter_runner.py` and run Step 15, OR proceed directly to human review in `docs/`. See [TEAM_CONTEXT.md](TEAM_CONTEXT.md) for exact details.
+**Next action for teammate:** Open `docs/HUMAN_REVIEW_GUIDE.md` and complete the human review. Resolve all 7 contradictions in `docs/06_REVIEW_Gap_Reports.md` before code generation. See [TEAM_CONTEXT.md](TEAM_CONTEXT.md) for exact details.
 
 ---
 

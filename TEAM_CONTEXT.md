@@ -2,7 +2,7 @@
 # HANDOVER GUIDE — Read this before touching anything
 
 Last updated: 2026-08-05
-Status: **STEPS 1–14 COMPLETE ✅ — Step 15 pending fix + run**
+Status: **ALL STEPS 1–15 COMPLETE ✅ — Ready for Human Review**
 
 ---
 
@@ -37,6 +37,7 @@ python run.py --source "./source" --output ./results
 | Steps 11–12 — AA Track | results/Application_Analysis/ | ✅ Done |
 | Step 13 — Cross Validator | results/cross_validation_report.json | ✅ Done |
 | Step 14 — Foundation Docs | results/ForwardEngineering_Docs/ (21 files) + results/Foundation_KnowledgeGraph/ (5 files) | ✅ Done |
+| Step 15 — Gap Hunter | results/gap_hunter_report.json — 256 gaps filled across 21 docs, 3 rounds | ✅ Done |
 
 ### ✅ ALL 25 FOUNDATION DOCUMENTS GENERATED
 
@@ -89,45 +90,16 @@ docs/05_REVIEW_Foundation_Documents.md      — All 25 docs checklist
 docs/06_REVIEW_Gap_Reports.md               — 7 contradictions (MUST resolve before codegen)
 ```
 
-### ⚠️ PENDING (Step 15)
-
-Step 15 (Gap Hunter) has a bug — it overwrites entire files instead of patching only the
-gap section. **Do NOT run `python pipeline/gap_hunter_runner.py` without fixing this bug first.**
-
-**The bug:** In `pipeline/gap_hunter_runner.py`, the file write after gap-filling replaces
-the whole document with just the patched section. Fix: do a targeted section replacement,
-not a full file overwrite.
-
-**After fixing the bug:**
-```bash
-python pipeline/gap_hunter_runner.py --output ./results
-```
-This runs up to 3 rounds, patching any TBD/MISSING/unknown markers in all 25 docs.
-
 ---
 
 ## HOW TO PICK UP AND FINISH
 
-### Option A — Fix Step 15 bug and run it (~30 min)
+### All pipeline steps are complete. Next step is Human Review.
 
-1. Fix `pipeline/gap_hunter_runner.py` — change the file write to patch only the gap section
-2. Run it: `python pipeline/gap_hunter_runner.py --output ./results`
-3. Verify no files shrunk (compare sizes before/after)
-4. Then proceed to human review in `docs/`
-
-### Option B — Skip Step 15, go straight to human review (~0 min)
-
-The 25 documents are already 400–1963 lines of complete content.
-Step 15 would only add marginal improvements. You can skip it and go straight to:
-1. Open `docs/HUMAN_REVIEW_GUIDE.md`
+1. Open `docs/HUMAN_REVIEW_GUIDE.md` — start here
 2. Complete each review file (fill in Reviewer Action columns)
-3. Resolve all 7 contradictions in `docs/06_REVIEW_Gap_Reports.md`
+3. Resolve all 7 contradictions in `docs/06_REVIEW_Gap_Reports.md` — MUST do before codegen
 4. Start code generation from `results/ForwardEngineering_Docs/16_GENERATION_MANIFEST.json`
-
-### Option C — Full re-run (not recommended — wastes ~2 hours)
-
-Steps 1–13 will all skip instantly (already done). Only Steps 14–15 will run.
-But you'll lose the existing documents. Not recommended unless something is broken.
 
 ---
 
@@ -150,11 +122,7 @@ But you'll lose the existing documents. Not recommended unless something is brok
 
 ## IMPORTANT KNOWN ISSUES
 
-### 1. Step 15 file-overwrite bug
-`gap_hunter_runner.py` replaces entire files with just the patched gap section when filling gaps.
-**Must fix before running.** The documents are safe as long as Step 15 is not run.
-
-### 2. Step 14 context overflow (historical — already fixed)
+### 1. Step 14 context overflow (historical — already fixed)
 Step 14 originally sent huge context to Claude in 3 calls, causing truncation.
 Fix was applied: `generate_missing_docs.py` generates each doc individually (one call per doc, 5 parallel workers).
 
