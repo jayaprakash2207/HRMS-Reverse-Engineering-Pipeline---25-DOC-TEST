@@ -121,6 +121,7 @@ Business meaning: Header record for each payroll execution cycle. One row per pa
 | APPROVED_DATE | DATE | — | No | Approval timestamp. |
 | CREATED_BY | NUMBER(10) | FK→EMPLOYEES | No | User who initiated the run. |
 | CREATED_DATE | DATE | NN | No | Creation timestamp. |
+| GL_FEED_SENT_DATE | DATE | — | No | [GAP-FILLED] Timestamp when the GL journal file was successfully written and handed off to Oracle Financials. NULL until `PKG_INTEGRATION.generate_gl_journal` completes. Required for GL reconciliation audit trail. Currently absent from the schema — no procedure writes this value (confirmed: BR-GL-80; see also BC-02 event table and BC-09 event table in CANONICAL_ENTERPRISE_MODEL). |
 
 ---
 
@@ -319,6 +320,27 @@ Business meaning: Employee-to-plan enrollment records. Drives ADP benefits feed 
 
 ---
 
+## Table: USER_SESSIONS (TBL-022)
+
+**[GAP-FILLED]** Table DDL not found in deep scan (`plsql/jobs/session_cleanup_job.sql` not found; `plsql/schema/scheduler_jobs.sql` not found). Column catalogue recovered from `PKG_SECURITY.pkb`: `INSERT` statement in `authenticate` confirms SESSION_ID, EMP_ID, USERNAME, LOGIN_TIME, IP_ADDRESS, SESSION_STATUS, CREATED_DATE; `UPDATE` statements in `logout` and `is_session_valid` confirm LOGOUT_TIME and SESSION_STATUS values CLOSED/EXPIRED. Sequence confirmed: SEQ_USER_SESSION.NEXTVAL.
+
+Business meaning: Server-side session store for all authenticated HRMS users. One row is inserted per successful login event. Session validity (30-minute timeout) is checked lazily — only when `PKG_SECURITY.is_session_valid` is next called for that session. Sessions opened by terminated employees remain STATUS = ACTIVE for up to 30 minutes after termination because `PKG_EMPLOYEE.terminate_employee` does not touch this table. No background sweep job removes stale rows; the table accumulates indefinitely (gap evidence: TD-75, GAP-O-11 in `02_BUSINESS_CAPABILITY_MODEL.md`, BR-008 in `01_BRD.md`, REC-S07 in `07_DATA_MODEL_SPECIFICATION.md`).
+
+| Column | Type | Constraints | PII | Business Meaning |
+|--------|------|-------------|-----|-----------------|
+| SESSION_ID | NUMBER(15) | PK | No | **[GAP-FILLED]** Surrogate key. Source: SEQ_USER_SESSION.NEXTVAL (confirmed via `PKG_SECURITY.authenticate`). Returned to the caller as the opaque session token; passed back on every subsequent API call. |
+| EMP_ID | NUMBER(10) | FK→EMPLOYEES, NN | No | **[GAP-FILLED]** Authenticated employee. Resolved via EMPLOYEES.EMAIL = p_username lookup in `authenticate`. |
+| USERNAME | VARCHAR2(100) | NN | Yes | **[GAP-FILLED]** Email address supplied at login (mirrors EMPLOYEES.EMAIL). Denormalised into the session row for audit forensics so the audit trail survives an email change on the EMPLOYEES record. |
+| LOGIN_TIME | DATE | NN | No | **[GAP-FILLED]** Timestamp of successful authentication (set to SYSDATE in `authenticate`). Used by `is_session_valid` to calculate elapsed minutes against the hard-coded 30-minute constant `c_session_timeout_min`. Not driven by SYSTEM_PARAMETERS — the parameter table row for SESSION_TIMEOUT_MINUTES is non-functional (DQ-027 in `07_DATA_MODEL_SPECIFICATION.md`). |
+| LOGOUT_TIME | DATE | — | No | **[GAP-FILLED]** Null on insert. Set to SYSDATE by `logout` (STATUS → CLOSED) or by `is_session_valid` on timeout detection (STATUS → EXPIRED). Remains NULL for any session that is abandoned without an explicit logout and never polled again — which is the common browser-close scenario. |
+| IP_ADDRESS | VARCHAR2(45) | — | Yes | **[GAP-FILLED]** Client IP address at login time (accepts IPv4 or IPv6 string; 45 chars covers full IPv6 notation). Passed as p_ip_address DEFAULT NULL in `authenticate`. PII — retained for 90 days per data-retention policy (`07_DATA_MODEL_SPECIFICATION.md` §retention, `09_DATA_FLOW_DIAGRAM.md` §data-at-rest). |
+| SESSION_STATUS | VARCHAR2(20) | CHK | No | **[GAP-FILLED]** Confirmed values: ACTIVE (set on insert), CLOSED (set by `logout`), EXPIRED (set by `is_session_valid` on timeout). Values are not normalised via LOOKUP_VALUES. No DDL CHECK constraint text recovered, but the three string literals are the only values written by `PKG_SECURITY`. No trigger or background job transitions ACTIVE rows to EXPIRED; a session remains ACTIVE in the table until the next `is_session_valid` call for that specific SESSION_ID. |
+| CREATED_DATE | DATE | NN | No | **[GAP-FILLED]** Row insert timestamp (set to SYSDATE in `authenticate`, same instant as LOGIN_TIME in current implementation). |
+
+**[GAP-FILLED] Missing background cleanup job — HRMS_SESSION_CLEANUP:** No `DBMS_SCHEDULER` or `DBMS_JOB` definition was found anywhere in the source tree. `plsql/jobs/session_cleanup_job.sql` was not found in the deep scan; `plsql/schema/scheduler_jobs.sql` was not found. Consequence: USER_SESSIONS rows with SESSION_STATUS = 'ACTIVE' are never swept by a background process. The table grows without bound. A terminated employee's session tokens remain technically valid for up to 30 minutes post-termination and no automated mechanism closes them sooner. BR-008 in `01_BRD.md` requires a job named `HRMS_SESSION_CLEANUP` running every 5 minutes to expire rows where `LOGIN_TIME < SYSDATE - INTERVAL '30' MINUTE AND SESSION_STATUS = 'ACTIVE'`; that job is entirely absent from the confirmed source. REC-S07 in `07_DATA_MODEL_SPECIFICATION.md` (Medium priority) and GAP-O-11 in `02_BUSINESS_CAPABILITY_MODEL.md` independently document the same gap. The job must be created as part of schema deployment. Cross-references: BR-008, TD-75, GAP-O-11, L2-06-02, DQ-027, REC-S07.
+
+---
+
 ## Table: NOTIFICATION_QUEUE
 
 **[GAP-FILLED] Architecture correction:** The data dictionary entry below reflects the *intended* design (template + payload pattern). The confirmed DDL (`schema/tables/04_performance_tables.sql`, lines 129–148) and the implemented package body (`PKG_NOTIFICATION.pkb`) reveal a materially different *as-built* schema. The actual table carries no `TEMPLATE_ID`, no `PAYLOAD`, and no `RECIPIENT_ID` column. The as-built columns are: `NOTIFICATION_ID`, `RECIPIENT_EMP_ID`, `RECIPIENT_EMAIL`, `NOTIFICATION_TYPE`, `SUBJECT`, `BODY CLOB NOT NULL`, `STATUS`, `PRIORITY`, `SENT_DATE`, `ERROR_MESSAGE`, `RETRY_COUNT`, `REFERENCE_TABLE`, `REFERENCE_ID`, `CREATED_BY`, `CREATED_DATE`. The as-built dispatch procedure (`PKG_NOTIFICATION.send_notification`) accepts a fully-rendered `p_body IN CLOB`; all callers (PKG_EMPLOYEE, PKG_LEAVE, PKG_PERFORMANCE) construct the message body inline via PL/SQL string concatenation before the call. No template-merge step exists at runtime.
@@ -348,3 +370,37 @@ Business meaning: Message templates for all notification types. Placeholders mer
 | Column | Type | Constraints | PII | Business Meaning |
 |--------|------|-------------|-----|-----------------|
 | TEMPLATE_ID | NUMBER(10) | PK | No | **[GAP-FILLED]** Column definition not recoverable — DDL source not found. |
+
+---
+
+## Table: EMPLOYEE_DEPENDENTS (TBL-019)
+
+Business meaning: Records dependents (spouse, child, parent, domestic partner, other) covered under an employee's benefit plans. Each row is a named third-party data subject. The table feeds the ADP benefits integration via `PKG_INTEGRATION.generate_benefits_file`, which includes dependent rows whose `ACTIVE_FLAG = 'Y'` for all currently ACTIVE employees. Two structural gaps are present: (1) the `BENEFITS_ENROLLED` flag is stored but never enforced or acted upon by any procedure; (2) the termination flow does not touch this table, leaving dependent rows in their pre-termination state after an employee is terminated.
+
+DDL source: `schema/tables/01_core_tables.sql` lines 182–199 (confirmed).
+
+| Column | Type | Constraints | PII | Business Meaning |
+|--------|------|-------------|-----|-----------------|
+| DEPENDENT_ID | NUMBER(10) | PK, NN | No | Surrogate key. Source: SEQ_DEPENDENT.NEXTVAL. |
+| EMP_ID | NUMBER(10) | FK→EMPLOYEES, NN | No | Parent employee. FK_DEP_EMP with ON DELETE NO ACTION — deletion of the parent employee row is blocked if dependents exist. |
+| FIRST_NAME | VARCHAR2(50) | NN | Yes | Dependent's legal first name. Third-party data subject. |
+| LAST_NAME | VARCHAR2(50) | NN | Yes | Dependent's legal last name. Third-party data subject. |
+| RELATIONSHIP | VARCHAR2(20) | NN, CHK_RELATIONSHIP | No | Values: SPOUSE / CHILD / PARENT / DOMESTIC_PARTNER / OTHER. Confirmed via `CHK_RELATIONSHIP` in DDL source line 198. Cross-references BR-120 in `BA_Deep_Analyst_FINAL.md`. |
+| DATE_OF_BIRTH | DATE | — | Yes | PII — intended for benefits age-gating (e.g. child age-out rules). No procedure performs age-gate validation against this column in the confirmed source. |
+| SSN_ENCRYPTED | VARCHAR2(200) | — | Yes/ENC | AES-256 encrypted Social Security Number of the dependent. Uses the same hard-coded key constant as EMPLOYEES.SSN_ENCRYPTED (PKG_SECURITY — PP-06 in BA analysis). No decryption procedure for dependents was found in the confirmed source. |
+| BENEFITS_ENROLLED | CHAR(1) | — (nullable, default 'N') | No | **[GAP-FILLED] Flag without enforcement:** Y = this dependent is enrolled in active benefits; N = not enrolled (default). This column is present in the confirmed DDL (`01_core_tables.sql` line 190) and in `da-outputs/schema-catalogue.json`. No procedure in any confirmed package (PKG_EMPLOYEE, PKG_INTEGRATION, PKG_PAYROLL, PKG_SECURITY, PKG_NOTIFICATION, PKG_COMMON, PKG_AUDIT) reads this flag to gate, validate, or act upon it. `PKG_INTEGRATION.generate_benefits_file` (the ADP feed) selects dependent rows solely on `ACTIVE_FLAG = 'Y'` — it does not filter on `BENEFITS_ENROLLED`. The flag is therefore collected but entirely unenforced. A dependent with `BENEFITS_ENROLLED = 'N'` would still be sent to ADP as long as `ACTIVE_FLAG = 'Y'`. Forward engineering must decide: either enforce this flag as the ADP inclusion gate (and backfill existing rows) or remove it as misleading dead data. |
+| ACTIVE_FLAG | CHAR(1) | NN, default 'Y' | No | Soft-delete flag. 'Y' = dependent is active and will be included in the ADP benefits feed. 'N' = logically deleted. `PKG_INTEGRATION.generate_benefits_file` filters on `ACTIVE_FLAG = 'Y'` (confirmed: `PKG_INTEGRATION.pkb` line 124). |
+| CREATED_BY | VARCHAR2(30) | NN | No | Oracle session user who inserted the row. |
+| CREATED_DATE | DATE | NN, default SYSDATE | No | Row creation timestamp. |
+| MODIFIED_BY | VARCHAR2(30) | — | No | Oracle session user who last modified the row. |
+| MODIFIED_DATE | DATE | — | No | Last modification timestamp. |
+
+**[GAP-FILLED] Missing cascade-close logic on termination:** `PKG_EMPLOYEE.terminate_employee` (confirmed source: `PKG_EMPLOYEE.pkb` lines 681–786) executes the following UPDATE statements in sequence: LEAVE_REQUESTS (cancel PENDING), EMPLOYEES (set TERMINATED/ACTIVE_FLAG='N'), SALARY_RECORDS (end-date active rows), EMPLOYEE_PAY_ELEMENTS (end-date active rows). It does not issue any UPDATE or write to EMPLOYEE_DEPENDENTS. After termination, every dependent row for the terminated employee remains with its pre-termination `ACTIVE_FLAG` and `BENEFITS_ENROLLED` values unchanged. Practical consequences:
+
+1. **ADP over-reporting:** The next `generate_benefits_file` run selects dependents via `LEFT JOIN EMPLOYEE_DEPENDENTS d ON e.EMP_ID = d.EMP_ID AND d.ACTIVE_FLAG = 'Y'` filtered to `e.EMPLOYMENT_STATUS = 'ACTIVE'`. The parent employee filter (`EMPLOYMENT_STATUS = 'ACTIVE'`) will correctly exclude the terminated employee's row from the feed — so ADP will not receive the terminated employee's record. However, if the `EMPLOYEES.ACTIVE_FLAG` filter is ever relaxed or a report queries EMPLOYEE_DEPENDENTS directly without joining to EMPLOYEES, terminated-employee dependents remain silently visible with `ACTIVE_FLAG = 'Y'`.
+
+2. **No COBRA trigger path:** The `terminate_employee` procedure includes a `-- TODO: Integrate with benefits system to trigger COBRA` comment (line 778) but no dependent close-out has been implemented. Forward engineering must add: `UPDATE EMPLOYEE_DEPENDENTS SET ACTIVE_FLAG = 'N', BENEFITS_ENROLLED = 'N', MODIFIED_BY = p_user, MODIFIED_DATE = SYSDATE WHERE EMP_ID = p_emp_id AND ACTIVE_FLAG = 'Y'` as part of the termination transaction, alongside the COBRA notification hook.
+
+3. **No procedure for BENEFITS_ENROLLED enforcement:** No `validate_dependent_enrollment`, `enroll_dependent`, or equivalent procedure was found in any package. The flag can only be set via direct DML against the table; there is no business-logic layer managing its lifecycle.
+
+Cross-references: BR-22/BR-23/BR-24 (termination rules, `BA_Deep_Analyst_FINAL.md`); PP-03 (COBRA not implemented); `PKG_EMPLOYEE.pkb` lines 778–780 (TODO comments); `PKG_INTEGRATION.pkb` lines 119–128 (ADP feed query).

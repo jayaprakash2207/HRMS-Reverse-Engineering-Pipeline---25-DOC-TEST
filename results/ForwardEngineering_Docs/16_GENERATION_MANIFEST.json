@@ -1,0 +1,798 @@
+{
+  "manifest_version": "1.0",
+  "system_name": "HRMS_MODERNISATION",
+  "source_system": "Oracle HRMS PL/SQL",
+  "target_stack": {
+    "backend": "Java 17 / Spring Boot 3.x / Spring Data JPA / Spring Security",
+    "database": "PostgreSQL 15 (primary OLTP) + Redis 7 (session cache)",
+    "frontend": "React 18 + TypeScript / MUI v5",
+    "infrastructure": "Docker + Kubernetes / AWS EKS / AWS Secrets Manager / AWS S3 (feed files)"
+  },
+  "bounded_contexts": [
+    {
+      "id": "BC-01",
+      "name": "Employee Identity",
+      "phase": 1,
+      "entities": ["Employee", "EmployeeHistory", "TerminationCode"],
+      "services": ["EmployeeService", "HireService", "TerminationService", "TransferService"],
+      "apis": [
+        "POST /api/v1/employees",
+        "GET /api/v1/employees/{id}",
+        "PUT /api/v1/employees/{id}",
+        "GET /api/v1/employees",
+        "POST /api/v1/employees/{id}/terminate",
+        "POST /api/v1/employees/{id}/transfer",
+        "GET /api/v1/employees/{id}/history"
+      ],
+      "migration_complexity": "HIGH",
+      "critical_fixes": [
+        "Implement COBRA notification on termination — PP-TERM-01 federal compliance gap, every termination is an unreported qualifying event",
+        "Implement PKG_PAYROLL.calculate_final_pay — procedure does not exist in source; every termination requires fully manual payroll (PP-TERM-03)",
+        "Implement immediate session invalidation at termination — source only blocks new logins via EMPLOYMENT_STATUS check; in-flight sessions remain valid 30 minutes (BR-TERM sub-step B)",
+        "Inactivate EMPLOYEE_DEPENDENTS on termination — source terminate_employee never touches dependent records; terminated employees dependents remain in ADP benefits feed (BR-DEP-09)",
+        "Inactivate EMPLOYEE_BANK_ACCOUNTS on termination — no step in source (AO-TERM-04)",
+        "Eliminate LOV_MANAGERS grade constraint gap — add minimum grade filter to prevent Intern-as-manager selection (TD-72)"
+      ]
+    },
+    {
+      "id": "BC-02",
+      "name": "Compensation",
+      "phase": 1,
+      "entities": ["SalaryRecord", "PayrollRun", "PayrollDetail", "DeductionRecord", "PayElement", "JobGrade"],
+      "services": ["PayrollService", "CompensationService", "TaxCalculationService", "DisbursementService"],
+      "apis": [
+        "POST /api/v1/payroll/runs",
+        "GET /api/v1/payroll/runs/{id}",
+        "POST /api/v1/payroll/runs/{id}/calculate",
+        "POST /api/v1/payroll/runs/{id}/approve",
+        "GET /api/v1/payroll/runs/{id}/details",
+        "GET /api/v1/employees/{id}/salary",
+        "POST /api/v1/employees/{id}/salary",
+        "GET /api/v1/employees/{id}/payslips",
+        "POST /api/v1/payroll/runs/{id}/disburse"
+      ],
+      "migration_complexity": "HIGH",
+      "critical_fixes": [
+        "Fix HEAD_OF_HOUSEHOLD federal tax branch returning $0 — confirmed defect in PKG_PAYROLL.calculate_employee_pay(); assess historical under-withholding liability",
+        "Implement direct deposit disbursement — EMPLOYEE_BANK_ACCOUNTS is fully designed for split-deposit but referenced by zero procedures in payroll lifecycle (PP-BA-01 CRITICAL)",
+        "Implement calculate_final_pay for terminated employees — procedure does not exist in source (PP-TERM-03 CRITICAL)",
+        "Encrypt ROUTING_NUMBER alongside ACCOUNT_NUMBER_ENC — currently stored plaintext; constitutes full ACH credentials (TD-46)",
+        "Implement ACH prenote on bank account creation/reactivation — PRENOTE_SENT and PRENOTE_DATE columns exist but are never populated by any package (PP-BA-03)",
+        "Add DEPOSIT_TYPE cross-column validation — PARTIAL_AMOUNT account with NULL DEPOSIT_AMOUNT is accepted by source schema (BR-BA-09)",
+        "Add distribution total constraint — multiple accounts summing to 80 or 120 percent accepted without error (BR-BA-11)",
+        "Add GL_FEED_SENT_DATE and GL_FEED_FILE_NAME to PAYROLL_RUNS — no reconciliation mechanism exists in source (TD-80)",
+        "Replace Oracle MEDIAN() aggregate with PostgreSQL equivalent in compensation reporting (MC-02b)",
+        "Elevate salary-grade validation from soft warning to blocking error at API layer (TD-74)"
+      ]
+    },
+    {
+      "id": "BC-03",
+      "name": "Leave Management",
+      "phase": 2,
+      "entities": ["LeaveBalance", "LeaveRequest", "LeaveType"],
+      "services": ["LeaveService", "AccrualService", "LeaveApprovalService"],
+      "apis": [
+        "POST /api/v1/leave/requests",
+        "GET /api/v1/leave/requests/{id}",
+        "PUT /api/v1/leave/requests/{id}/approve",
+        "PUT /api/v1/leave/requests/{id}/reject",
+        "GET /api/v1/employees/{id}/leave-balances",
+        "POST /api/v1/leave/accrual/run",
+        "GET /api/v1/leave/types"
+      ],
+      "migration_complexity": "MEDIUM",
+      "critical_fixes": [
+        "Fix run_monthly_accrual retry block — uses SET ACCRUED = v_accrued (assignment) instead of SET ACCRUED = ACCRUED + v_accrued (increment); silently destroys prior balance on concurrency retry (BR-LIB-05 HIGH)",
+        "Update FMLA seed data REQUIRES_DOCUMENT to Y and enforce supporting document upload in leave submission workflow (TD-71)",
+        "Add CALENDAR_YEAR column projection in leave_utilization_report cursor — missing projection prevents multi-year RPT_LEAVE_UTILISATION snapshots (DQ-032)"
+      ]
+    },
+    {
+      "id": "BC-04",
+      "name": "Performance",
+      "phase": 2,
+      "entities": ["ReviewCycle", "PerformanceReview", "PerformanceGoal", "GoalReview"],
+      "services": ["PerformanceReviewService", "CalibrationService", "GoalService", "RatingDistributionService"],
+      "apis": [
+        "POST /api/v1/performance/cycles",
+        "POST /api/v1/performance/reviews",
+        "PUT /api/v1/performance/reviews/{id}/submit-self",
+        "PUT /api/v1/performance/reviews/{id}/submit-manager",
+        "PUT /api/v1/performance/reviews/{id}/calibrate",
+        "PUT /api/v1/performance/reviews/{id}/acknowledge",
+        "GET /api/v1/performance/reviews",
+        "GET /api/v1/performance/rating-distribution",
+        "POST /api/v1/performance/goals",
+        "PUT /api/v1/performance/goals/{id}"
+      ],
+      "migration_complexity": "MEDIUM",
+      "critical_fixes": [
+        "Implement calibration workflow — CALIBRATED_RATING and CALIBRATION_NOTES columns exist in source schema but no procedure in PKG_PERFORMANCE ever writes to either column and no CALIBRATION status transition exists",
+        "Add CALIBRATION intermediate status between COMPLETED and ACKNOWLEDGED in review lifecycle state machine",
+        "Fix get_rating_distribution to aggregate on CALIBRATED_RATING not OVERALL_RATING once calibration is implemented — source reads pre-calibration raw manager input for org-wide official reporting",
+        "Define calibration authorization rules — who can trigger calibration, whether mandatory, and how CALIBRATED_RATING relates to OVERALL_RATING (unresolved business policy)"
+      ]
+    },
+    {
+      "id": "BC-05",
+      "name": "Benefits",
+      "phase": 2,
+      "entities": ["BenefitPlan", "BenefitEnrollment", "EmployeeDependent"],
+      "services": ["BenefitsEnrollmentService", "DependentService", "BenefitsFeedExportService"],
+      "apis": [
+        "POST /api/v1/benefits/enrollments",
+        "GET /api/v1/employees/{id}/benefits",
+        "PUT /api/v1/benefits/enrollments/{id}",
+        "POST /api/v1/employees/{id}/dependents",
+        "GET /api/v1/employees/{id}/dependents",
+        "PUT /api/v1/employees/{id}/dependents/{depId}",
+        "DELETE /api/v1/employees/{id}/dependents/{depId}"
+      ],
+      "migration_complexity": "HIGH",
+      "critical_fixes": [
+        "Enforce BENEFITS_ENROLLED flag in ADP benefits feed export — source exports all ACTIVE_FLAG = Y dependents regardless of enrollment status; un-enrolled dependents transmitted to ADP (BR-DEP-05)",
+        "Implement dependent SSN decryption path — SSN_ENCRYPTED exists on EMPLOYEE_DEPENDENTS but no decrypt procedure call exists anywhere for dependents (BR-DEP-06 CRITICAL)",
+        "Inactivate dependents on employee termination — source terminate_employee never touches EMPLOYEE_DEPENDENTS (BR-DEP-09 HIGH)",
+        "Add unique constraint guard on singular relationships to prevent duplicate SPOUSE rows per employee (G-3)",
+        "Implement COBRA notification pipeline triggered by termination qualifying event; resolve hold vs immediate inactivation policy (VQ-DEP-04)"
+      ]
+    },
+    {
+      "id": "BC-06",
+      "name": "Security and Access",
+      "phase": 1,
+      "entities": ["UserCredential", "UserSession", "AuditLog", "SystemParameter"],
+      "services": ["AuthenticationService", "SessionService", "PasswordService", "EncryptionService", "AuditService"],
+      "apis": [
+        "POST /api/v1/auth/login",
+        "POST /api/v1/auth/logout",
+        "POST /api/v1/auth/change-password",
+        "GET /api/v1/auth/sessions/{sessionId}/validate",
+        "DELETE /api/v1/auth/sessions/{sessionId}",
+        "GET /api/v1/audit-log"
+      ],
+      "migration_complexity": "HIGH",
+      "critical_fixes": [
+        "Implement real password verification in authenticate() — source never queries USER_CREDENTIALS; any valid username is authenticated regardless of password; comment reads 'we simulate authentication' (BR-042 CRITICAL)",
+        "Replace MD5 password hashing with bcrypt cost-factor 12 or Argon2id — RAWTOHEX(DBMS_CRYPTO.HASH(HASH_MD5)) is trivially reversible via rainbow tables (DQ-010 CRITICAL)",
+        "Externalize AES-256 encryption key to AWS Secrets Manager — hard-coded key HR$ystem_3ncrypt10n_K3y_2024!! is present in source code (DQ-001/TD-01 CRITICAL)",
+        "Implement old-password verification in change_password — p_old_password received but never compared against stored credential; any session can silently replace any employee password (BR-044/DQ-029 HIGH)",
+        "Handle duplicate email in authenticate — source silently logs in as MIN(EMP_ID) when two ACTIVE employees share an email; the other employee cannot authenticate (BR-043b HIGH)",
+        "Implement scheduled session sweep — stale sessions stay permanently ACTIVE when browser is closed without logout; no background cleanup in source (TD-75)",
+        "Raise e_account_locked and e_session_expired exceptions — declared in package spec but zero raise sites in body; Oracle Forms callers branching on these names will never fire their handlers (BR-045/DQ-030)",
+        "Implement brute-force lockout — no LOGIN_ATTEMPTS or LOCKED_UNTIL mechanism in source (DQ-023)",
+        "Create dedicated HRMS_PORTAL_APP DB user with EXECUTE-only grants — self-service portal connection model undeclared; potential unrestricted schema access (TD-81)"
+      ]
+    },
+    {
+      "id": "BC-07",
+      "name": "Organisational Structure",
+      "phase": 1,
+      "entities": ["Department", "JobTitle", "JobGrade", "OrgHierarchy"],
+      "services": ["OrgStructureService", "DepartmentService", "HierarchyService"],
+      "apis": [
+        "GET /api/v1/org/departments",
+        "POST /api/v1/org/departments",
+        "PUT /api/v1/org/departments/{id}",
+        "GET /api/v1/org/hierarchy",
+        "GET /api/v1/org/job-titles",
+        "POST /api/v1/org/job-grades"
+      ],
+      "migration_complexity": "MEDIUM",
+      "critical_fixes": [
+        "Replace Oracle CONNECT BY recursive hierarchy with PostgreSQL recursive CTE (WITH RECURSIVE) — source degrades above 500 employees on PARENT_DEPARTMENT_ID self-join",
+        "Implement PKG_INTEGRATION.sync_org_structure — source body is a complete placeholder that only calls log_info('Org structure sync completed') and returns; no data moves (BR-ORG-01/BR-ORG-02 HIGH)",
+        "Define LDAP/AD connection parameters and sync scope (departments, reporting lines, job titles) — entirely absent from source (BR-ORG-03/BR-ORG-04); confirm with DBA if procedure is currently scheduled (VQ-ORG-03)",
+        "Implement IS_MANAGER flag on JobTitle to prevent LOV_MANAGERS selecting Intern-as-manager (TD-72)"
+      ]
+    },
+    {
+      "id": "BC-08",
+      "name": "Notifications",
+      "phase": 2,
+      "entities": ["NotificationQueue", "NotificationTemplate"],
+      "services": ["NotificationDispatchService", "TemplateService", "EmailService", "SMSService"],
+      "apis": [
+        "POST /api/v1/notifications",
+        "GET /api/v1/notifications/{id}",
+        "POST /api/v1/notifications/dispatch",
+        "GET /api/v1/notification-templates",
+        "POST /api/v1/notification-templates"
+      ],
+      "migration_complexity": "MEDIUM",
+      "critical_fixes": [
+        "Implement SMS channel — source PKG_NOTIFICATION references EMPLOYEES.PHONE column but SMS handler is not implemented",
+        "Implement retry mechanism with exponential backoff for failed notification delivery",
+        "Replace Oracle UTL_MAIL SMTP dependency with AWS SES or equivalent cloud email service"
+      ]
+    },
+    {
+      "id": "BC-09",
+      "name": "Integration and Export",
+      "phase": 3,
+      "entities": ["IntegrationJob", "FeedFile", "TimeAttendanceRecord"],
+      "services": ["ADPBenefitsFeedService", "GLJournalService", "OrgSyncService", "TimeAttendanceImportService", "NACHADisbursementService"],
+      "apis": [
+        "POST /api/v1/integrations/benefits-feed/generate",
+        "POST /api/v1/integrations/gl-journal/generate",
+        "POST /api/v1/integrations/org-sync",
+        "POST /api/v1/integrations/time-attendance/import",
+        "GET /api/v1/integrations/jobs/{jobId}/status"
+      ],
+      "migration_complexity": "HIGH",
+      "critical_fixes": [
+        "Implement NACHA ACH disbursement file generation — EMPLOYEE_BANK_ACCOUNTS is fully designed for split-deposit but entirely unused in payroll lifecycle (PP-BA-01 CRITICAL)",
+        "Implement ACH prenote step on bank account creation and reactivation — PRENOTE_SENT and PRENOTE_DATE never populated by any package (PP-BA-03 HIGH)",
+        "Implement TIME_ATTENDANCE_RECORDS import with real DML and transaction boundary — source stub does no inserts and logs false success (DQ-031/BR-046 HIGH)",
+        "Add ADP benefits feed format version header and record-count trailer; validate each record is exactly 203 characters before write (TD-73)",
+        "Implement GL feed acknowledgement tracking — add GL_FEED_SENT_DATE and GL_FEED_FILE_NAME to PAYROLL_RUNS; no reconciliation possible with source design (TD-80)",
+        "Document and validate Oracle Financials Journal Source and Category values — not visible in source PKG_INTEGRATION; incorrect values reject entire GL batch (TD-79)",
+        "Replace UTL_FILE flat-file output with secure S3 upload with server-side encryption for all outbound feed files"
+      ]
+    },
+    {
+      "id": "BC-10",
+      "name": "Reporting",
+      "phase": 3,
+      "entities": ["RPTHeadcount", "RPTCompensation", "RPTLeaveUtilisation", "RPTTurnover", "RPTNewHires", "RPTPayrollSummary", "RPTEEOCompliance"],
+      "services": ["HeadcountReportService", "CompensationReportService", "TurnoverReportService", "LeaveUtilisationReportService", "NewHiresReportService", "PayrollSummaryReportService", "EEOComplianceReportService", "ReportRefreshService"],
+      "apis": [
+        "GET /api/v1/reports/headcount",
+        "GET /api/v1/reports/compensation",
+        "GET /api/v1/reports/turnover",
+        "GET /api/v1/reports/new-hires",
+        "GET /api/v1/reports/leave-utilisation",
+        "GET /api/v1/reports/payroll-summary",
+        "GET /api/v1/reports/eeo-compliance",
+        "POST /api/v1/reports/refresh"
+      ],
+      "migration_complexity": "MEDIUM",
+      "critical_fixes": [
+        "Implement refresh_reporting_tables with real TRUNCATE + INSERT for all 7 RPT_* tables — source body is a complete stub that only calls log_info and logs false success (BR-043 HIGH)",
+        "Confirm RPT_* tables exist in production DDL and whether they have ever held live data before migration planning (G1-NEW-01)",
+        "Fix TURNOVER_PCT denominator — source uses hires-up-to-end-date rather than average headcount; produces non-comparable figures vs SHRM standard (BR-044)",
+        "Add CALENDAR_YEAR column to leave_utilisation_report cursor projection to support multi-year RPT_LEAVE_UTILISATION snapshots (DQ-032)",
+        "Apply row-level security on RPT_NEW_HIRES — co-locates name, salary, and hire date in one denormalized row with no access guard on direct SELECT (access-control-matrix gap)",
+        "Replace Oracle MEDIAN() in compensation_summary with PostgreSQL PERCENTILE_CONT(0.5) WITHIN GROUP (ORDER BY salary) equivalent (MC-02b)",
+        "Externalize ELEMENT_ID magic numbers 100/101/102/103 in payroll_summary_report to configuration table"
+      ]
+    }
+  ],
+  "data_migrations": [
+    {
+      "id": "DM-01",
+      "source_table": "EMPLOYEES",
+      "target_table": "employees",
+      "complexity": "HIGH",
+      "notes": "Decrypt SSN_ENCRYPTED using legacy hard-coded AES-256 key, re-encrypt with key from Secrets Manager. Encrypt BANK_ROUTING_NUMBER which is plaintext in source. Validate TAX_FILING_STATUS enum values. Map EMPLOYMENT_STATUS to target domain values. Audit for duplicate EMAIL addresses before applying unique constraint.",
+      "pii_fields": ["FIRST_NAME", "LAST_NAME", "MIDDLE_NAME", "DATE_OF_BIRTH", "SSN", "EMAIL", "PHONE", "ADDRESS_LINE1", "ADDRESS_LINE2", "CITY", "STATE", "ZIP_CODE", "BANK_ACCOUNT_NUMBER", "BANK_ROUTING_NUMBER", "EMERGENCY_CONTACT_NAME", "EMERGENCY_CONTACT_PHONE"]
+    },
+    {
+      "id": "DM-02",
+      "source_table": "USER_CREDENTIALS",
+      "target_table": "user_credentials",
+      "complexity": "HIGH",
+      "notes": "MD5 hashes cannot be directly migrated to bcrypt. Migrate all accounts with is_password_reset_required=true. Notify all users to reset password on first login. New system enforces bcrypt cost factor 12.",
+      "pii_fields": ["PASSWORD_HASH"]
+    },
+    {
+      "id": "DM-03",
+      "source_table": "EMPLOYEE_DEPENDENTS",
+      "target_table": "employee_dependents",
+      "complexity": "MEDIUM",
+      "notes": "Decrypt SSN_ENCRYPTED using legacy AES-256 key and re-encrypt with new key. Confirm same key is used as for EMPLOYEES.SSN_ENCRYPTED (VQ-BA-01). Validate RELATIONSHIP against CHECK constraint values. BENEFITS_ENROLLED flag to be honoured in new system unlike source.",
+      "pii_fields": ["FIRST_NAME", "LAST_NAME", "DATE_OF_BIRTH", "SSN_ENCRYPTED"]
+    },
+    {
+      "id": "DM-04",
+      "source_table": "EMPLOYEE_BANK_ACCOUNTS",
+      "target_table": "employee_bank_accounts",
+      "complexity": "HIGH",
+      "notes": "Decrypt ACCOUNT_NUMBER_ENC. Encrypt ROUTING_NUMBER which is plaintext in source. Validate DEPOSIT_TYPE and cross-column constraints. Audit accounts for distribution totals (PARTIAL_AMOUNT + PARTIAL_PERCENT + REMAINDER should sum to 100 percent).",
+      "pii_fields": ["ACCOUNT_NUMBER_ENC", "ROUTING_NUMBER"]
+    },
+    {
+      "id": "DM-05",
+      "source_table": "SALARY_RECORDS",
+      "target_table": "salary_records",
+      "complexity": "MEDIUM",
+      "notes": "Validate SALARY_TYPE enum values. Confirm current salary per employee is MAX(EFFECTIVE_DATE) row where END_DATE IS NULL. No encryption changes required.",
+      "pii_fields": []
+    },
+    {
+      "id": "DM-06",
+      "source_table": "PAYROLL_RUNS",
+      "target_table": "payroll_runs",
+      "complexity": "HIGH",
+      "notes": "Migrate historical payroll data. Validate STATUS enum values (DRAFT/CALCULATED/APPROVED/GL_GENERATED/COMPLETED). Add GL_FEED_SENT_DATE and GL_FEED_FILE_NAME columns absent from source. Historical HOH records may reflect under-withheld federal tax — flag for payroll review.",
+      "pii_fields": []
+    },
+    {
+      "id": "DM-07",
+      "source_table": "PAYROLL_DETAILS",
+      "target_table": "payroll_details",
+      "complexity": "HIGH",
+      "notes": "Remove dependence on hard-coded ELEMENT_ID values 100/101/102/103. Map to named configuration entries. Validate all ELEMENT_ID references resolve to existing pay elements.",
+      "pii_fields": []
+    },
+    {
+      "id": "DM-08",
+      "source_table": "LEAVE_BALANCES",
+      "target_table": "leave_balances",
+      "complexity": "MEDIUM",
+      "notes": "Audit ACCRUED balances for potential corruption from run_monthly_accrual retry bug (BR-LIB-05) before migration. Flag any employee with ACCRUED < expected monthly accrual total for manual review.",
+      "pii_fields": []
+    },
+    {
+      "id": "DM-09",
+      "source_table": "LEAVE_REQUESTS + LEAVE_TYPES",
+      "target_table": "leave_requests + leave_types",
+      "complexity": "LOW",
+      "notes": "Update FMLA REQUIRES_DOCUMENT seed data from N to Y during migration (TD-71). Validate leave request STATUS values map to target enum.",
+      "pii_fields": []
+    },
+    {
+      "id": "DM-10",
+      "source_table": "PERFORMANCE_REVIEWS + REVIEW_CYCLES + PERFORMANCE_GOALS + GOAL_REVIEWS",
+      "target_table": "performance_reviews + review_cycles + performance_goals + goal_reviews",
+      "complexity": "MEDIUM",
+      "notes": "CALIBRATED_RATING will be NULL for all historical records as no write path exists in source — map explicitly to null. Document that get_rating_distribution historically used OVERALL_RATING for analytics continuity.",
+      "pii_fields": []
+    },
+    {
+      "id": "DM-11",
+      "source_table": "BENEFIT_PLANS + BENEFIT_ENROLLMENTS",
+      "target_table": "benefit_plans + benefit_enrollments",
+      "complexity": "MEDIUM",
+      "notes": "Validate ADP plan codes. Reconcile active enrollment status against ADP feed to detect discrepancies caused by BENEFITS_ENROLLED flag not being enforced in source export.",
+      "pii_fields": []
+    },
+    {
+      "id": "DM-12",
+      "source_table": "DEPARTMENTS + JOB_POSITIONS",
+      "target_table": "departments + job_positions",
+      "complexity": "LOW",
+      "notes": "Convert Oracle CONNECT BY hierarchy to adjacency list for PostgreSQL WITH RECURSIVE queries. Validate no circular PARENT_DEPARTMENT_ID references before migration.",
+      "pii_fields": []
+    },
+    {
+      "id": "DM-13",
+      "source_table": "AUDIT_LOG",
+      "target_table": "audit_events + application_errors + application_info",
+      "complexity": "LOW",
+      "notes": "Source mixes ERROR_LOG, INFO_LOG, and DML audit events in a single table (TD-37). Split into three target tables during migration with independent retention policies.",
+      "pii_fields": []
+    },
+    {
+      "id": "DM-14",
+      "source_table": "NOTIFICATION_TEMPLATES",
+      "target_table": "notification_templates",
+      "complexity": "LOW",
+      "notes": "Migrate templates only. Do not migrate pending NOTIFICATION_QUEUE items — requeue from application events after go-live.",
+      "pii_fields": []
+    },
+    {
+      "id": "DM-15",
+      "source_table": "LOOKUP_VALUES + reference data (01_reference_data.sql)",
+      "target_table": "lookup_values + gl_account_codes",
+      "complexity": "LOW",
+      "notes": "Migrate all reference data. Update FMLA REQUIRES_DOCUMENT from N to Y. Add GL_ACCOUNT_CODES reference table for pay element GL coding scheme which is currently an undocumented numeric convention (TD-57).",
+      "pii_fields": []
+    }
+  ],
+  "critical_defects": [
+    {
+      "id": "CD-001",
+      "severity": "CRITICAL",
+      "title": "Authentication stub — password never verified",
+      "source_ref": "BR-042 / PKG_SECURITY.authenticate()",
+      "description": "authenticate() never queries USER_CREDENTIALS. Any valid username is authenticated regardless of password. Source comment reads 'we simulate authentication against a simplified model'.",
+      "bounded_context": "BC-06",
+      "fix": "Implement credential lookup against USER_CREDENTIALS with bcrypt hash comparison. Go-live blocker."
+    },
+    {
+      "id": "CD-002",
+      "severity": "CRITICAL",
+      "title": "MD5 password hashing — critically weak",
+      "source_ref": "DQ-010 / PKG_SECURITY.hash_password()",
+      "description": "RAWTOHEX(DBMS_CRYPTO.HASH(HASH_MD5)) used for all stored passwords. MD5 is not a password hashing algorithm; all stored hashes are trivially reversible via rainbow tables.",
+      "bounded_context": "BC-06",
+      "fix": "Replace with bcrypt cost-factor 12 or Argon2id. Force password reset for all migrated accounts via is_password_reset_required flag."
+    },
+    {
+      "id": "CD-003",
+      "severity": "CRITICAL",
+      "title": "Hard-coded AES-256 encryption key in source code",
+      "source_ref": "DQ-001 / TD-01 / PKG_SECURITY",
+      "description": "AES-256 key HR$ystem_3ncrypt10n_K3y_2024!! is hard-coded in the package body. All SSNs, bank account numbers, and other PII encrypted with this key are compromised if source code is accessed.",
+      "bounded_context": "BC-06",
+      "fix": "Externalize key to AWS Secrets Manager. Rotate key and re-encrypt all PII fields during migration."
+    },
+    {
+      "id": "CD-004",
+      "severity": "CRITICAL",
+      "title": "HEAD_OF_HOUSEHOLD federal tax calculation returns $0",
+      "source_ref": "PKG_PAYROLL.calculate_employee_pay()",
+      "description": "The HOH branch in the federal income tax calculation returns zero tax for all employees with TAX_FILING_STATUS = HEAD_OF_HOUSEHOLD. These employees have been systematically under-withheld throughout the system's operational life.",
+      "bounded_context": "BC-02",
+      "fix": "Implement correct 2024 IRS Publication 15-T HOH federal tax bracket table. Assess historical under-withholding liability with tax counsel."
+    },
+    {
+      "id": "CD-005",
+      "severity": "CRITICAL",
+      "title": "Direct deposit non-functional — EMPLOYEE_BANK_ACCOUNTS never read during payroll",
+      "source_ref": "PP-BA-01 / BR-BA-12 / DISC-009",
+      "description": "EMPLOYEE_BANK_ACCOUNTS is fully designed for split-deposit across multiple accounts but is referenced by zero procedures, functions, triggers, or views. Payroll lifecycle ends at GL journal generation with no disbursement step.",
+      "bounded_context": "BC-02",
+      "fix": "Implement ACH disbursement service reading EMPLOYEE_BANK_ACCOUNTS, validating distribution totals, and generating NACHA file per approved payroll run."
+    },
+    {
+      "id": "CD-006",
+      "severity": "CRITICAL",
+      "title": "COBRA compliance gap — zero action on termination",
+      "source_ref": "PP-TERM-01 / PKG_EMPLOYEE.terminate_employee() sub-step A",
+      "description": "terminate_employee contains a single TODO comment for COBRA and takes zero action. COBRA requires employee and dependent notification within 14 days of a qualifying event. Every termination processed through the system creates an unreported qualifying event.",
+      "bounded_context": "BC-01",
+      "fix": "Implement COBRA notification workflow triggered synchronously or via event on termination. Resolve policy on immediate vs hold-for-election inactivation of dependents (VQ-TERM-02 / VQ-DEP-04)."
+    },
+    {
+      "id": "CD-007",
+      "severity": "CRITICAL",
+      "title": "PKG_PAYROLL.calculate_final_pay does not exist",
+      "source_ref": "PP-TERM-03 / PKG_EMPLOYEE.terminate_employee() sub-step C",
+      "description": "The procedure is referenced in a TODO comment but has never been created. There is no prorated wage calculation, no PTO payout, no off-cycle payroll run capability, and no handling for a CLOSED pay period on a mid-period termination date. Every termination requires fully manual payroll outside the system.",
+      "bounded_context": "BC-02",
+      "fix": "Implement calculate_final_pay with prorated wage, PTO payout calculation, deduction adjustments, and off-cycle run support."
+    },
+    {
+      "id": "CD-008",
+      "severity": "HIGH",
+      "title": "change_password never verifies old password",
+      "source_ref": "BR-044 / DQ-029 / PKG_SECURITY.change_password()",
+      "description": "p_old_password parameter is received but the body never compares it against USER_CREDENTIALS. Any authenticated session can silently replace any employee password without knowing the current one.",
+      "bounded_context": "BC-06",
+      "fix": "Add old-password verification using bcrypt.verify(p_old_password, stored_hash) before allowing credential update."
+    },
+    {
+      "id": "CD-009",
+      "severity": "HIGH",
+      "title": "Duplicate email causes silent MIN(EMP_ID) login",
+      "source_ref": "BR-043b / PKG_SECURITY.authenticate()",
+      "description": "If two ACTIVE employees share an email address, authenticate() silently logs in as the employee with the lowest EMP_ID. The other employee cannot authenticate at all.",
+      "bounded_context": "BC-06",
+      "fix": "Add unique partial index on EMPLOYEES.EMAIL WHERE EMPLOYMENT_STATUS = ACTIVE. Audit current data for duplicates before applying constraint. Return distinct error code when duplicate email detected."
+    },
+    {
+      "id": "CD-010",
+      "severity": "HIGH",
+      "title": "Org structure sync is a complete placeholder",
+      "source_ref": "BR-ORG-01 / BR-ORG-02 / PKG_INTEGRATION.sync_org_structure()",
+      "description": "Procedure body consists only of PKG_COMMON.log_info('Org structure sync completed') and a return. No tables are read or written. No LDAP connection is made. If currently scheduled, every run writes a false-positive success log indistinguishable from a real completed sync.",
+      "bounded_context": "BC-09",
+      "fix": "Confirm with DBA if procedure is scheduled (VQ-ORG-03). Remove false-positive log immediately. Implement real LDAP/AD sync with connection parameters from SYSTEM_PARAMETERS."
+    },
+    {
+      "id": "CD-011",
+      "severity": "HIGH",
+      "title": "Performance calibration workflow entirely absent from codebase",
+      "source_ref": "PERFORMANCE_REVIEWS.CALIBRATED_RATING / PKG_PERFORMANCE all procedures",
+      "description": "CALIBRATED_RATING and CALIBRATION_NOTES columns exist in the schema but no procedure in PKG_PERFORMANCE writes to either. No CALIBRATION status transition exists. get_rating_distribution uses OVERALL_RATING (raw manager input) for org-wide official reporting instead of calibrated values.",
+      "bounded_context": "BC-04",
+      "fix": "Implement calibration workflow with CALIBRATION status between COMPLETED and ACKNOWLEDGED. Write CALIBRATED_RATING in calibrate step. Route get_rating_distribution to CALIBRATED_RATING."
+    },
+    {
+      "id": "CD-012",
+      "severity": "HIGH",
+      "title": "Dependent SSN encrypted but no decrypt path exists",
+      "source_ref": "BR-DEP-06 / EMPLOYEE_DEPENDENTS.SSN_ENCRYPTED",
+      "description": "EMPLOYEE_DEPENDENTS.SSN_ENCRYPTED is present and presumably AES-256 encrypted but no decrypt procedure call exists anywhere in the codebase for dependent SSNs. Operational access to dependent SSNs is impossible.",
+      "bounded_context": "BC-05",
+      "fix": "Extend encryption service to cover EMPLOYEE_DEPENDENTS.SSN_ENCRYPTED. Confirm same key applies (VQ-BA-01). Ensure decryption is available for benefits and tax reporting use cases."
+    },
+    {
+      "id": "CD-013",
+      "severity": "HIGH",
+      "title": "Terminated employee dependents remain active in benefits feed",
+      "source_ref": "BR-DEP-09 / PKG_EMPLOYEE.terminate_employee()",
+      "description": "terminate_employee does not update EMPLOYEE_DEPENDENTS. Terminated employees dependents retain ACTIVE_FLAG = Y and are exported to ADP in every subsequent benefits feed run, potentially creating phantom benefit enrollments.",
+      "bounded_context": "BC-05",
+      "fix": "Add dependent inactivation step to termination workflow. Confirm COBRA hold policy — dependents may need to remain active briefly for COBRA election window (VQ-DEP-04)."
+    },
+    {
+      "id": "CD-014",
+      "severity": "HIGH",
+      "title": "run_monthly_accrual retry block silently overwrites balance",
+      "source_ref": "BR-LIB-05 / PKG_LEAVE.run_monthly_accrual()",
+      "description": "The concurrency retry block uses SET ACCRUED = v_accrued (assignment) instead of SET ACCRUED = ACCRUED + v_accrued (increment). If SQL%ROWCOUNT = 0 fires on an existing row due to a concurrency race, the entire prior accrual balance is silently overwritten with only the current period amount.",
+      "bounded_context": "BC-03",
+      "fix": "Change retry to incremental update. Audit historical LEAVE_BALANCES for anomalies before migration (DM-08)."
+    },
+    {
+      "id": "CD-015",
+      "severity": "HIGH",
+      "title": "Bank routing numbers stored in plaintext",
+      "source_ref": "TD-46 / EMPLOYEE_BANK_ACCOUNTS.ROUTING_NUMBER",
+      "description": "ROUTING_NUMBER is VARCHAR2(20) NOT NULL with no encryption. Combined with encrypted ACCOUNT_NUMBER_ENC, anyone with SELECT access to the table has full ACH credentials for every employee.",
+      "bounded_context": "BC-02",
+      "fix": "Encrypt ROUTING_NUMBER using same key management pattern as ACCOUNT_NUMBER_ENC. Apply during DM-04 migration."
+    },
+    {
+      "id": "CD-016",
+      "severity": "HIGH",
+      "title": "refresh_reporting_tables is a stub — RPT_* tables never populated",
+      "source_ref": "BR-043 / PKG_REPORTING.refresh_reporting_tables()",
+      "description": "The nightly refresh procedure body calls only PKG_COMMON.log_info and returns. Seven RPT_* reporting tables are never written to. Any Oracle Reports .rdf file or BI tool consuming RPT_* receives stale or empty data.",
+      "bounded_context": "BC-10",
+      "fix": "Implement TRUNCATE + INSERT logic for all 7 RPT_* tables. Confirm tables exist in production DDL before implementation (G1-NEW-01)."
+    },
+    {
+      "id": "CD-017",
+      "severity": "HIGH",
+      "title": "import_time_attendance stub performs no DML",
+      "source_ref": "DQ-031 / BR-046 / PKG_INTEGRATION.import_time_attendance()",
+      "description": "Procedure opens CSV file, iterates rows with per-line error continuation, but inserts nothing. Logs 'Import completed' unconditionally as a false success signal. No TIME_ATTENDANCE_RECORDS DDL exists. No link to PAYROLL_DETAILS or PAYROLL_RUNS.",
+      "bounded_context": "BC-09",
+      "fix": "Define TIME_ATTENDANCE_RECORDS DDL. Implement CSV parsing with proper transaction boundary. Link attendance to payroll calculation pipeline."
+    },
+    {
+      "id": "CD-018",
+      "severity": "HIGH",
+      "title": "BENEFITS_ENROLLED flag collected but never enforced in ADP export",
+      "source_ref": "BR-DEP-05 / PKG_INTEGRATION.export_benefits_feed()",
+      "description": "export_benefits_feed LEFT JOIN exports all dependents with ACTIVE_FLAG = Y to ADP regardless of BENEFITS_ENROLLED value. Un-enrolled dependents are transmitted to the benefits vendor.",
+      "bounded_context": "BC-05",
+      "fix": "Add AND d.BENEFITS_ENROLLED = 'Y' filter to the dependent JOIN in export_benefits_feed, or obtain explicit business confirmation that ADP should receive all active dependents regardless of enrollment status."
+    },
+    {
+      "id": "CD-019",
+      "severity": "HIGH",
+      "title": "ACH prenote not implemented — Nacha compliance gap",
+      "source_ref": "PP-BA-03 / EMPLOYEE_BANK_ACCOUNTS.PRENOTE_SENT / PRENOTE_DATE",
+      "description": "PRENOTE_SENT and PRENOTE_DATE columns exist for Nacha prenote compliance but are never set by any package. New bank accounts are used for live disbursement without prenote validation, violating Nacha operating rules.",
+      "bounded_context": "BC-09",
+      "fix": "Implement prenote generation on account creation or reactivation. Hold disbursement to new accounts until prenote is confirmed (3 business days per Nacha rules)."
+    },
+    {
+      "id": "CD-020",
+      "severity": "MEDIUM",
+      "title": "Stale sessions not cleaned up — indefinitely ACTIVE rows",
+      "source_ref": "TD-75 / PKG_SECURITY.is_session_valid()",
+      "description": "Session timeout is evaluated only on the next is_session_valid call. When a user closes the browser without logout, USER_SESSIONS row remains STATUS = ACTIVE indefinitely. No background sweep exists.",
+      "bounded_context": "BC-06",
+      "fix": "Implement scheduled job every 5 minutes to SET STATUS = EXPIRED for rows where LOGIN_TIME < NOW() - INTERVAL 30 minutes AND STATUS = ACTIVE."
+    },
+    {
+      "id": "CD-021",
+      "severity": "MEDIUM",
+      "title": "e_account_locked and e_session_expired declared but never raised",
+      "source_ref": "BR-045 / DQ-030 / PKG_SECURITY package spec",
+      "description": "Both named exceptions (ORA-20302 and ORA-20303) appear in the package spec but have zero raise sites in the body. is_session_valid returns FALSE instead of raising e_session_expired. Oracle Forms callers with exception handlers for these names will never fire them.",
+      "bounded_context": "BC-06",
+      "fix": "Raise e_account_locked after N failed login attempts. Raise e_session_expired in is_session_valid instead of returning FALSE."
+    },
+    {
+      "id": "CD-022",
+      "severity": "MEDIUM",
+      "title": "Salary grade validation is a soft warning only",
+      "source_ref": "TD-74 / PKG_EMPLOYEE.create_employee() / HRMS_VALIDATION_LIB.validate_salary_range()",
+      "description": "Salary vs grade range check runs only in debug mode in PKG_EMPLOYEE and emits a MESSAGE warning without RAISE FORM_TRIGGER_FAILURE in HRMS_VALIDATION_LIB. Employees can be created or promoted with salaries outside grade band without any blocking.",
+      "bounded_context": "BC-02",
+      "fix": "Elevate to blocking validation at service layer for all callers; return HTTP 422 at API layer with grade band min/max in error detail."
+    },
+    {
+      "id": "CD-023",
+      "severity": "MEDIUM",
+      "title": "Self-service portal DB connection model undeclared — potential unrestricted schema access",
+      "source_ref": "TD-81 / PKG_LEAVE.pks header comment",
+      "description": "PKG_LEAVE is called by the self-service portal but portal DB credentials, schema grants, and session context setup are absent from all source files. If the portal connects as the HRMS schema owner it has unrestricted DML on all tables.",
+      "bounded_context": "BC-06",
+      "fix": "Create dedicated HRMS_PORTAL_APP DB user with EXECUTE grants only on specific PKG_LEAVE procedures. Portal must obtain session_id via PKG_SECURITY and pass it on every call."
+    }
+  ],
+  "validation_gates": [
+    {
+      "id": "VG-01",
+      "name": "Security Hardening Gate",
+      "phase": 1,
+      "blocking": true,
+      "criteria": [
+        "CD-001 resolved: authenticate() verifies password against USER_CREDENTIALS with bcrypt hash comparison",
+        "CD-002 resolved: bcrypt cost-factor 12 implemented; all test accounts provisioned with new hash",
+        "CD-003 resolved: AES encryption key externalized to Secrets Manager; hard-coded key removed from all code and config",
+        "CD-008 resolved: change_password verifies old password before credential update",
+        "CD-009 resolved: duplicate ACTIVE email handled at creation and at authentication",
+        "Penetration test of all authentication endpoints: zero critical or high severity findings",
+        "Secret scanner (gitleaks) integrated to CI pipeline and passing with no credentials in codebase"
+      ]
+    },
+    {
+      "id": "VG-02",
+      "name": "Payroll Correctness Gate",
+      "phase": 1,
+      "blocking": true,
+      "criteria": [
+        "CD-004 resolved: HEAD_OF_HOUSEHOLD federal tax brackets verified against IRS 2024 Publication 15-T",
+        "CD-022 resolved: salary-grade validation is blocking at API layer with grade band details in error response",
+        "All five TAX_FILING_STATUS values produce correct non-zero tax for standard income scenarios",
+        "Payroll calculation regression suite passes for minimum 100 synthetic employee profiles covering all status and bracket combinations",
+        "State income tax flat-rate table verified for all US states present in EMPLOYEES.STATE"
+      ]
+    },
+    {
+      "id": "VG-03",
+      "name": "PII and Encryption Migration Gate",
+      "phase": 1,
+      "blocking": true,
+      "criteria": [
+        "All EMPLOYEES.SSN values decrypted from legacy key and re-encrypted with Secrets Manager key",
+        "CD-012 resolved: EMPLOYEE_DEPENDENTS.SSN_ENCRYPTED decryption and re-encryption path implemented and tested",
+        "CD-015 resolved: ROUTING_NUMBER encrypted in target schema",
+        "DM-02 resolved: all USER_CREDENTIALS records have is_password_reset_required = true",
+        "Automated PII scan of target PostgreSQL database confirms zero plaintext SSNs or bank account numbers",
+        "Key rotation runbook documented and tested end-to-end in staging"
+      ]
+    },
+    {
+      "id": "VG-04",
+      "name": "Compliance Gate",
+      "phase": 2,
+      "blocking": true,
+      "criteria": [
+        "CD-006 resolved: COBRA notification event generated on every termination; delivery verified within 14-day window",
+        "CD-019 resolved: ACH prenote process implemented and validated with bank test environment",
+        "TD-71 resolved: FMLA REQUIRES_DOCUMENT = Y enforced; supporting document upload implemented in leave submission",
+        "Legal review sign-off on COBRA notification content and timing",
+        "Nacha compliance checklist complete and signed off for prenote and live disbursement flows"
+      ]
+    },
+    {
+      "id": "VG-05",
+      "name": "Direct Deposit End-to-End Gate",
+      "phase": 2,
+      "blocking": true,
+      "criteria": [
+        "CD-005 resolved: EMPLOYEE_BANK_ACCOUNTS read during payroll run disburse step",
+        "NACHA ACH file generated for test payroll run and validated accepted by bank partner",
+        "All four DEPOSIT_TYPEs (FULL, PARTIAL_AMOUNT, PARTIAL_PERCENT, REMAINDER) validated in split-deposit scenario",
+        "Distribution total validation: accounts summing to values other than 100 percent rejected with clear error",
+        "DEPOSIT_TYPE cross-column validation: PARTIAL_AMOUNT with NULL DEPOSIT_AMOUNT rejected at API layer"
+      ]
+    },
+    {
+      "id": "VG-06",
+      "name": "Termination Workflow Gate",
+      "phase": 2,
+      "blocking": true,
+      "criteria": [
+        "CD-006 resolved: COBRA notification queued synchronously or via event on termination",
+        "CD-007 resolved: calculate_final_pay implemented for mid-period and period-boundary terminations",
+        "CD-013 resolved: EMPLOYEE_DEPENDENTS inactivated on termination per agreed COBRA hold policy",
+        "EMPLOYEE_BANK_ACCOUNTS inactivated on termination",
+        "In-flight sessions invalidated immediately on termination commit",
+        "Access blocked independent of grade check — terminated employee with elevated grade cannot authenticate"
+      ]
+    },
+    {
+      "id": "VG-07",
+      "name": "Integration Validation Gate",
+      "phase": 3,
+      "blocking": false,
+      "criteria": [
+        "ADP benefits feed validated end-to-end with ADP UAT environment including format version header and record count trailer",
+        "Oracle Financials GL Journal Source and Category values confirmed and accepted in Oracle Financials test instance",
+        "CD-010 resolved or explicitly deferred with stakeholder sign-off and monitoring alert on false-positive log",
+        "CD-017 resolved: time attendance import functional with transaction boundary and payroll linkage defined",
+        "CD-016 resolved: all 7 RPT_* tables populated by refresh job and validated against OLTP source counts"
+      ]
+    },
+    {
+      "id": "VG-08",
+      "name": "Data Migration Quality Gate",
+      "phase": 1,
+      "blocking": true,
+      "criteria": [
+        "Row counts match between source Oracle and target PostgreSQL for all 15 migration units",
+        "Zero plaintext SSNs or bank account numbers in target confirmed by automated scan",
+        "Leave balance audit: zero employees with ACCRUED less than expected cumulative monthly accrual indicating BR-LIB-05 corruption",
+        "Payroll history spot-check: 50 employee payslips verified against source PAYROLL_DETAILS",
+        "All EMPLOYMENT_STATUS values map to valid target enum values with zero unmapped rows",
+        "Zero orphaned foreign keys across all migrated tables"
+      ]
+    },
+    {
+      "id": "VG-09",
+      "name": "CI/CD Pipeline Gate",
+      "phase": 1,
+      "blocking": true,
+      "criteria": [
+        "Automated build pipeline established: all commits trigger build and unit tests",
+        "Unit test suite with minimum 80 percent line coverage on all service layer classes",
+        "SAST scan configured with zero critical or high severity findings at merge",
+        "Secret scanner blocking on any hard-coded credential pattern in pull request",
+        "Automated deployment to staging environment operational and tested",
+        "Rollback procedure documented and tested for each of the 15 data migration units"
+      ]
+    },
+    {
+      "id": "VG-10",
+      "name": "Performance and Scalability Gate",
+      "phase": 3,
+      "blocking": false,
+      "criteria": [
+        "Payroll calculation for 10000 employees completes within 5 minutes",
+        "GET /api/v1/org/hierarchy responds within 2 seconds at 500 employees and 10 levels deep",
+        "All 7 reporting endpoints respond within 10 seconds against production data volume",
+        "POST /api/v1/auth/login responds within 200ms at 500 concurrent authentication requests",
+        "GET /api/v1/auth/sessions/{id}/validate responds within 100ms at 1000 concurrent sessions"
+      ]
+    }
+  ],
+  "artifacts": [
+    {
+      "id": "ART-01",
+      "name": "Business Requirements Document",
+      "path": "results/ForwardEngineering_Docs/01_BRD.md",
+      "type": "requirements"
+    },
+    {
+      "id": "ART-02",
+      "name": "Business Capability Model",
+      "path": "results/ForwardEngineering_Docs/02_BUSINESS_CAPABILITY_MODEL.md",
+      "type": "requirements"
+    },
+    {
+      "id": "ART-03",
+      "name": "Use Case Specification",
+      "path": "results/ForwardEngineering_Docs/03_USE_CASE_SPECIFICATION.md",
+      "type": "requirements"
+    },
+    {
+      "id": "ART-04",
+      "name": "Data Model Specification",
+      "path": "results/ForwardEngineering_Docs/07_DATA_MODEL_SPECIFICATION.md",
+      "type": "data-architecture"
+    },
+    {
+      "id": "ART-05",
+      "name": "Entity Relationship Diagram",
+      "path": "results/ForwardEngineering_Docs/08_ERD.md",
+      "type": "data-architecture"
+    },
+    {
+      "id": "ART-06",
+      "name": "API Contract Specification",
+      "path": "results/ForwardEngineering_Docs/11_API_CONTRACT_SPECIFICATION.md",
+      "type": "api-design"
+    },
+    {
+      "id": "ART-07",
+      "name": "BA Deep Analyst — Full Merged Analysis BR-01 through BR-140",
+      "path": "results/Business_Analysis/BA_Deep_Analyst.md",
+      "type": "analysis"
+    },
+    {
+      "id": "ART-08",
+      "name": "BA Deep Analyst Edge — Cross-validation Supplements",
+      "path": "results/Business_Analysis/BA_Deep_Analyst_Edge.md",
+      "type": "analysis"
+    },
+    {
+      "id": "ART-09",
+      "name": "DA Data Reviewer — Full Merged Three-Pass Report",
+      "path": "da-outputs/DA_Data_Reviewer.md",
+      "type": "analysis"
+    },
+    {
+      "id": "ART-10",
+      "name": "DA Data Extractor",
+      "path": "da-outputs/DA_Data_Extractor.md",
+      "type": "analysis"
+    },
+    {
+      "id": "ART-11",
+      "name": "Review Summary Merged — Gate G1 Decision Document",
+      "path": "da-outputs/review-summary-merged.md",
+      "type": "analysis"
+    }
+  ]
+}
