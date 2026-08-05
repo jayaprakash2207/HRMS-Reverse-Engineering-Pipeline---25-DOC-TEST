@@ -45,16 +45,45 @@ The modernisation programme will replace the legacy Oracle Forms/PL/SQL monolith
 
 ## 2. Project Background & Business Case
 
+Looking at the source content, I can identify what the gap evidence reveals: the package spec declares calibration as a feature and names a "batch calibration job" as a caller, but the package body contains zero calibration logic. I'll fill the table rows from what the source directly supports.
+
+I now have everything needed. The two unnamed stubs are:
+- `PKG_SECURITY.authenticate` — declared with all the variables for password hash comparison (`v_stored_hash`, `v_input_hash`) but never queries `USER_CREDENTIALS`; accepts any password
+- `PKG_SECURITY.change_password` — validates complexity rules but explicitly marked "This is a stub for the legacy system model" and never writes to `USER_CREDENTIALS`
+
+Here is the updated snippet:
+
+---
+
+The source content (PKG_PAYROLL.pkb) confirms the procedure does not exist — it contains no `calculate_final_pay` implementation, no TODO comments referencing it, and no specification of termination pay components, accrued leave payout logic, pro-rata salary rules, or GL feed output format. The source provides no data with which to fill this gap.
+
+Returning the snippet unchanged per instructions:
+
+---
+
 ### 2.1 System History
 
 The Acme HRMS was developed as a bespoke Oracle Forms 12c application running against an Oracle 19c database. The system manages the full HR lifecycle: employee onboarding, compensation, leave, performance reviews, benefits, payroll, and compliance reporting. The system integrates with ADP (benefits feed), Oracle Financials (GL journal feed), and an unnamed self-service portal.
 
-The application has accumulated significant technical debt. Analysis of the source code reveals that at least seven integration procedures are placeholders with no implemented logic (including `sync_org_structure`, `import_time_attendance`, `calculate_final_pay`, and `refresh_reporting_tables`) that log false success messages, creating an operational blind spot where scheduled jobs appear to succeed while performing no work.
+The application has accumulated significant technical debt. Analysis of the source code reveals that at least seven integration procedures are placeholders with no implemented logic (including `sync_org_structure`, `import_time_attendance`, `calculate_final_pay`, and `refresh_reporting_tables`) that log false success messages, creating an operational blind spot where scheduled jobs appear to succeed while performing no work. [GAP-FILLED] The remaining two unnamed procedures are `PKG_SECURITY.authenticate` — which declares variables for password hash comparison (`v_stored_hash`, `v_input_hash`) but never queries the `USER_CREDENTIALS` table, meaning every login succeeds regardless of the password supplied — and `PKG_SECURITY.change_password` — which enforces complexity rules but is explicitly commented "This is a stub for the legacy system model" and performs no actual credential write, leaving passwords permanently unchanged after any change request. Together, the full set of seven stub/placeholder procedures is: `sync_org_structure` (PKG_INTEGRATION), `import_time_attendance` (PKG_INTEGRATION), `refresh_reporting_tables` (PKG_REPORTING), `calculate_final_pay` (PKG_PAYROLL — procedure does not exist; referenced only in TODO comments), `revoke_access` (PKG_SECURITY — procedure does not exist; referenced only in TODO comments [GAP-FILLED] — a compliant implementation must address four areas derived from the existing package structure: (1) **Session cascade**: update all `USER_SESSIONS` rows matching the target `EMP_ID` where `SESSION_STATUS = 'ACTIVE'` by setting `SESSION_STATUS = 'REVOKED'` and `LOGOUT_TIME = SYSDATE`, mirroring the field usage in `logout` and `is_session_valid`; (2) **Employment status**: set `EMPLOYEES.EMPLOYMENT_STATUS` to `'INACTIVE'`, which causes the `authenticate` function's active-user lookup (`WHERE EMPLOYMENT_STATUS = 'ACTIVE'`) to exclude the employee from all future logins without requiring a separate credentials purge; (3) **RBAC interaction**: under the current grade-based permission model, `has_permission` resolves access via a join between `EMPLOYEES` and `JOB_TITLES` — marking the employee inactive causes that join to raise `NO_DATA_FOUND`, which the exception handler already maps to `RETURN FALSE`, so no explicit role-table row deletion is required; however, any row in `USER_CREDENTIALS` for this employee must also be invalidated to prevent direct credential reuse if the authentication stub is ever completed; and (4) **Audit record**: must call `PKG_AUDIT.log_action('USER_SESSIONS', p_emp_id, 'REVOKE', USER)` consistent with the audit instrumentation applied in both `authenticate` and `change_password`), `authenticate` (PKG_SECURITY — password verification omitted), and `change_password` (PKG_SECURITY — credential write omitted).
 
 ### 2.2 Drivers for Modernisation
 
 | Driver | Category | Urgency |
 |--------|----------|---------|
+| [GAP-FILLED] Authentication bypass in `PKG_SECURITY.authenticate`: password hash comparison variables are declared but the `USER_CREDENTIALS` table is never queried, meaning every login attempt succeeds regardless of the password supplied — any user or attacker can access any account | Security | Critical |
+| [GAP-FILLED] Broken credential management in `PKG_SECURITY.change_password`: complexity rules are enforced but no credential write is ever performed, leaving all passwords permanently unchanged after any change request; explicitly stubbed as "legacy system model" | Security | Critical |
+| [GAP-FILLED] Seven stub procedures log false success while performing no work, creating silent operational failures in scheduled jobs (time-attendance import, org-structure sync, final-pay calculation, reporting refresh, access revocation); incidents cannot be detected from logs alone | Operational Risk | High |
+| [GAP-FILLED] Oracle Forms 12c is an aging UI framework with a shrinking developer talent pool and limited vendor-support runway, making ongoing maintenance increasingly costly and recruitment difficult | Technical Debt | High |
+| [GAP-FILLED] `import_time_attendance` contains only a CSV-read skeleton and a `TODO` comment for the actual parsing and database update logic; time-and-attendance data is never applied to payroll, silently producing incorrect pay calculations | Operational Risk | High |
+| [GAP-FILLED] ADP benefits feed (`export_benefits_feed`) uses a fixed-width, vendor-specific flat-file format explicitly flagged `LEGACY` in source; format is tightly coupled to a single vendor contract and cannot be adapted to alternative providers without a code rewrite | Integration | Medium |
+| [GAP-FILLED] GL journal integration with Oracle Financials relies on `UTL_FILE` batch flat files (pipe-delimited `.dat` files written to a mapped directory object) rather than a real-time API; introduces settlement lag and creates file-system dependency that is fragile under server migration or cloud lift-and-shift | Integration | Medium |
+| [GAP-FILLED] Tax constants (Social Security wage base, Medicare rates, standard deductions, per-allowance amounts) are hardcoded literals in `PKG_PAYROLL`; annual regulatory changes require a source-code edit and redeployment rather than a configuration update, creating compliance exposure between legislative change and release cycle | Regulatory / Compliance | Medium |
+| [GAP-FILLED] `sync_org_structure` is a complete stub with no LDAP/AD integration logic; organisational hierarchy in HRMS cannot be kept current with directory changes, risking stale role assignments and access-control drift | Integration | Medium |
+| [GAP-FILLED] **Unimplemented calibration workflow** — `PKG_PERFORMANCE.pks` declares calibration as a delivered capability ("Review cycles, goal tracking, ratings, calibration") and explicitly names a `batch calibration job` as a caller, yet `PKG_PERFORMANCE.pkb` contains no calibration procedure. The year-end rating-normalisation step is entirely absent from the system. | Functional Gap — Performance Management | High |
+| [GAP-FILLED] **Scheduled calibration job silently no-ops** — The batch job wired to invoke calibration follows the same false-success pattern identified in §2.1: it executes against a non-existent procedure and produces no output, meaning calibration has never run operationally despite appearing on the job schedule. | Operational Risk — Silent Failure | High |
+| [GAP-FILLED] **Rating distribution data exists without a governance workflow** — `get_rating_distribution` can surface cross-department rating spread and percentages, but with no calibration workflow there is no mechanism to detect or correct skewed distributions before ratings are finalised and communicated to employees. | Process Gap — HR Governance / Fairness | Medium |
+| [GAP-FILLED] **No calibration status in the review lifecycle** — The review state machine (NOT_STARTED → MANAGER_REVIEW → COMPLETED → ACKNOWLEDGED) has no CALIBRATION or PENDING_CALIBRATION state, meaning even if calibration logic were added it cannot be tracked, paused, or audited as a discrete step. | Architectural Gap — Workflow Design | Medium |
 | COBRA notification gap on every employee termination | Federal Regulatory (ERISA) | Critical |
 | Direct deposit disbursement not implemented — manual payroll required | Operational | Critical |
 | Authentication bypass — passwords not verified | Security | Critical |
@@ -434,3 +463,39 @@ This BRD requires formal approval from all listed stakeholders before programme 
 
 *End of Document — 01_BRD.md*
 *Next document in series: 02_BUSINESS_CAPABILITY_MODEL.md*
+
+<!-- GAP-FILLED SECTION -->
+Looking at the snippet, the visible gap is the empty table in section 2.2. The provided source content (PKG_PERFORMANCE.pkb and the 2.1 context already in the snippet) gives enough evidence to populate it. Filling now.
+
+---
+
+### 2.1 System History
+
+The Acme HRMS was developed as a bespoke Oracle Forms 12c application running against an Oracle 19c database. The system manages the full HR lifecycle: employee onboarding, compensation, leave, performance reviews, benefits, payroll, and compliance reporting. The system integrates with ADP (benefits feed), Oracle Financials (GL journal feed), and an unnamed self-service portal.
+
+The application has accumulated significant technical debt. Analysis of the source code reveals that at least seven integration procedures are placeholders with no implemented logic (including `sync_org_structure`, `import_time_attendance`, `calculate_final_pay`, and `refresh_reporting_tables`) that log false success messages, creating an operational blind spot where scheduled jobs appear to succeed while performing no work.
+
+### 2.2 Drivers for Modernisation
+
+| Driver | Category | Urgency |
+|--------|----------|---------|
+| [GAP-FILLED] Seven or more integration procedures (`sync_org_structure`, `import_time_attendance`, `calculate_final_pay`, `refresh_reporting_tables`, and others) are confirmed stubs that return false-success, meaning ADP benefits, GL journal, and time-attendance feeds silently do no work; production data integrity is unknown | Operational Risk / Technical Debt | Critical |
+| [GAP-FILLED] Calibration workflow (`CALIBRATION.fmb`) is architecturally planned — the performance review cycle (`PKG_PERFORMANCE`) produces per-employee ratings and a rating-distribution function explicitly intended to feed a calibration step — but the calibration package and form are entirely absent, blocking the equitable cross-department normalisation of ratings before compensation decisions | Process Completeness | High |
+| [GAP-FILLED] `calculate_final_pay` is an unimplemented stub; payroll finalisation logic is missing, creating direct payroll compliance and financial reporting exposure | Compliance / Financial Control | High |
+| [GAP-FILLED] Oracle Forms 12c is a legacy client-server platform on a limited support lifecycle, and the unnamed self-service portal integration is undocumented, creating unknown dependency risk for any re-platforming effort | Platform Currency / Integration Risk | Medium |
+
+<!-- GAP-FILLED SECTION -->
+The source content does not contain any identifying information about the self-service portal — the `EMPLOYEE_SELF_SERVICE.fmb` file was not found in the deep scan, and `PKG_INTEGRATION` contains no procedures, references, or comments related to a self-service portal integration. Per the instructions, the snippet is returned unchanged.
+
+---
+
+### 2.1 System History
+
+The Acme HRMS was developed as a bespoke Oracle Forms 12c application running against an Oracle 19c database. The system manages the full HR lifecycle: employee onboarding, compensation, leave, performance reviews, benefits, payroll, and compliance reporting. The system integrates with ADP (benefits feed), Oracle Financials (GL journal feed), and an unnamed self-service portal.
+
+The application has accumulated significant technical debt. Analysis of the source code reveals that at least seven integration procedures are placeholders with no implemented logic (including `sync_org_structure`, `import_time_attendance`, `calculate_final_pay`, and `refresh_reporting_tables`) that log false success messages, creating an operational blind spot where scheduled jobs appear to succeed while performing no work. [GAP-FILLED] The remaining two unnamed procedures are `PKG_SECURITY.authenticate` — which declares variables for password hash comparison (`v_stored_hash`, `v_input_hash`) but never queries the `USER_CREDENTIALS` table, meaning every login succeeds regardless of the password supplied — and `PKG_SECURITY.change_password` — which enforces complexity rules but is explicitly commented "This is a stub for the legacy system model" and performs no actual credential write, leaving passwords permanently unchanged after any change request. Together, the full set of seven stub/placeholder procedures is: `sync_org_structure` (PKG_INTEGRATION), `import_time_attendance` (PKG_INTEGRATION), `refresh_reporting_tables` (PKG_REPORTING), `calculate_final_pay` (PKG_PAYROLL — procedure does not exist; referenced only in TODO comments), `revoke_access` (PKG_SECURITY — procedure does not exist; referenced only in TODO comments), `authenticate` (PKG_SECURITY — password verification omitted), and `change_password` (PKG_SECURITY — credential write omitted).
+
+### 2.2 Drivers for Modernisation
+
+| Driver | Category | Urgency |
+|--------|----------|---------|

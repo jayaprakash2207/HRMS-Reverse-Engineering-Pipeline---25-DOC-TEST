@@ -1,0 +1,50 @@
+{
+  "rounds": [
+    {
+      "round": 1,
+      "gaps_found": 172,
+      "gaps_filled": 64,
+      "documents_scanned": 26,
+      "sizes_safe": true
+    },
+    {
+      "round": 2,
+      "gaps_found": 144,
+      "gaps_filled": 88,
+      "documents_scanned": 26,
+      "sizes_safe": true
+    },
+    {
+      "round": 3,
+      "gaps_found": 166,
+      "gaps_filled": 104,
+      "documents_scanned": 26,
+      "sizes_safe": false
+    }
+  ],
+  "total_gaps_found": 482,
+  "total_gaps_filled": 256,
+  "documents_updated": [
+    "03_USE_CASE_SPECIFICATION.md",
+    "CANONICAL_ENTERPRISE_MODEL.md",
+    "05_DOMAIN_MODEL.md",
+    "01_BRD.md",
+    "04_BUSINESS_PROCESS_MODEL.md",
+    "02_BUSINESS_CAPABILITY_MODEL.md",
+    "09_DATA_FLOW_DIAGRAM.md",
+    "11_API_CONTRACT_SPECIFICATION.md",
+    "06_DATA_DICTIONARY.md",
+    "01_BRD_SUPPLEMENT.md",
+    "ARCHITECTURE_INVENTORY.md",
+    "12_TECHNOLOGY_BLUEPRINT.md",
+    "TRACEABILITY_MATRIX.md",
+    "14_NFR_SPECIFICATION.md",
+    "07_DATA_MODEL_SPECIFICATION.md",
+    "15_FORWARD_ENGINEERING_SPECIFICATION.md",
+    "17_FORWARD_ENGINEERING_READINESS_REPORT.md",
+    "FORWARD_ENGINEERING_INPUT_MAP.md",
+    "13_SECURITY_ARCHITECTURE.md",
+    "20_UI_UX_SPECIFICATION.md",
+    "08_ERD.md"
+  ]
+}

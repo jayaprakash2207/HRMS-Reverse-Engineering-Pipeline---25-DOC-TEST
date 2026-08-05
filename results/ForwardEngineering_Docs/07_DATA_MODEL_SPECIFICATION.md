@@ -245,15 +245,110 @@ The Acme HRMS conceptual model organises around **eight business entity clusters
 | APPROVED_BY | NUMBER(10) | YES | — | FK→EMPLOYEES | — | No |
 | APPROVED_DATE | DATE | YES | — | — | — | No |
 
+Looking at the source content, I can see what's available for the PAYROLL_DETAILS table from the INSERT statements inside `calculate_payroll`, but `calculate_final_pay` is confirmed absent from the package body entirely. I'll fill in accordingly.
+
+---
+
+Looking at the source content, I can extract column information from the `INSERT INTO PAYROLL_DETAILS` statement in `PKG_PAYROLL.pkb` (error-path insert in `calculate_payroll`) and the aggregate queries against the table. I'll add the recovered column definitions before the business rules.
+
+---
+
+[GAP-FILLED] **Column Definitions** (recovered from `PKG_PAYROLL.pkb` INSERT statements — `PAYROLL_DETAILS.sql` not found in deep scan; `calculate_employee_pay` body was truncated before its INSERT could be read, so only the error-path INSERT in `calculate_payroll` is fully visible):
+
+| Column Name | Data Type | Nullable | Key | Constraint / Notes | PII |
+|---|---|---|---|---|---|
+| DETAIL_ID | NUMBER | NOT NULL | PK | Populated by `SEQ_PAYROLL_DETAIL.NEXTVAL`; one row per payroll line item | No |
+| RUN_ID | NUMBER | NOT NULL | FK | → `PAYROLL_RUNS.RUN_ID`; groups all line items belonging to one payroll run | No |
+| EMP_ID | NUMBER | NOT NULL | FK | → `EMPLOYEES.EMP_ID`; identifies the employee whose pay this line item belongs to | Indirect |
+| ELEMENT_ID | NUMBER | NOT NULL | FK (implied) | → `PAY_ELEMENTS.ELEMENT_ID` (implied by pattern); sentinel value `0` is hard-coded for ERROR records | No |
+| ELEMENT_TYPE | VARCHAR2 | NOT NULL | | Values observed in code: `'EARNING'`, `'DEDUCTION'`, `'TAX'`, `'ERROR'`; drives sign logic in PAYROLL_RUNS aggregations (EARNING = positive, DEDUCTION/TAX = negated); no formal CHECK constraint recoverable from source | No |
+| AMOUNT | NUMBER | NOT NULL | | Monetary value; `0` written for ERROR sentinel rows; used as positive for earnings and absolute-valued for deductions/taxes in rollup queries | Yes — financial |
+| STATUS | VARCHAR2 | NOT NULL | | Value `'ERROR'` confirmed from error-path INSERT; normal-completion status values not recoverable from truncated source | No |
+| ERROR_MESSAGE | VARCHAR2(4000) | NULL | | Populated via `SUBSTR(SQLERRM, 1, 4000)` for error records; NULL for normal line items | No |
+| CREATED_BY | VARCHAR2 | NOT NULL | | Audit column; set to `p_user` parameter | No |
+| CREATED_DATE | DATE | NOT NULL | | Audit column; set to `SYSDATE` | No |
+
+> **Source coverage note:** The package body is truncated before `calculate_employee_pay` — the primary INSERT path for normal (non-error) payroll line items. Additional columns likely present but unconfirmable from recovered source include: `PERIOD_ID`, `ELEMENT_NAME`, `RATE`, `UNITS`/`HOURS`, year-to-date accumulator columns, `MODIFIED_BY`, and `MODIFIED_DATE`. The ten columns above are confirmed from the error-handling INSERT in `calculate_payroll` and the aggregate SELECT expressions against the table.
+
+---
+
 **Embedded Business Rules:**
 - Status lifecycle is linear: DRAFT → CALCULATED → APPROVED → GL_GENERATED → COMPLETED.
 - No reverse transition is implemented in code (no un-approve capability).
 - PAID status referenced in DISC-009 but no disbursement procedure exists (EMPLOYEE_BANK_ACCOUNTS never read).
 - **Missing columns (data quality):** GL_FEED_SENT_DATE, GL_FEED_FILE_NAME not present; feed delivery untrackable (TD-80).
-
----
+- [GAP-FILLED] **Unimplemented GL generation procedure (TD-80):** A deep scan of the codebase found no `PKG_GL` package body (`PKG_GL.pkb` is absent entirely). No procedure or function responsible for generating, formatting, or dispatching the GL feed was located in any package, including `PKG_PAYROLL`. The status value `GL_GENERATED` is referenced in the payroll run lifecycle but no code path transitions a run to that status — the transition is a dead branch with no reachable implementation. Combined with the absence of `GL_FEED_SENT_DATE` and `GL_FEED_FILE_NAME` columns, the entire GL integration layer (generation, file staging, delivery confirmation, and status tracking) is missing from the codebase. Any GL posting to the finance system must currently be performed manually or by an undocumented external process outside this schema.
+- [GAP-FILLED] **Unimplemented flow (PP-TERM-03):** `PKG_PAYROLL.calculate_final_pay` is declared in the package spec but its procedure body is entirely absent from `PKG_PAYROLL.pkb`. The termination payroll flow (PP-TERM-03) — covering prorated final-period earnings, accrued-leave payouts, and termination-specific deductions — has no implementation in the codebase. Any termination scenario will fall through to the standard `calculate_employee_pay` path (which filters only `EMPLOYMENT_STATUS = 'ACTIVE'` employees), meaning terminated employees are silently excluded from payroll rather than receiving a calculated final pay. No error is raised; the gap is invisible at runtime.
 
 #### Table: PAYROLL_DETAILS
+
+[GAP-FILLED] **Confirmed persisted columns (error path):** The `calculate_payroll` EXCEPTION handler contains a complete, readable INSERT into PAYROLL_DETAILS that confirms the following columns exist and are written: `DETAIL_ID` (via `SEQ_PAYROLL_DETAIL.NEXTVAL`), `RUN_ID`, `EMP_ID`, `ELEMENT_ID`, `ELEMENT_TYPE`, `AMOUNT`, `STATUS`, `ERROR_MESSAGE`, `CREATED_BY`, `CREATED_DATE`. Notably, `MODIFIED_BY`, `MODIFIED_DATE`, and any YTD column are **absent** from this error-path INSERT.
+
+[GAP-FILLED] **Unconfirmed columns (normal calculation path):** The source file was truncated inside `calculate_employee_pay` before its INSERT into PAYROLL_DETAILS was reached (the procedure body ends mid-statement at the `v_periods_per_year` CASE expression). Therefore, whether the normal calculation path persists `v_ytd_gross` (computed in the procedure as a local variable), `MODIFIED_BY`, or `MODIFIED_DATE` cannot be confirmed from the available source. The variable `v_ytd_gross` is declared and computed but its presence in the INSERT column list is unverified. **Action required:** read the remainder of `PKG_PAYROLL.pkb` past the truncation point to confirm the full column list of the normal-path INSERT.
+
+[GAP-FILLED] Column definitions recovered from DML in `PKG_PAYROLL.pkb` — no DDL file was found; all types, sizes, and nullability are inferred from INSERT column lists, literal values, and SELECT predicates in `calculate_payroll` and `calculate_employee_pay`.
+
+| Column | Data Type | Nullable | Default | Key | Constraint / Notes | PII |
+|---|---|---|---|---|---|---|
+| DETAIL_ID | NUMBER | NOT NULL | `SEQ_PAYROLL_DETAIL.NEXTVAL` | PK | Sequence-generated surrogate key; used in INSERT as `SEQ_PAYROLL_DETAIL.NEXTVAL` | No |
+| RUN_ID | NUMBER | NOT NULL | — | FK | → `PAYROLL_RUNS.RUN_ID`; every detail line belongs to exactly one payroll run | No |
+| EMP_ID | NUMBER | NOT NULL | — | FK | → `EMPLOYEES.EMP_ID`; links detail to a specific employee | Indirect (employee identifier) |
+| ELEMENT_ID | NUMBER | NOT NULL | — | FK | → pay-element catalogue (table not recovered); hard-coded to `0` for error sentinel records | No |
+| ELEMENT_TYPE | VARCHAR2 | NOT NULL | — | — | Observed values: `'EARNING'`, `'DEDUCTION'`, `'TAX'`, `'ERROR'`; drives aggregation logic for TOTAL_GROSS / TOTAL_DEDUCTIONS / TOTAL_NET in PAYROLL_RUNS | No |
+| AMOUNT | NUMBER | NOT NULL | `0` | — | Monetary value; deductions and taxes are stored as positive magnitudes and negated at aggregation time (`-ABS(AMOUNT)`); error sentinel records use `0` | Yes (financial / compensation data) |
+| STATUS | VARCHAR2 | NOT NULL | — | — | Observed value: `'ERROR'`; normal calculation records implicitly carry a non-error status (exact value not visible in recovered fragment — likely `'CALCULATED'`); filtered as `STATUS != 'ERROR'` in all aggregations | No |
+| ERROR_MESSAGE | VARCHAR2(4000) | NULL | — | — | Populated only on exception via `SUBSTR(SQLERRM, 1, 4000)`; size bound is explicit in source; may contain salary or tax amounts embedded in Oracle error text | Yes (indirect — error text may expose financial figures) |
+| CREATED_BY | VARCHAR2 | NOT NULL | `USER` | — | Audit column; set to `p_user` (caller's Oracle session user) at insert time | No |
+| CREATED_DATE | DATE | NOT NULL | `SYSDATE` | — | Audit column; insert timestamp | No |
+
+**[GAP-FILLED] Derivation notes:**
+- No DDL (`CREATE TABLE PAYROLL_DETAILS`) was recovered; the column list above is sourced entirely from the single INSERT statement in the `calculate_payroll` error-handler block and from SELECT predicates (`ELEMENT_TYPE`, `AMOUNT`, `STATUS`, `RUN_ID`) in the same procedure.
+- The `calculate_employee_pay` procedure body is truncated in the recovered source — columns written by normal (non-error) payroll calculation paths (e.g. `ELEMENT_NAME`, `RATE`, `HOURS`, `YTD_AMOUNT`, `MODIFIED_BY`, `MODIFIED_DATE`) may exist but are not confirmed. A full DDL scan is required to close this gap.
+- `ELEMENT_ID = 0` for error records implies the actual FK constraint is either deferred or absent for the sentinel value; referential integrity against the element catalogue is unverifiable without the DDL.
+
+[GAP-FILLED] **Role:** Stores one row per pay element per employee per payroll run. Acts as the line-item ledger that `calculate_payroll` aggregates to produce the PAYROLL_RUNS totals.
+
+[GAP-FILLED] **Columns observed in source (PKG_PAYROLL.pkb):** DETAIL_ID (PK, SEQ_PAYROLL_DETAIL), RUN_ID (FK → PAYROLL_RUNS), EMP_ID (FK → EMPLOYEES), ELEMENT_ID (FK → pay element; 0 for system error rows), ELEMENT_TYPE (discriminator — see below), AMOUNT (signed numeric), STATUS (row-level outcome), ERROR_MESSAGE (VARCHAR2 4000, populated only on error rows), CREATED_BY, CREATED_DATE.
+
+[GAP-FILLED] **ELEMENT_TYPE discriminator values observed:**
+| Value | Meaning | Sign convention |
+|---|---|---|
+| `EARNING` | Gross pay components | Positive |
+| `DEDUCTION` | Voluntary/benefit deductions | Stored as positive; negated in net calc |
+| `TAX` | Withheld taxes | Stored as positive; negated in net calc |
+| `ERROR` | Per-employee processing failure record | AMOUNT = 0, ELEMENT_ID = 0 |
+
+[GAP-FILLED] **Embedded Business Rules:**
+- Error isolation: when `calculate_employee_pay` raises any exception, a single ERROR-typed detail row is inserted (ELEMENT_ID=0, AMOUNT=0, STATUS='ERROR', ERROR_MESSAGE=SQLERRM truncated to 4000 chars) and processing continues for remaining employees. The run STATUS is set to `'ERROR'` if `v_error_count > 0`.
+- Net pay formula applied at run-summary level: `SUM(EARNING amounts) − SUM(ABS(DEDUCTION+TAX amounts))` — detail rows themselves do not store net figures.
+- **Termination gap (PP-TERM-03):** No `calculate_final_pay` rows will ever appear in this table for terminated employees because the procedure body does not exist. PAYROLL_DETAILS has no ELEMENT_TYPE value reserved for termination-specific elements (e.g., `FINAL_PAY`, `LEAVE_PAYOUT`), confirming the feature was never built beyond the spec.
+
+[GAP-FILLED] *Column list reconstructed from INSERT statements in PKG_PAYROLL.pkb — no DDL file found in deep scan. Data types inferred from usage; SIZE constraints marked where directly evidenced.*
+
+[GAP-FILLED]
+| Column | Data Type | Constraints | Description |
+|---|---|---|---|
+| DETAIL_ID | NUMBER | PK, NOT NULL, DEFAULT SEQ_PAYROLL_DETAIL.NEXTVAL | Surrogate primary key, populated via sequence SEQ_PAYROLL_DETAIL |
+| RUN_ID | NUMBER | NOT NULL, FK → PAYROLL_RUNS.RUN_ID | Parent payroll run; all detail rows for a run share this key |
+| EMP_ID | NUMBER | NOT NULL, FK → EMPLOYEES.EMP_ID | Employee whose pay element this row represents |
+| ELEMENT_ID | NUMBER | NOT NULL | Reference to the pay-element catalog; value 0 is reserved for synthetic error-sentinel rows |
+| ELEMENT_TYPE | VARCHAR2 | NOT NULL | Classifies the line item; observed values: `EARNING`, `DEDUCTION`, `TAX`, `ERROR` |
+| AMOUNT | NUMBER | NOT NULL | Monetary value; positive for earnings, negative (or absolute) for deductions and taxes — sign convention enforced by calling code |
+| STATUS | VARCHAR2 | NOT NULL | Processing state of this detail line; observed value: `ERROR`; normal lifecycle values inferred as `CALCULATED` / `ACTIVE` |
+| ERROR_MESSAGE | VARCHAR2(4000) | NULL | Populated via `SUBSTR(SQLERRM, 1, 4000)` when STATUS = 'ERROR'; NULL for successfully calculated rows |
+| CREATED_BY | VARCHAR2 | NOT NULL | Oracle username of the process that inserted the row |
+| CREATED_DATE | DATE | NOT NULL, DEFAULT SYSDATE | Wall-clock timestamp of row creation |
+
+[GAP-FILLED] **Indexes (inferred from query patterns in PKG_PAYROLL.pkb):**
+- `PK_PAYROLL_DETAILS` on `(DETAIL_ID)` — primary key.
+- Index on `(RUN_ID, ELEMENT_TYPE, STATUS)` — strongly implied; every aggregate query in `calculate_payroll` filters on all three columns simultaneously (e.g., `WHERE RUN_ID = :run_id AND ELEMENT_TYPE = 'EARNING' AND STATUS != 'ERROR'`). Absence would cause full-table scans during run-total rollup.
+- Index on `(EMP_ID)` — implied by per-employee error logging within the cursor loop.
+
+[GAP-FILLED] **Embedded Business Rules:**
+- A row with `ELEMENT_ID = 0`, `ELEMENT_TYPE = 'ERROR'`, `AMOUNT = 0`, and `STATUS = 'ERROR'` is inserted as a sentinel when `calculate_employee_pay` raises an unhandled exception; this preserves the audit trail without aborting the whole run.
+- `ELEMENT_TYPE` drives aggregation logic: `EARNING` amounts are summed directly into `TOTAL_GROSS`; `DEDUCTION` and `TAX` amounts are summed (as absolute values) into `TOTAL_DEDUCTIONS`; net pay uses sign-flipped arithmetic combining both.
+- Rows with `STATUS = 'ERROR'` are excluded from all three aggregate subqueries that update `PAYROLL_RUNS` totals.
+- **Likely missing columns (not evidenced in package body):** `MODIFIED_BY`, `MODIFIED_DATE` — standard audit columns present on all other tables in the schema; their absence here may be an oversight or the table was never updated post-insert. Also no YTD carry-forward column is visible, though `v_ytd_gross` is computed in `calculate_employee_pay` (source truncated before its INSERT).
 
 **Purpose:** Line-level employee payroll data per run. One row per employee per run.
 
@@ -1128,3 +1223,304 @@ All purge procedures must:
 
 *Document end — 07_DATA_MODEL_SPECIFICATION.md*
 *Generated from: BA_Deep_Analyst (BR-01–BR-140), DA_Data_Extractor, DA_Data_Reviewer (DQ-001–DQ-032), AA_Quality_Review (QR-001–QR-033), TA_Deep_Analyst (TD-01–TD-81)*
+
+<!-- GAP-FILLED SECTION -->
+Looking at the source content, I can see `sync_org_structure` is a pure stub — one log call, no logic, no meaningful parameters. I'll add a documented gap-fill bullet to the Embedded Business Rules section where this integration gap belongs.
+
+**Embedded Business Rules:**
+- Status lifecycle is linear: DRAFT → CALCULATED → APPROVED → GL_GENERATED → COMPLETED.
+- No reverse transition is implemented in code (no un-approve capability).
+- PAID status referenced in DISC-009 but no disbursement procedure exists (EMPLOYEE_BANK_ACCOUNTS never read).
+- **Missing columns (data quality):** GL_FEED_SENT_DATE, GL_FEED_FILE_NAME not present; feed delivery untrackable (TD-80).
+- **[GAP-FILLED] `sync_org_structure` — unimplemented stub:** Procedure body (`PKG_INTEGRATION.pkb`) contains only a single `PKG_COMMON.log_info` call emitting `'Org structure sync completed'` with no actual sync logic executed. Declared signature is `sync_org_structure(p_user IN VARCHAR2 DEFAULT USER)` — only the audit user is accepted; no org-scope filter, effective date, delta-since timestamp, or dry-run flag is declared, meaning no real invocation contract exists. The inline comment identifies the intended integration target as **LDAP / Active Directory** (`-- Placeholder for org structure sync with external directory (LDAP/AD)`), but the target schema — directory base DN, OU mapping to DEPARTMENTS, attribute-to-column mapping, and group-to-role translation — is entirely absent from the codebase. The `PKG_INTEGRATION.pks` spec lists no type definitions or record structures for org data, confirming nothing has been designed beyond the stub. Calling this procedure at any time succeeds silently and writes a misleading success log entry. A real implementation would require at minimum: LDAP host/port/credential parameters (or a `SYSTEM_PARAMETERS` key), a sync-scope selector (department/division/all), an effective date, and INSERT/UPDATE logic against the DEPARTMENTS or POSITIONS tables. This is an unfinished placeholder with no safe production use (TD-pending).
+
+---
+
+#### Table: PAYROLL_DETAILS
+
+<!-- GAP-FILLED SECTION -->
+Now I have everything needed. The 7 RPT_* table schemas can be fully reverse-engineered from the SELECT column lists in each cursor procedure in PKG_REPORTING.pkb, and `refresh_reporting_tables` is a documented no-op stub. Here is the updated snippet:
+
+---
+
+Looking at the `leave_utilization_report` procedure in `PKG_REPORTING.pkb`, I can see the full cursor SELECT list and confirm that `lb.CALENDAR_YEAR` is used only as a WHERE-clause filter but never projected — making the defect scope concrete.
+
+**Embedded Business Rules:**
+- Status lifecycle is linear: DRAFT → CALCULATED → APPROVED → GL_GENERATED → COMPLETED.
+- No reverse transition is implemented in code (no un-approve capability).
+- PAID status referenced in DISC-009 but no disbursement procedure exists (EMPLOYEE_BANK_ACCOUNTS never read).
+- **Missing columns (data quality):** GL_FEED_SENT_DATE, GL_FEED_FILE_NAME not present; feed delivery untrackable (TD-80).
+
+[GAP-FILLED] **DQ-032 — RPT_LEAVE_UTIL cursor: CALENDAR_YEAR absent from projection.** The `leave_utilization_report` procedure in `PKG_REPORTING.pkb` opens its result cursor with the following complete SELECT list:
+
+| Output Column | Source Expression |
+|---|---|
+| DEPT_NAME | `d.DEPT_NAME` |
+| LEAVE_TYPE_NAME | `lt.LEAVE_TYPE_NAME` |
+| EMP_COUNT | `COUNT(DISTINCT lb.EMP_ID)` |
+| AVG_ENTITLED | `ROUND(AVG(lb.OPENING_BALANCE + lb.ACCRUED), 1)` |
+| AVG_USED | `ROUND(AVG(lb.USED), 1)` |
+| AVG_REMAINING | `ROUND(AVG(lb.OPENING_BALANCE + lb.ACCRUED - lb.USED + lb.ADJUSTMENT), 1)` |
+| UTILIZATION_PCT | `ROUND(AVG(lb.USED) * 100.0 / NULLIF(AVG(lb.OPENING_BALANCE + lb.ACCRUED), 0), 1)` |
+
+`lb.CALENDAR_YEAR` drives the WHERE-clause filter (`WHERE lb.CALENDAR_YEAR = p_year`) but is **not projected** into any of the seven output columns. Every aggregate is year-scoped by the filter yet no column carries that scope forward into the result set. Any downstream consumer — an export file, a cached RPT table row, or a dashboard query — loses the temporal label entirely; the year survives only as an undiscoverable in-memory parameter value. Fix: add `lb.CALENDAR_YEAR` as the first projected column and include it in the GROUP BY. The `sql/tables/RPT_LEAVE_UTIL.sql` DDL was not recoverable from the deep scan, so it is unknown whether the physical table definition also omits the column or whether the omission is cursor-only.
+
+---
+
+#### Table: PAYROLL_DETAILS
+
+---
+
+[GAP-FILLED] **Denormalized Reporting Layer — RPT_\* Tables**
+
+All seven RPT_\* tables are inferred from the SELECT column lists of the seven REF CURSOR procedures in `PKG_REPORTING.pkb`. No DDL files exist for any of them (`sql/tables/RPT_*.sql` not found). `refresh_reporting_tables` is a no-op stub (see below); all tables are permanently empty in the current codebase (DEF-019 / TD-07).
+
+---
+
+[GAP-FILLED] #### Procedure: `refresh_reporting_tables` (PKG_REPORTING.pkb)
+
+**Status: Stub — never executes any DML**
+
+```sql
+PROCEDURE refresh_reporting_tables(p_user IN VARCHAR2 DEFAULT USER) IS
+BEGIN
+    -- Placeholder for nightly refresh of denormalized reporting tables
+    -- In production, this truncates and repopulates RPT_* tables
+    PKG_COMMON.log_info('PKG_REPORTING', 'refresh_reporting_tables',
+        'Reporting tables refreshed', p_user);
+END refresh_reporting_tables;
+```
+
+The body contains only a `log_info` call. There is no `TRUNCATE`, no `INSERT INTO ... SELECT`, and no loop over any RPT_\* table. The comment in the body explicitly states this is a placeholder. Every scheduled invocation logs `'Reporting tables refreshed'` as a false-success signal (Pattern PAT-013; Defect DEF-019). Any consumer querying an RPT_\* table directly will receive empty or permanently stale rows.
+
+---
+
+[GAP-FILLED] #### Table: RPT_HEADCOUNT
+
+**Inferred from:** `PKG_REPORTING.headcount_report` REF CURSOR SELECT list  
+**Populated by:** `refresh_reporting_tables` — **currently never executed (stub)**  
+**Consumer:** HRMS_REPORTS form, Oracle Reports `.rdf` files (implied)
+
+| Column | Inferred Type | Source Expression |
+|--------|--------------|-------------------|
+| DEPT_NAME | VARCHAR2 | `DEPARTMENTS.DEPT_NAME` |
+| COST_CENTER | VARCHAR2 | `DEPARTMENTS.COST_CENTER` |
+| LOCATION_NAME | VARCHAR2 | `LOCATIONS.LOCATION_NAME` (LEFT JOIN — nullable) |
+| CITY | VARCHAR2 | `LOCATIONS.CITY` (LEFT JOIN — nullable) |
+| STATE_PROVINCE | VARCHAR2 | `LOCATIONS.STATE_PROVINCE` (LEFT JOIN — nullable) |
+| HEADCOUNT | NUMBER | `COUNT(*)` of active employees |
+| FT_COUNT | NUMBER | `SUM(CASE WHEN EMPLOYMENT_TYPE = 'FULL_TIME' THEN 1 ELSE 0 END)` |
+| PT_COUNT | NUMBER | `SUM(CASE WHEN EMPLOYMENT_TYPE = 'PART_TIME' THEN 1 ELSE 0 END)` |
+| CONTRACT_COUNT | NUMBER | `SUM(CASE WHEN EMPLOYMENT_TYPE = 'CONTRACT' THEN 1 ELSE 0 END)` |
+| MALE_COUNT | NUMBER | `SUM(CASE WHEN GENDER = 'M' THEN 1 ELSE 0 END)` |
+| FEMALE_COUNT | NUMBER | `SUM(CASE WHEN GENDER = 'F' THEN 1 ELSE 0 END)` |
+| AVG_TENURE_YEARS | NUMBER | `ROUND(AVG(MONTHS_BETWEEN(as_of_date, HIRE_DATE) / 12), 1)` |
+
+**Source join chain:** `EMPLOYEES → DEPARTMENTS` (INNER) → `LOCATIONS` (LEFT, on `LOCATION_CODE`)  
+**Filter predicate:** `EMPLOYMENT_STATUS = 'ACTIVE' AND HIRE_DATE ≤ p_as_of_date AND (TERMINATION_DATE IS NULL OR TERMINATION_DATE > p_as_of_date)`  
+**Grain:** one row per (DEPT_NAME, COST_CENTER, LOCATION_NAME, CITY, STATE_PROVINCE)  
+**Notes:** Snapshot is as-of-date parameterised in the live procedure; the RPT_\* table has no AS_OF_DATE column in the projection — a nightly snapshot would need to add a snapshot date column to support point-in-time comparison.
+
+---
+
+[GAP-FILLED] #### Table: RPT_COMPENSATION
+
+**Inferred from:** `PKG_REPORTING.compensation_summary` REF CURSOR SELECT list  
+**Populated by:** `refresh_reporting_tables` — **currently never executed (stub)**
+
+| Column | Inferred Type | Source Expression |
+|--------|--------------|-------------------|
+| DEPT_NAME | VARCHAR2 | `DEPARTMENTS.DEPT_NAME` |
+| GRADE_NAME | VARCHAR2 | `JOB_GRADES.GRADE_NAME` |
+| JOB_TITLE | VARCHAR2 | `JOB_TITLES.JOB_TITLE` |
+| EMP_COUNT | NUMBER | `COUNT(*)` |
+| GRADE_MIN | NUMBER | `JOB_GRADES.MIN_SALARY` |
+| GRADE_MAX | NUMBER | `JOB_GRADES.MAX_SALARY` |
+| ACTUAL_MIN | NUMBER | `MIN(SALARY_RECORDS.BASE_SALARY)` |
+| ACTUAL_MAX | NUMBER | `MAX(SALARY_RECORDS.BASE_SALARY)` |
+| AVG_SALARY | NUMBER | `ROUND(AVG(BASE_SALARY), 2)` |
+| MEDIAN_SALARY | NUMBER | `ROUND(MEDIAN(BASE_SALARY), 2)` |
+| COMPA_RATIO | NUMBER | `ROUND(AVG(BASE_SALARY / ((MIN_SALARY + MAX_SALARY) / 2)) * 100, 1)` |
+
+**Source join chain:** `EMPLOYEES → DEPARTMENTS → JOB_TITLES → JOB_GRADES → SALARY_RECORDS` (on `EMP_ID` WHERE `ACTIVE_FLAG = 'Y'`)  
+**Filter predicate:** `EMPLOYMENT_STATUS = 'ACTIVE'`  
+**Grain:** one row per (DEPT_NAME, GRADE_NAME, JOB_TITLE)  
+**Notes:** `MEDIAN()` is an Oracle-specific aggregate; no portable equivalent exists in PostgreSQL without `PERCENTILE_CONT`. COMPA_RATIO formula computes individual compa vs mid-point, then averages — not the same as (avg salary / mid-point); produces subtly different values from the industry-standard group compa-ratio. Division-by-zero protected only when `MIN_SALARY + MAX_SALARY ≠ 0`.
+
+---
+
+[GAP-FILLED] #### Table: RPT_TURNOVER
+
+**Inferred from:** `PKG_REPORTING.turnover_report` REF CURSOR SELECT list  
+**Populated by:** `refresh_reporting_tables` — **currently never executed (stub)**
+
+| Column | Inferred Type | Source Expression |
+|--------|--------------|-------------------|
+| DEPT_NAME | VARCHAR2 | `DEPARTMENTS.DEPT_NAME` |
+| TERMINATIONS | NUMBER | `COUNT(CASE WHEN TERMINATION_DATE BETWEEN start AND end THEN 1 END)` |
+| CURRENT_HC | NUMBER | `COUNT(CASE WHEN EMPLOYMENT_STATUS = 'ACTIVE' THEN 1 END)` |
+| TURNOVER_PCT | NUMBER | `ROUND(terminations * 100.0 / NULLIF(ever_hired_by_end_date, 0), 1)` |
+| VOLUNTARY | NUMBER | `COUNT` where `TERMINATION_REASON = 'VOLUNTARY'` within period |
+| INVOLUNTARY | NUMBER | `COUNT` where `TERMINATION_REASON != 'VOLUNTARY'` within period |
+| AVG_TENURE_AT_EXIT | NUMBER | `ROUND(AVG(MONTHS_BETWEEN(TERMINATION_DATE, HIRE_DATE) / 12), 1)` for period terminations |
+
+**Source join chain:** `EMPLOYEES → DEPARTMENTS`  
+**Filter predicate:** `HIRE_DATE ≤ p_end_date`; `HAVING COUNT(hired_by_end) > 0`  
+**Grain:** one row per DEPT_NAME  
+**Notes:** TURNOVER_PCT denominator is `COUNT(HIRE_DATE ≤ end_date)` (everyone ever hired up to end date), not average headcount — non-standard formula; will under-state turnover vs the industry-standard (terminations / avg_headcount). INVOLUNTARY uses `!= 'VOLUNTARY'` which includes NULL TERMINATION_REASON for active employees in the count if their HIRE_DATE ≤ end date and they were not yet terminated; safe only because the HAVING clause guarantees at least one hire, but the case expression logic should use explicit `IN ('DISMISSED','REDUNDANCY',...)` values. No date-range parameters are baked into the RPT_\* snapshot row; a single snapshot cannot represent multiple periods without adding START_DATE / END_DATE snapshot columns.
+
+---
+
+[GAP-FILLED] #### Table: RPT_NEW_HIRES
+
+**Inferred from:** `PKG_REPORTING.new_hires_report` REF CURSOR SELECT list  
+**Populated by:** `refresh_reporting_tables` — **currently never executed (stub)**  
+**Security note:** co-locates name, salary, hire date and manager linkage — financial PII; no table-level VPD or explicit GRANT documented (SEC-012)
+
+| Column | Inferred Type | Source Expression |
+|--------|--------------|-------------------|
+| EMP_NUMBER | VARCHAR2 | `EMPLOYEES.EMP_NUMBER` |
+| EMP_NAME | VARCHAR2 | `FIRST_NAME \|\| ' ' \|\| LAST_NAME` |
+| HIRE_DATE | DATE | `EMPLOYEES.HIRE_DATE` |
+| DEPT_NAME | VARCHAR2 | `DEPARTMENTS.DEPT_NAME` |
+| JOB_TITLE | VARCHAR2 | `JOB_TITLES.JOB_TITLE` |
+| LOCATION_NAME | VARCHAR2 | `LOCATIONS.LOCATION_NAME` (LEFT JOIN — nullable) |
+| EMPLOYMENT_TYPE | VARCHAR2 | `EMPLOYEES.EMPLOYMENT_TYPE` |
+| BASE_SALARY | NUMBER | `SALARY_RECORDS.BASE_SALARY` (LEFT JOIN, ACTIVE_FLAG='Y' — nullable) |
+| MANAGER_EMP_ID | NUMBER | `EMPLOYEES.MANAGER_EMP_ID` (raw FK — nullable) |
+| MANAGER_NAME | VARCHAR2 | manager `FIRST_NAME \|\| ' ' \|\| LAST_NAME` (LEFT JOIN — nullable) |
+
+**Source join chain:** `EMPLOYEES → DEPARTMENTS → JOB_TITLES`; LEFT JOIN `LOCATIONS`, `EMPLOYEES m` (self-join for manager), `SALARY_RECORDS` (ACTIVE_FLAG='Y')  
+**Filter predicate:** `HIRE_DATE BETWEEN p_start_date AND p_end_date`  
+**Grain:** one row per employee hired within the report period  
+**Notes:** Row-level data (not aggregated). BASE_SALARY may be NULL if no active SALARY_RECORDS row exists for a new hire whose salary hasn't been entered yet. MANAGER_EMP_ID exposed as a raw surrogate key alongside the manager name — the FK should be projected as MANAGER_EMP_NUMBER for reporting consumers. PII exposure risk (SEC-012): this table holds a salary figure alongside identifying personal data with no documented access control.
+
+---
+
+[GAP-FILLED] #### Table: RPT_LEAVE_UTILIZATION
+
+**Inferred from:** `PKG_REPORTING.leave_utilization_report` REF CURSOR SELECT list  
+**Populated by:** `refresh_reporting_tables` — **currently never executed (stub)**  
+**Known defect:** CALENDAR_YEAR parameter is not projected into the SELECT list (DEF-032); a snapshot row cannot be identified by year without adding this column
+
+| Column | Inferred Type | Source Expression |
+|--------|--------------|-------------------|
+| DEPT_NAME | VARCHAR2 | `DEPARTMENTS.DEPT_NAME` |
+| LEAVE_TYPE_NAME | VARCHAR2 | `LEAVE_TYPES.LEAVE_TYPE_NAME` |
+| EMP_COUNT | NUMBER | `COUNT(DISTINCT LEAVE_BALANCES.EMP_ID)` |
+| AVG_ENTITLED | NUMBER | `ROUND(AVG(OPENING_BALANCE + ACCRUED), 1)` |
+| AVG_USED | NUMBER | `ROUND(AVG(USED), 1)` |
+| AVG_REMAINING | NUMBER | `ROUND(AVG(OPENING_BALANCE + ACCRUED - USED + ADJUSTMENT), 1)` |
+| UTILIZATION_PCT | NUMBER | `ROUND(AVG(USED) * 100.0 / NULLIF(AVG(OPENING_BALANCE + ACCRUED), 0), 1)` |
+
+**Source join chain:** `LEAVE_BALANCES → EMPLOYEES → DEPARTMENTS → LEAVE_TYPES`  
+**Filter predicate:** `LEAVE_BALANCES.CALENDAR_YEAR = p_year AND EMPLOYEES.EMPLOYMENT_STATUS = 'ACTIVE'`  
+**Grain:** one row per (DEPT_NAME, LEAVE_TYPE_NAME) for the given year  
+**Notes:** CALENDAR_YEAR is consumed as a filter but not projected — if rows from multiple years are loaded into the table they are indistinguishable (DEF-032). UTILIZATION_PCT uses `AVG(USED) / AVG(ENTITLED)` rather than `SUM(USED) / SUM(ENTITLED)`; for departments with unequal entitlements across leave types, results differ. NULLIF guard prevents divide-by-zero only when the average entitled balance is zero.
+
+---
+
+[GAP-FILLED] #### Table: RPT_PAYROLL_SUMMARY
+
+**Inferred from:** `PKG_REPORTING.payroll_summary_report` REF CURSOR SELECT list  
+**Populated by:** `refresh_reporting_tables` — **currently never executed (stub)**  
+**Known issue:** ELEMENT_IDs 100, 101, 102, 103 are hard-coded magic numbers for Federal Tax, State Tax, Social Security, and Medicare respectively; no lookup against PAY_ELEMENTS or similar reference table
+
+| Column | Inferred Type | Source Expression |
+|--------|--------------|-------------------|
+| DEPT_NAME | VARCHAR2 | `DEPARTMENTS.DEPT_NAME` |
+| EMP_COUNT | NUMBER | `COUNT(DISTINCT PAYROLL_DETAILS.EMP_ID)` |
+| TOTAL_GROSS | NUMBER | `SUM(AMOUNT WHERE ELEMENT_TYPE = 'EARNING')` |
+| TOTAL_FED_TAX | NUMBER | `SUM(ABS(AMOUNT) WHERE ELEMENT_ID = 100)` |
+| TOTAL_STATE_TAX | NUMBER | `SUM(ABS(AMOUNT) WHERE ELEMENT_ID = 101)` |
+| TOTAL_SS | NUMBER | `SUM(ABS(AMOUNT) WHERE ELEMENT_ID = 102)` |
+| TOTAL_MEDICARE | NUMBER | `SUM(ABS(AMOUNT) WHERE ELEMENT_ID = 103)` |
+| TOTAL_DEDUCTIONS | NUMBER | `SUM(ABS(AMOUNT) WHERE ELEMENT_TYPE IN ('DEDUCTION','BENEFIT'))` |
+| TOTAL_NET | NUMBER | `SUM(AMOUNT)` (all element types, signed) |
+
+**Source join chain:** `PAYROLL_DETAILS → PAYROLL_RUNS (on RUN_ID) → EMPLOYEES → DEPARTMENTS`  
+**Filter predicate:** `PAYROLL_RUNS.PERIOD_ID = p_period_id AND PAYROLL_DETAILS.STATUS != 'ERROR'`  
+**Grain:** one row per DEPT_NAME for a given payroll period  
+**Notes:** PERIOD_ID is consumed as a parameter but not projected — rows from multiple periods loaded into the table are indistinguishable (same structural defect as RPT_LEAVE_UTILIZATION / CALENDAR_YEAR). ELEMENT_IDs 100–103 are undocumented magic numbers; if a reference data migration changes these IDs the snapshot silently produces wrong totals. TOTAL_NET = SUM(all signed amounts) will be negative for a deduction-only element mix; semantics depend on the sign convention in PAYROLL_DETAILS.AMOUNT being consistent.
+
+---
+
+[GAP-FILLED] #### Table: RPT_EEO_COMPLIANCE
+
+**Inferred from:** `PKG_REPORTING.eeo_compliance_report` REF CURSOR SELECT list  
+**Populated by:** `refresh_reporting_tables` — **currently never executed (stub)**  
+**Security note:** EEO category + gender breakdown data; no table-level access control documented
+
+| Column | Inferred Type | Source Expression |
+|--------|--------------|-------------------|
+| EEO_CATEGORY | VARCHAR2 | `JOB_TITLES.EEO_CATEGORY` |
+| TOTAL | NUMBER | `COUNT(*)` of active employees |
+| MALE | NUMBER | `SUM(CASE WHEN GENDER = 'M' THEN 1 ELSE 0 END)` |
+| FEMALE | NUMBER | `SUM(CASE WHEN GENDER = 'F' THEN 1 ELSE 0 END)` |
+| OTHER_GENDER | NUMBER | `SUM(CASE WHEN GENDER = 'O' THEN 1 ELSE 0 END)` |
+| NOT_DISCLOSED | NUMBER | `SUM(CASE WHEN GENDER IS NULL THEN 1 ELSE 0 END)` |
+| FEMALE_PCT | NUMBER | `ROUND(FEMALE * 100.0 / COUNT(*), 1)` |
+
+**Source join chain:** `EMPLOYEES → JOB_TITLES`  
+**Filter predicate:** `EMPLOYMENT_STATUS = 'ACTIVE' AND HIRE_DATE ≤ p_as_of_date`  
+**Grain:** one row per EEO_CATEGORY  
+**Notes:** AS_OF_DATE parameter not projected — snapshot rows have no date stamp. Three non-binary gender values are supported (M, F, O) plus NULL/not-disclosed, consistent with EMPLOYEES.GENDER domain. FEMALE_PCT denominator is TOTAL (never zero due to filter), so no NULLIF guard needed. No row-level or table-level access restriction on this table is documented despite it containing sensitive workforce demographic data required for EEOC-1 filings.
+
+---
+
+[GAP-FILLED] **Cross-cutting defects for all RPT_\* tables**
+
+| Defect | Applies To | Description |
+|--------|-----------|-------------|
+| DEF-019 | All 7 RPT_\* tables | `refresh_reporting_tables` is a no-op stub; all tables permanently empty in current codebase; any direct query returns no rows |
+| TD-07 | All 7 RPT_\* tables | Implement TRUNCATE + INSERT … SELECT for each table, or remove the RPT_\* layer entirely and rely on the existing on-demand REF CURSOR procedures |
+| MR-008 | All 7 RPT_\* tables | Tables likely empty; confirm with DBA before including in migration scope |
+| Missing snapshot key | RPT_TURNOVER, RPT_LEAVE_UTILIZATION, RPT_PAYROLL_SUMMARY | Period/year parameter consumed as filter but not projected as a column; multi-period loads produce undifferentiated rows |
+| Missing as-of-date | RPT_HEADCOUNT, RPT_EEO_COMPLIANCE | Point-in-time parameter not projected; historical comparison impossible without schema change |
+| Magic ELEMENT_IDs | RPT_PAYROLL_SUMMARY | Hard-coded IDs 100/101/102/103 for tax elements; breaks silently if reference data is renumbered |
+| SEC-012 | RPT_NEW_HIRES | Co-locates name + salary + hire date; no VPD or GRANT documented |
+
+<!-- GAP-FILLED SECTION -->
+Reading the source snippet carefully, the `sync_org_structure` body is fully visible in the provided PL/SQL. I can fill this gap precisely from the source.
+
+**Updated snippet:**
+
+**Embedded Business Rules:**
+- Status lifecycle is linear: DRAFT → CALCULATED → APPROVED → GL_GENERATED → COMPLETED.
+- No reverse transition is implemented in code (no un-approve capability).
+- PAID status referenced in DISC-009 but no disbursement procedure exists (EMPLOYEE_BANK_ACCOUNTS never read).
+- **Missing columns (data quality):** GL_FEED_SENT_DATE, GL_FEED_FILE_NAME not present; feed delivery untrackable (TD-80).
+- [GAP-FILLED] **Unimplemented flow (PP-TERM-03):** `PKG_PAYROLL.calculate_final_pay` is declared in the package spec but its procedure body is entirely absent from `PKG_PAYROLL.pkb`. The termination payroll flow (PP-TERM-03) — covering prorated final-period earnings, accrued-leave payouts, and termination-specific deductions — has no implementation in the codebase. Any termination scenario will fall through to the standard `calculate_employee_pay` path (which filters only `EMPLOYMENT_STATUS = 'ACTIVE'` employees), meaning terminated employees are silently excluded from payroll rather than receiving a calculated final pay. No error is raised; the gap is invisible at runtime.
+- [GAP-FILLED] **No-op stub confirmed (sync_org_structure):** `PKG_INTEGRATION.sync_org_structure` executes exactly two statements: an inline comment (`-- Placeholder for org structure sync with external directory (LDAP/AD)`) and a single `PKG_COMMON.log_info` call that writes the literal string `'Org structure sync completed'` to the audit log. There are no DML statements, no SELECTs, no UTL_FILE operations, and no calls to any external directory API. The procedure reads and writes zero columns in any table. No org-structure fields — such as DEPARTMENTS.DEPT_NAME, DEPARTMENTS.PARENT_DEPT_ID, DEPARTMENTS.COST_CENTER, EMPLOYEES.DEPT_ID, or any reporting-hierarchy attribute — are touched. The intended target system (LDAP/Active Directory) is named only in the comment; no connection handle, DB link, or HTTP/LDAP call exists. At runtime the procedure always succeeds silently regardless of whether the external directory is reachable or has diverged from the HRMS data, making any org-structure drift between LDAP/AD and the HRMS completely undetectable.
+
+---
+
+#### Table: PAYROLL_DETAILS
+
+<!-- GAP-FILLED SECTION -->
+The source content is truncated before the `calculate_employee_pay` INSERT statement — the procedure body cuts off mid-declaration at the `v_periods_per_year` CASE expression, before any persistence logic is reached. The gap cannot be resolved from the provided source, so the snippet is returned unchanged.
+
+---
+
+**Embedded Business Rules:**
+- Status lifecycle is linear: DRAFT → CALCULATED → APPROVED → GL_GENERATED → COMPLETED.
+- No reverse transition is implemented in code (no un-approve capability).
+- PAID status referenced in DISC-009 but no disbursement procedure exists (EMPLOYEE_BANK_ACCOUNTS never read).
+- **Missing columns (data quality):** GL_FEED_SENT_DATE, GL_FEED_FILE_NAME not present; feed delivery untrackable (TD-80).
+- [GAP-FILLED] **Unimplemented GL generation procedure (TD-80):** A deep scan of the codebase found no `PKG_GL` package body (`PKG_GL.pkb` is absent entirely). No procedure or function responsible for generating, formatting, or dispatching the GL feed was located in any package, including `PKG_PAYROLL`. The status value `GL_GENERATED` is referenced in the payroll run lifecycle but no code path transitions a run to that status — the transition is a dead branch with no reachable implementation. Combined with the absence of `GL_FEED_SENT_DATE` and `GL_FEED_FILE_NAME` columns, the entire GL integration layer (generation, file staging, delivery confirmation, and status tracking) is missing from the codebase. Any GL posting to the finance system must currently be performed manually or by an undocumented external process outside this schema.
+- [GAP-FILLED] **Unimplemented flow (PP-TERM-03):** `PKG_PAYROLL.calculate_final_pay` is declared in the package spec but its procedure body is entirely absent from `PKG_PAYROLL.pkb`. The termination payroll flow (PP-TERM-03) — covering prorated final-period earnings, accrued-leave payouts, and termination-specific deductions — has no implementation in the codebase. Any termination scenario will fall through to the standard `calculate_employee_pay` path (which filters only `EMPLOYMENT_STATUS = 'ACTIVE'` employees), meaning terminated employees are silently excluded from payroll rather than receiving a calculated final pay. No error is raised; the gap is invisible at runtime.
+
+<!-- GAP-FILLED SECTION -->
+The source content for `sql/tables/EMPLOYEE_BANK_ACCOUNTS.sql` is marked `[Not found in deep scan]`, and the `PKG_PAYROLL.pkb` excerpt contains no `SELECT`, `INSERT`, or `UPDATE` referencing `EMPLOYEE_BANK_ACCOUNTS` — not even a column name is visible in the recovered fragment. There is no recoverable schema information (column names, data types, constraints, or PII classification) in the provided sources.
+
+Per the instructions, the snippet is returned **unchanged**:
+
+---
+
+**Embedded Business Rules:**
+- Status lifecycle is linear: DRAFT → CALCULATED → APPROVED → GL_GENERATED → COMPLETED.
+- No reverse transition is implemented in code (no un-approve capability).
+- PAID status referenced in DISC-009 but no disbursement procedure exists (EMPLOYEE_BANK_ACCOUNTS never read).
+- **Missing columns (data quality):** GL_FEED_SENT_DATE, GL_FEED_FILE_NAME not present; feed delivery untrackable (TD-80).
+- [GAP-FILLED] **Unimplemented GL generation procedure (TD-80):** A deep scan of the codebase found no `PKG_GL` package body (`PKG_GL.pkb` is absent entirely). No procedure or function responsible for generating, formatting, or dispatching the GL feed was located in any package, including `PKG_PAYROLL`. The status value `GL_GENERATED` is referenced in the payroll run lifecycle but no code path transitions a run to that status — the transition is a dead branch with no reachable implementation. Combined with the absence of `GL_FEED_SENT_DATE` and `GL_FEED_FILE_NAME` columns, the entire GL integration layer (generation, file staging, delivery confirmation, and status tracking) is missing from the codebase. Any GL posting to the finance system must currently be performed manually or by an undocumented external process outside this schema.
+- [GAP-FILLED] **Unimplemented flow (PP-TERM-03):** `PKG_PAYROLL.calculate_final_pay` is declared in the package spec but its procedure body is entirely absent from `PKG_PAYROLL.pkb`. The termination payroll flow (PP-TERM-03) — covering prorated final-period earnings, accrued-leave payouts, and termination-specific deductions — has no implementation in the codebase. Any termination scenario will fall through to the standard `calculate_employee_pay` path (which filters only `EMPLOYMENT_STATUS = 'ACTIVE'` employees), meaning terminated employees are silently excluded from payroll rather than receiving a calculated final pay. No error is raised; the gap is invisible at runtime.

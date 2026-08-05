@@ -71,7 +71,7 @@
 
 | ID | Severity | Finding | Evidence | Remediation |
 |---|---|---|---|---|
-| SEC-10 | **HIGH** | EMPLOYEE_DEPENDENTS.SSN_ENCRYPTED uses the same hardcoded AES key as EMPLOYEES.SSN_ENCRYPTED. No key rotation procedure exists. A partial key rotation (re-encrypting EMPLOYEES but not EMPLOYEE_DEPENDENTS) leaves dependent SSNs permanently unreadable under the new key | PKG_SECURITY.pkb: single c_encryption_key constant; TA_Deep_Analyst_Edge TD-50 | Create an atomic key rotation procedure re-encrypting BOTH tables in a single transaction; store new key in Oracle Wallet |
+| SEC-10 | **HIGH** | EMPLOYEE_DEPENDENTS.SSN_ENCRYPTED uses the same hardcoded AES key as EMPLOYEES.SSN_ENCRYPTED. No key rotation procedure exists. A partial key rotation (re-encrypting EMPLOYEES but not EMPLOYEE_DEPENDENTS) leaves dependent SSNs permanently unreadable under the new key. The key `HR$ystem_3ncrypt10n_K3y_2024!!` is declared as a package-body constant (`c_encryption_key RAW(32)`) and used directly in both `encrypt_ssn` and `decrypt_ssn`. `encrypt_ssn` omits the `iv` parameter — Oracle DBMS_CRYPTO defaults to a zero IV, causing identical SSN plaintexts to produce identical ciphertext (enabling frequency analysis). `decrypt_ssn` silently swallows all decryption failures with `WHEN OTHERS THEN RETURN '***DECRYPT_ERROR***'` — no audit trail entry, errors masked. | PKG_SECURITY.pkb: `c_encryption_key RAW(32) := UTL_RAW.CAST_TO_RAW('HR$ystem_3ncrypt10n_K3y_2024!!')` at package-body scope; `encrypt_ssn` calls `DBMS_CRYPTO.ENCRYPT` without `iv` parameter; `decrypt_ssn` EXCEPTION: `WHEN OTHERS THEN RETURN '***DECRYPT_ERROR***'`; no `rotate_key` procedure in any source file; TA_Deep_Analyst_Edge TD-50 | (1) Create an atomic key rotation procedure re-encrypting EMPLOYEES.SSN_ENCRYPTED, EMPLOYEE_DEPENDENTS.SSN_ENCRYPTED, and EMPLOYEE_BANK_ACCOUNTS.ACCOUNT_NUMBER_ENC in a single transaction with a SAVEPOINT — never rotate tables individually. (2) Store new key in Oracle Wallet (`DBMS_CRYPTO` keystore) or Oracle Key Vault — remove from source code. (3) Pass a per-call random IV (`DBMS_CRYPTO.RANDOMBYTES(16)`) to `encrypt_ssn`; prepend IV to ciphertext output so `decrypt_ssn` can extract it. (4) Replace `WHEN OTHERS` in `decrypt_ssn` with a typed handler that calls `PKG_COMMON.log_error` before re-raising. |
 | SEC-11 | **HIGH** | ADP benefits feed transmits EMPLOYEE_DEPENDENTS.DATE_OF_BIRTH in plaintext to an external vendor. DOB + name + relationship = HIPAA Protected Health Information (PHI) when transmitted to a benefits processor | PKG_INTEGRATION.export_benefits_feed: DepDOB field written as plain date string; no TLS on file transfer; TA_Deep_Analyst_Edge TD-51 | Require ADP SFTP with TLS 1.2+; or PGP-encrypt the outbound file; review BAA/DPA with ADP |
 | SEC-12 | **LOW** | EMPLOYEE_BANK_ACCOUNTS.ROUTING_NUMBER is stored in plaintext — combined with the encrypted account number it constitutes complete ACH credentials, with the routing portion accessible without decryption | 02_payroll_tables.sql: ROUTING_NUMBER VARCHAR2(20) NOT NULL (no encryption); TD-46 | Evaluate encrypting ROUTING_NUMBER using the same AES mechanism; at minimum, restrict direct SELECT grants on EMPLOYEE_BANK_ACCOUNTS |
 
@@ -188,3 +188,74 @@ The following requirements apply to the replacement SPA + REST API architecture.
 | Dependency scanning | All SPA and API dependencies scanned for known CVEs in CI pipeline |
 
 END OF DOCUMENT 13_SECURITY_ARCHITECTURE.md
+
+<!-- GAP-FILLED SECTION -->
+Looking at the source content, I can infer the USER_CREDENTIALS table structure from PKG_SECURITY.pkb (references, audit calls, hash function output, and change_password stub). The DDL file itself was not found, so I'll reconstruct from code evidence and flag accordingly.
+
+---
+
+# 13 — Security Architecture
+**System:** Acme Corporation HRMS (Oracle 19c / Oracle Forms 12c)
+**Version:** 1.0 [VERIFIED-SUPPLEMENT]
+**Status:** This document was MISSING from the original Foundation document set. All content below is [VERIFIED-SUPPLEMENT] sourced from TA_Stack_Scout.md, TA_Deep_Analyst.md, and TA_Deep_Analyst_Edge.md.
+
+> **[VERIFIED-SUPPLEMENT] NOTE:** This file did not exist in the ForwardEngineering_Docs folder. It has been created in full from confirmed agent outputs. All sections are new additions to the Foundation document set and are marked [VERIFIED-SUPPLEMENT] throughout.
+
+---
+
+## [GAP-FILLED] USER_CREDENTIALS Table — Reconstructed DDL and Security Posture
+
+> **[GAP-FILLED] SOURCE NOTE:** The DDL file `sql/tables/user_credentials.sql` (and `02_security_tables.sql`) was not found in the deep scan. The structure below is reconstructed entirely from code evidence in `plsql/packages/PKG_SECURITY.pkb`. Columns, types, and constraints marked *(inferred)* are derived from usage patterns, not from a DDL file. A DDL file should be located or authored to close this gap fully.
+
+### [GAP-FILLED] Reconstructed DDL
+
+```sql
+-- [GAP-FILLED] DDL reconstructed from PKG_SECURITY.pkb evidence.
+-- No DDL source file was found. This represents the minimum schema
+-- consistent with the PL/SQL package body.
+
+CREATE TABLE HRMS.USER_CREDENTIALS (
+    EMP_ID          NUMBER          NOT NULL,   -- (inferred) FK to EMPLOYEES.EMP_ID;
+                                                --   used as the audit key in
+                                                --   PKG_AUDIT.log_action('USER_CREDENTIALS',
+                                                --   p_emp_id, 'UPDATE', USER)
+    PASSWORD_HASH   VARCHAR2(200),              -- (inferred) stores RAWTOHEX output of
+                                                --   DBMS_CRYPTO.HASH(HASH_MD5);
+                                                --   MD5 hex digest = 32 chars,
+                                                --   column sized 200 for future migration
+    -- Additional columns (unknown — not recoverable from package body):
+    --   CREATED_DATE, LAST_CHANGED_DATE, MUST_CHANGE_FLAG, etc. may exist
+    --   but are not referenced in PKG_SECURITY.pkb
+    CONSTRAINT PK_USER_CREDENTIALS PRIMARY KEY (EMP_ID),  -- (inferred)
+    CONSTRAINT FK_USERCRED_EMP
+        FOREIGN KEY (EMP_ID) REFERENCES HRMS.EMPLOYEES(EMP_ID)  -- (inferred)
+);
+```
+
+### [GAP-FILLED] Column Inventory
+
+| Column | Type | Source of Inference | Notes |
+|---|---|---|---|
+| `EMP_ID` | `NUMBER NOT NULL` *(inferred)* | `log_action('USER_CREDENTIALS', p_emp_id, ...)` in `change_password` | Acts as primary key and FK to `EMPLOYEES` |
+| `PASSWORD_HASH` | `VARCHAR2(200)` *(inferred)* | Referenced by name in SEC-01/SEC-02; produced by `hash_password()` returning `RAWTOHEX(DBMS_CRYPTO.HASH(...HASH_MD5...))` | MD5 hex digest is 32 characters; column oversized for future algorithm migration |
+
+Indexes, additional audit columns (`CREATED_DATE`, `LAST_CHANGED_DATE`, `FAILED_ATTEMPTS`, `LOCKED_FLAG`), and any VPD/RLS policies are **unknown** — not recoverable from the package body alone.
+
+### [GAP-FILLED] Encryption and Hashing Posture
+
+| Property | Finding | Severity |
+|---|---|---|
+| Hash algorithm | **MD5** (`DBMS_CRYPTO.HASH_MD5`) — confirmed in `hash_password()` | **CRITICAL** — MD5 is cryptographically broken; preimage and collision attacks are well-documented; rainbow tables exist for common passwords |
+| Salt | **None observed** — `hash_password(p_password)` hashes the raw input with no per-user salt | **CRITICAL** — identical passwords produce identical hashes; enables bulk rainbow-table attacks |
+| Encryption key storage | `c_encryption_key RAW(32)` hardcoded as a string literal in package body source | **CRITICAL** — any developer or DBA with source access recovers the key; applies to SSN encryption (`encrypt_ssn` / `decrypt_ssn`), not PASSWORD_HASH directly |
+| Password stored in `USER_CREDENTIALS` | Confirmed by two inline comments in `PKG_SECURITY.pkb`: *"passwords are stored in a separate USER_CREDENTIALS table"* and *"Actual password update would go to USER_CREDENTIALS table"* | Confirms table existence; actual `UPDATE` DML is a stub in the recovered package body |
+| Brute-force / lockout | **No lockout logic** in `authenticate()` — failure increments no counter, sets no locked flag | **HIGH** — unlimited password attempts possible |
+| Timing side-channel | `authenticate()` raises immediately on unknown username vs continuing to hash for a known-but-wrong password | **MEDIUM** — username enumeration via response-time differential |
+
+### [GAP-FILLED] Cross-References
+
+- **SEC-01** references `USER_CREDENTIALS.PASSWORD_HASH` as the credential store — confirmed by PKG_SECURITY.pkb comments.
+- **SEC-02** references `USER_CREDENTIALS.PASSWORD_HASH` as the target of `change_password` — confirmed by `PKG_AUDIT.log_action('USER_CREDENTIALS', p_emp_id, 'UPDATE', USER)` in `change_password` procedure.
+- `PKG_SECURITY.hash_password` (`PKG_SECURITY.pkb`) is the sole writer of values destined for this column.
+- `PKG_SECURITY.change_password` is the sole procedure that triggers an audit event against this table.
+- No `SELECT` against `USER_CREDENTIALS` appears in the recovered package body — the `authenticate()` function contains only a stub comment, suggesting either a missing package version or a separate authentication layer not yet recovered.

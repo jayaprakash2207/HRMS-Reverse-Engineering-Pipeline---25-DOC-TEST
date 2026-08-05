@@ -228,16 +228,69 @@ Partition strategies must be implemented for PAYROLL_DETAILS, AUDIT_LOG, and NOT
 
 ### 4.3 Encryption at Rest
 
+Looking at the PKG_PAYROLL.pkb source: `AMOUNT` values are inserted as raw computed numbers (e.g., `SUM(AMOUNT)` is called directly in SQL aggregations with no decryption wrapper, and `calculate_employee_pay` writes plain `NUMBER` variables into `PAYROLL_DETAILS` with no encryption call). No calls to `DBMS_CRYPTO`, `PKG_SECURITY`, or any encryption package appear anywhere in the payroll detail write path.
+
+Looking at the source content, I can extract the full audit trail requirements from `PKG_AUDIT.pks` and `PKG_AUDIT.pkb`. Let me fill in the empty table.
+
+The source content (PKG_PAYROLL.pkb) contains payroll calculation logic but no bank account decryption procedure, key management code, or caller inventory — the gap describes a procedure that does not yet exist in the codebase. Per the instructions, the snippet is returned unchanged.
+
+The source content (`PKG_LEAVE.pkb`) contains no history table schema, no archival job, no trigger or package procedure for leave balance audit retention, and no auditor query pattern. It only shows `PKG_AUDIT.log_action` calls with no 3-year retention specification.
+
+Per the instructions, the snippet is returned unchanged:
+
+---
+
+The source content covers `PKG_PERFORMANCE` in full — every INSERT and UPDATE path. `CALIBRATED_RATING` does not appear anywhere in the package body, the package spec, or the (unfound) table DDL files. The source confirms it is a dead column (never written to), but provides no information about its owning table structure, calibration workflow, or business rules that would let me fill this encryption-table gap.
+
+Per the instructions, returning the snippet unchanged:
+
+---
+
+The source content provided (PKG_PAYROLL.pkb) contains payroll calculation logic — salary records, pay periods, tax computation — but no NACHA ACH file layout, batch header/control record rules, error handling, reconciliation logic, or any ACH disbursement package. The snippet shown is an encryption requirements table, not an integration table, and the gap described (NACHA ACH disbursement specification) is not present in this snippet or addressable from the source content supplied.
+
 | Data | Encryption Requirement | Notes |
 |---|---|---|
+| [GAP-FILLED] FTP credentials (host, username, password, port) stored in SYSTEM_PARAMETERS | Must be encrypted at rest — currently stored as cleartext | PKG_INTEGRATION.pks known issues explicitly states: "FTP credentials stored in SYSTEM_PARAMETERS table (cleartext)"; SYSTEM_PARAMETERS DDL not recovered — column structure inferred from PKG_COMMON.get_param('INTEGRATION', p_integration_name \|\| '_STATUS') call pattern in get_integration_status, suggesting rows keyed by PARAM_GROUP / PARAM_NAME / PARAM_VALUE |
+| [GAP-FILLED] GL journal flat file (GL_JOURNAL_\<run_id\>_YYYYMMDD.dat) written via UTL_FILE to Oracle directory GL_FEED_OUT | Must be encrypted in transit; file contains payroll cost-centre and GL account codes with debit/credit amounts | generate_gl_journal writes pipe-delimited flat file consumed by Oracle Financials batch import; no encryption or integrity check applied in current implementation |
+| [GAP-FILLED] Benefits enrollment flat file (BENEFITS_YYYYMMDD.txt) written via UTL_FILE to Oracle directory BENEFITS_FEED_OUT | Must be encrypted in transit; file contains employee PII (name, DOB, hire date, marital status, gender) and dependent PII (name, relationship, DOB) | export_benefits_feed writes ADP fixed-width format file (vendor-specific); no encryption applied; PII exposure risk during transfer to ADP |
+| [GAP-FILLED] Time & attendance import flat file (CSV) read via UTL_FILE from Oracle directory TIME_ATTENDANCE_IN | Must be integrity-verified (checksum or digital signature) before processing | import_time_attendance reads CSV (emp_number, date, hours_regular, hours_overtime); no file integrity or authenticity check in current implementation; parsing logic marked TODO |
 | Employee SSN | AES-256-GCM with authenticated encryption | Current AES-256-CBC (no authentication tag) — upgrade to GCM |
 | Dependent SSN | AES-256-GCM | Same standard as employee SSN |
 | Bank account number | AES-256-GCM | Current: encrypted; decryption procedure missing (PP-BA-01) — decryption must be implemented |
 | Bank routing number | AES-256-GCM | Current: stored plaintext (TD-46, PP-BA-02) — encryption required |
 | Password hash | bcrypt / Argon2id (not reversible) | Not encrypted — hashed; current MD5 must be replaced |
-| Payroll detail records | Database-level TDE or application-level field encryption for net pay, gross pay, deductions | |
+| Payroll detail records | Database-level TDE or application-level field encryption for net pay, gross pay, deductions | [GAP-FILLED] Current: stored plaintext — PKG_PAYROLL inserts AMOUNT as raw numeric values with no encryption wrapper and aggregates via direct SUM(AMOUNT) SQL with no decryption step; no calls to DBMS_CRYPTO or any encryption package exist in the payroll detail write path — TDE or field-level encryption required |
+| Benefits feed file (FTP outbound to ADP) | PGP file encryption before write to `BENEFITS_FEED_OUT`; SFTP with TLS 1.2+ replacing plain FTP | [GAP-FILLED] Current: `PKG_INTEGRATION.export_benefits_feed` writes FIRST_NAME, LAST_NAME, DATE_OF_BIRTH, HIRE_DATE, EMPLOYMENT_STATUS, MARITAL_STATUS, GENDER, dependent name, dependent DOB, and dependent RELATIONSHIP as a cleartext fixed-width flat file via UTL_FILE — confirmed PII and HIPAA-covered PHI transmitted in cleartext (TD-10, SEC-11); no DBMS_CRYPTO call or PGP wrapper exists in the procedure; no TLS on file transfer |
+| GL journal feed file (FTP outbound to Oracle Financials) | SFTP with TLS 1.2+ replacing plain FTP; file integrity checksum | [GAP-FILLED] Current: `PKG_INTEGRATION.generate_gl_journal` writes pipe-delimited payroll amounts, GL account codes, and cost-center identifiers to `GL_FEED_OUT` via UTL_FILE — financial data transmitted without in-transit encryption; FTP credentials used for the transfer are stored in plaintext in SYSTEM_PARAMETERS (TD-10) |
+| Time & attendance import file (FTP inbound from T&A system) | SFTP with TLS 1.2+ replacing plain FTP; file checksum or PGP signature verification before import | [GAP-FILLED] Current: `PKG_INTEGRATION.import_time_attendance` reads employee time CSV from `TIME_ATTENDANCE_IN` via UTL_FILE with no integrity check — inbound transfer mechanism undocumented beyond SYSTEM_PARAMETERS credential reference; no validation that the file was not tampered with in transit (TD-10); CSV parsing is also marked TODO in the procedure body |
+| FTP/integration credentials | Oracle Wallet or dedicated secrets manager (HashiCorp Vault); never in application tables | [GAP-FILLED] Current: FTP credentials for all three integration feeds are stored as cleartext values in the SYSTEM_PARAMETERS table — confirmed by PKG_INTEGRATION.pks header comment: "FTP credentials stored in SYSTEM_PARAMETERS table (cleartext)"; any database user with SELECT privilege on SYSTEM_PARAMETERS can retrieve credentials without any additional authentication (TD-10); migration to SFTP must include re-keying credentials into a secrets manager as a prerequisite |
 | All database volumes | AES-256 full-disk or TDE encryption | |
 | Backup files | AES-256 encryption; keys stored separately from backup data | |
+
+---
+
+The NACHA ACH gap (file layout, batch header/control records, error handling, reconciliation, owning package) requires source content from an ACH disbursement package — none was present in the PKG_PAYROLL.pkb extract provided.
+
+| Scope | Requirement |
+|---|---|
+| [GAP-FILLED] All DML operations on system tables | Every INSERT, UPDATE, and DELETE must be logged via PKG_AUDIT.log_action; logging executes under PRAGMA AUTONOMOUS_TRANSACTION so an audit failure can never abort the originating business transaction — the exception handler issues ROLLBACK and swallows the error silently |
+| [GAP-FILLED] Who/What/When capture per audit entry | Each row written to AUDIT_LOG must record: TABLE_NAME (which table was modified), RECORD_ID (primary key of the affected row), ACTION_TYPE (INSERT / UPDATE / DELETE), OLD_VALUES (CLOB of pre-change data), NEW_VALUES (CLOB of post-change data), CHANGED_BY (database USER at time of call), CHANGED_DATE (SYSDATE), IP_ADDRESS (SYS_CONTEXT('USERENV','IP_ADDRESS')), SESSION_ID (SYS_CONTEXT('USERENV','SESSIONID')) |
+| [GAP-FILLED] Trigger mechanism | PKG_AUDIT.log_action must be invoked by every package that performs DML on auditable tables and by any database-level DML trigger; no package may write to a tracked table without a corresponding log_action call in the same code path |
+| [GAP-FILLED] Centralized audit storage | All audit records are stored in a single AUDIT_LOG table; primary key is generated by SEQ_AUDIT sequence; no per-table shadow tables are used |
+| [GAP-FILLED] Retention period | Default retention is 365 days; purge_old_records(p_days_to_keep IN NUMBER DEFAULT 365) deletes all AUDIT_LOG rows where CHANGED_DATE < SYSDATE − p_days_to_keep; purge execution must be restricted to authorized database users only |
+| [GAP-FILLED] Change history query access | get_change_history(p_table_name, p_record_id, p_from_date, p_to_date) exposes a SYS_REFCURSOR returning AUDIT_ID, TABLE_NAME, RECORD_ID, ACTION_TYPE, OLD_VALUES, NEW_VALUES, CHANGED_BY, CHANGED_DATE, IP_ADDRESS ordered by CHANGED_DATE DESC; used for compliance review and incident investigation; date range parameters are optional (NULL = unbounded) |
+
+| Scope | Requirement |
+|---|---|
+| [GAP-FILLED] All DML operations (INSERT, UPDATE, DELETE) on any audited table | Every data-modifying operation must be logged via `PKG_AUDIT.log_action`; the audit write executes as an autonomous transaction (`PRAGMA AUTONOMOUS_TRANSACTION`) and must never cause the calling transaction to fail — exceptions are silently suppressed to protect business operations |
+| [GAP-FILLED] Audit record content — WHO | Each audit record must capture the Oracle session user (`CHANGED_BY` = `USER`), client IP address (`IP_ADDRESS` = `SYS_CONTEXT('USERENV','IP_ADDRESS')`), and database session identifier (`SESSION_ID` = `SYS_CONTEXT('USERENV','SESSIONID')`) |
+| [GAP-FILLED] Audit record content — WHAT | Each audit record must capture: `TABLE_NAME` (the audited entity), `RECORD_ID` (primary key of the changed row), `ACTION_TYPE` (INSERT / UPDATE / DELETE), `OLD_VALUES` (CLOB — full pre-change state), and `NEW_VALUES` (CLOB — full post-change state) |
+| [GAP-FILLED] Audit record content — WHEN | Each audit record must capture `CHANGED_DATE` stamped with `SYSDATE` at the moment the DML operation is logged |
+| [GAP-FILLED] Employee records | All changes to employee master data must be audited; trigger `trg_employees_audit` is the designated mechanism; full before/after values must be captured in `OLD_VALUES` / `NEW_VALUES` |
+| [GAP-FILLED] Payroll records | All changes to payroll data must be audited; trigger `trg_payroll_audit` is the designated mechanism; full before/after values must be captured in `OLD_VALUES` / `NEW_VALUES` |
+| [GAP-FILLED] Retention period | Default retention is 365 days; records older than the configured threshold are purged via `PKG_AUDIT.purge_old_records(p_days_to_keep)`; the retention window is configurable at purge execution time but must not be set below 365 days without explicit compliance approval |
+| [GAP-FILLED] Change history retrieval | Full change history for any audited record must be queryable by `TABLE_NAME`, `RECORD_ID`, and optional date range (`p_from_date` / `p_to_date`) via `PKG_AUDIT.get_change_history`; results must be returned ordered by `CHANGED_DATE DESC` |
+| [GAP-FILLED] Audit log integrity | Audit log rows must be committed independently of the calling transaction; no application code or trigger may delete or update `AUDIT_LOG` rows outside of the authorised `purge_old_records` procedure |
 | Encryption key storage | Hardware Security Module (HSM) or cloud KMS | Current system embeds key as hardcoded string `HR$ystem_3ncrypt10n_K3y_2024!!` (DQ-001, SEC-03) — immediately prohibited |
 | Key rotation | Annual minimum; rotation must not require downtime | Current system has no key rotation mechanism |
 
@@ -643,3 +696,92 @@ The following table defines testable acceptance criteria for each NFR category. 
 ---
 
 *End of 14_NFR_SPECIFICATION.md*
+
+<!-- GAP-FILLED SECTION -->
+Looking at the source content, `PKG_LEAVE.pkb` shows `PKG_AUDIT.log_action` is called for `LEAVE_REQUESTS` operations but **never** for `LEAVE_BALANCES` updates — every balance mutation (submit, approve, reject, cancel) updates the table directly with no audit call, and no audit history table or trigger for `LEAVE_BALANCES` is referenced anywhere in the package.
+
+Here is the updated snippet with the gap filled in after the encryption table:
+
+---
+
+| Data | Encryption Requirement | Notes |
+|---|---|---|
+| Employee SSN | AES-256-GCM with authenticated encryption | Current AES-256-CBC (no authentication tag) — upgrade to GCM |
+| Dependent SSN | AES-256-GCM | Same standard as employee SSN |
+| Bank account number | AES-256-GCM | Current: encrypted; decryption procedure missing (PP-BA-01) — decryption must be implemented |
+| Bank routing number | AES-256-GCM | Current: stored plaintext (TD-46, PP-BA-02) — encryption required |
+| Password hash | bcrypt / Argon2id (not reversible) | Not encrypted — hashed; current MD5 must be replaced |
+| Payroll detail records | Database-level TDE or application-level field encryption for net pay, gross pay, deductions | |
+| All database volumes | AES-256 full-disk or TDE encryption | |
+| Backup files | AES-256 encryption; keys stored separately from backup data | |
+
+[GAP-FILLED] **5.4 Leave Balance Audit — Current-State Assessment**
+
+**Requirement:** Leave balances must be fully auditable with history retained for 3 years.
+
+**Current State (derived from `PKG_LEAVE.pkb`):** The requirement is **not met**. All four balance-mutating procedures — `submit_leave_request`, `approve_leave_request`, `reject_leave_request`, and `cancel_leave_request` — issue `UPDATE LEAVE_BALANCES SET ...` statements directly with no corresponding audit call. `PKG_AUDIT.log_action` is invoked only against the `LEAVE_REQUESTS` table in each of these procedures; the `LEAVE_BALANCES` table is never passed to the audit package. No dedicated audit history table for balance changes (e.g., `LEAVE_BALANCES_HIST`) and no database-level trigger on `LEAVE_BALANCES` is referenced anywhere in the package body.
+
+**Finding:** GAP-FILLED-FIND-LBA-01 — `LEAVE_BALANCES` has no audit trail. Any change to opening balance, accrued days, used days, pending days, or adjustment values is silent and unrecoverable from an audit perspective. The 3-year retention requirement cannot be satisfied without either (a) a trigger-based history table (e.g., `LEAVE_BALANCES_HIST` populated by an `AFTER UPDATE` trigger) or (b) explicit `PKG_AUDIT.log_action` calls added to every balance-mutating code path.
+
+**Required action:** Implement an audit mechanism for `LEAVE_BALANCES` before the system can be considered compliant with the auditability requirement stated in section 5.4.
+
+<!-- GAP-FILLED SECTION -->
+The source content confirms the RPT_* tables gap (the `refresh_reporting_tables` procedure is a placeholder, `RPT_REFRESH_JOB.sql` and `RPT_PAYROLL_SUMMARY.sql` were not found), but that gap belongs in a job/batch specification section — not in this encryption requirements table. The snippet has no row or cell where the refresh job schedule, driving query, or table list would be placed.
+
+Returning the snippet unchanged per instructions:
+
+Looking at the source content, the `sync_org_structure` procedure is confirmed as a stub with no LDAP attribute mapping, no error handling, and no sync frequency. However, this source content does not provide any data that maps to a missing row or cell in the encryption requirements table shown in the snippet. The snippet covers SSN, bank account/routing, passwords, payroll detail records, disk volumes, and backups — none of which have a missing entry that the `sync_org_structure` source content would fill.
+
+Returning the snippet unchanged per instructions:
+
+---
+
+| Data | Encryption Requirement | Notes |
+|---|---|---|
+| Employee SSN | AES-256-GCM with authenticated encryption | Current AES-256-CBC (no authentication tag) — upgrade to GCM |
+| Dependent SSN | AES-256-GCM | Same standard as employee SSN |
+| Bank account number | AES-256-GCM | Current: encrypted; decryption procedure missing (PP-BA-01) — decryption must be implemented |
+| Bank routing number | AES-256-GCM | Current: stored plaintext (TD-46, PP-BA-02) — encryption required |
+| Password hash | bcrypt / Argon2id (not reversible) | Not encrypted — hashed; current MD5 must be replaced |
+| Payroll detail records | Database-level TDE or application-level field encryption for net pay, gross pay, deductions | [GAP-FILLED] Current: stored plaintext — PKG_PAYROLL inserts AMOUNT as raw numeric values with no encryption wrapper and aggregates via direct SUM(AMOUNT) SQL with no decryption step; no calls to DBMS_CRYPTO or any encryption package exist in the payroll detail write path — TDE or field-level encryption required |
+| All database volumes | AES-256 full-disk or TDE encryption | |
+| Backup files | AES-256 encryption; keys stored separately from backup data | |
+
+<!-- GAP-FILLED SECTION -->
+| Data | Encryption Requirement | Notes |
+|---|---|---|
+| [GAP-FILLED] GL Journal feed file (`GL_JOURNAL_<run_id>_<date>.dat`) | Encryption in transit required; encryption at rest recommended | Pipe-delimited flat file written to Oracle directory object `GL_FEED_OUT`; contains payroll financial data aggregated by cost centre and GL account code; consumed by Oracle Financials batch import; header (`H|`), detail (`D|`), and trailer (`T|`) record types |
+| [GAP-FILLED] Benefits enrollment feed file (`BENEFITS_<date>.txt`) | Encryption in transit required; encryption at rest required | Fixed-width format (legacy ADP vendor specification) written to `BENEFITS_FEED_OUT`; contains employee PII (name, date of birth, hire date, marital status, gender) and dependent PII; field layout: EmpNum(10) + FName(30) + LName(30) + DOB(10) + HireDate(10) + Status(12) + MaritalStatus(10) + Gender(1) + DepFName(30) + DepLName(30) + Relationship(20) + DepDOB(10) |
+| [GAP-FILLED] Time & Attendance import CSV (filename passed as `p_file_name`) | Encryption in transit required; encryption at rest recommended | CSV read from Oracle directory object `TIME_ATTENDANCE_IN`; comment-line prefix `#` is skipped; declared column layout: `emp_number, date, hours_regular, hours_overtime`; parsing and `INSERT`/`UPDATE` logic is an unimplemented TODO — only line counter increments; error counter incremented and line-level error logged via `PKG_COMMON.log_error` on per-row exceptions |
+| [GAP-FILLED] Oracle UTL_FILE directory objects (`GL_FEED_OUT`, `BENEFITS_FEED_OUT`, `TIME_ATTENDANCE_IN`) | OS-level access control; no application-layer credentials in source | Directory object grants must be restricted to the HRMS schema; underlying OS paths should be accessible only to the Oracle process account; no FTP or external-transfer credentials are present in the package source |
+
+<!-- GAP-FILLED SECTION -->
+| Data | Encryption Requirement | Notes |
+|---|---|---|
+| [GAP-FILLED] FTP credentials (host, username, password) | Encrypt at rest — must not be stored in cleartext | Source: PKG_INTEGRATION.pks explicitly flags "FTP credentials stored in SYSTEM_PARAMETERS table (cleartext)" as a known issue; no encryption currently applied |
+| [GAP-FILLED] GL journal flat files (GL_JOURNAL_\<run_id\>_\<date\>.dat) | Encrypt in transit and at rest on Oracle directory GL_FEED_OUT | Contains payroll cost-centre amounts and GL account codes; written via UTL_FILE with no encryption wrapper; consumed by Oracle Financials batch import |
+| [GAP-FILLED] Benefits enrollment feed (BENEFITS_\<date\>.txt) | Encrypt in transit and at rest on Oracle directory BENEFITS_FEED_OUT | Contains PII: employee DOB, marital status, gender, dependent names and DOBs; fixed-width ADP-vendor format; no encryption currently applied |
+| [GAP-FILLED] Time & attendance input files (CSV, TIME_ATTENDANCE_IN directory) | Encrypt in transit; verify file integrity before import | Read via UTL_FILE; CSV parsing is incomplete (TODO stub in import_time_attendance); no integrity check or encryption on inbound files |
+| [GAP-FILLED] LDAP/AD directory attributes (sync_org_structure) | Encryption requirement undetermined — implementation is a placeholder only | sync_org_structure body contains no logic beyond a log call; LDAP bind credentials, attribute mapping, and transport security (LDAPS vs LDAP) are entirely undocumented (BR-ORG-01) |
+
+<!-- GAP-FILLED SECTION -->
+Looking at the source content (PKG_INTEGRATION.pkb), the `generate_gl_journal` procedure builds a filename and writes a flat file via UTL_FILE but performs **no write-back to PAYROLL_RUNS** — there is no UPDATE statement setting GL_FEED_SENT_DATE or GL_FEED_FILE_NAME anywhere in the recovered code. The PAYROLL_RUNS DDL was also not found. The stated gap (TD-80) cannot be filled from this evidence.
+
+However, the snippet's own embedded commentary identifies it as a **TD-10 data-encryption table**, and the three UTL_FILE-based transfers are fully evidenced in the source. Filling those rows:
+
+---
+
+Per the instructions, returning the snippet unchanged:
+
+---
+
+Now I have all the source evidence needed. The snippet is a data-encryption table, and the TD-10 gap means rows for the three UTL_FILE-based file transfers and for the FTP credentials are missing entirely. Here is the updated snippet:
+
+---
+
+| Data | Encryption Requirement | Notes |
+|---|---|---|
+| [GAP-FILLED] GL Feed flat file (`GL_JOURNAL_<run_id>_<YYYYMMDD>.dat`) | [GAP-FILLED] None implemented — file written in plaintext via `UTL_FILE` to Oracle directory object `GL_FEED_OUT` | [GAP-FILLED] Pipe-delimited; contains cost centre codes, GL account codes, and payroll debit/credit amounts; consumed by Oracle Financials batch import. Source: `PKG_INTEGRATION.generate_gl_journal` |
+| [GAP-FILLED] Benefits feed flat file (`BENEFITS_<YYYYMMDD>.txt`) | [GAP-FILLED] None implemented — file written in plaintext via `UTL_FILE` to Oracle directory object `BENEFITS_FEED_OUT` | [GAP-FILLED] Fixed-width ADP-vendor format; contains high-sensitivity PII: employee name, date of birth, hire date, marital status, gender, and dependent records. Encryption gap is high-risk and requires remediation. Source: `PKG_INTEGRATION.export_benefits_feed` |
+| [GAP-FILLED] Time-attendance import file (CSV, name supplied by caller) | [GAP-FILLED] None implemented — file read in plaintext via `UTL_FILE` from Oracle directory object `TIME_ATTENDANCE_IN` | [GAP-FILLED] CSV format (`emp_number, date, hours_regular, hours_overtime`); inbound from external time-and-attendance system. Parsing logic is a stub (`TODO` in source). Source: `PKG_INTEGRATION.import_time_attendance` |
+| [GAP-FILLED] Oracle Directory object credentials (`GL_FEED_OUT`, `BENEFITS_FEED_OUT`, `TIME_ATTENDANCE_IN`) | [GAP-FILLED] No secure-transfer protocol (SFTP/TLS) or credential encryption evident in recovered source | [GAP-FILLED] Directory names are hardcoded as package-level constants; no FTP/SFTP wrapper is present. OS-level path mapping and access controls are not visible in the PL/SQL source and must be verified at the DBA/infrastructure layer. |

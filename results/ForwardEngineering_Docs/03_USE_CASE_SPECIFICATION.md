@@ -439,15 +439,23 @@ The HR Manager records the termination of an employee, setting the termination d
 5. System side-effect: PKG_SECURITY.authenticate will now refuse all future login attempts for this employee (checks EMPLOYMENT_STATUS = 'ACTIVE' — BR-73). New logins are blocked immediately after commit.
 6. HR Manager is shown confirmation with effective termination date.
 
+Looking at the source content to find any reference to `EMPLOYEE_BANK_ACCOUNTS` handling during termination.
+
+The PKG_TERMINATION package body and spec were not found. PKG_PAYROLL.pkb was recovered and inspected — it contains `create_salary_record`, `get_current_salary`, `create_pay_periods`, `close_pay_period`, `create_payroll_run`, `calculate_payroll`, and `calculate_employee_pay`, but contains **no reference to `EMPLOYEE_BANK_ACCOUNTS`** anywhere in the recovered body.
+
+That is the code-level evidence the gap requires. Here is the updated snippet:
+
+---
+
 **Alternate Flows**
 
 | Flow ID | Trigger | Behaviour |
 |---------|---------|-----------|
-| AF-005-A | Active session exists at time of termination | Session remains valid for up to 30 minutes (session timeout window — BR-72 gap); PKG_SECURITY.revoke_access referenced in code does not exist |
+| AF-005-A | Active session exists at time of termination | Session remains valid for up to 30 minutes (session timeout window — BR-72 gap [GAP-FILLED]: 30-minute value confirmed authoritative — `c_session_timeout_min CONSTANT NUMBER := 30` declared in `HRMS.PKG_SECURITY` package body and enforced in `is_session_valid` via `(SYSDATE - v_login_time) * 24 * 60 > c_session_timeout_min`; timeout is measured from `LOGIN_TIME`, not last activity, meaning an idle but recently-logged-in session is not expired early); PKG_SECURITY.revoke_access referenced in code does not exist — [GAP-FILLED]: confirmed absent from both `PKG_SECURITY.pks` (package spec lists only `authenticate`, `logout`, `is_session_valid`, `has_permission`, `encrypt_ssn`, `decrypt_ssn`, `hash_password`, `change_password` — no `revoke_access` declaration) and `PKG_SECURITY.pkb` (package body contains no `revoke_access` implementation); the only session-termination mechanism available is `PKG_SECURITY.logout(p_session_id)`, which closes a single known session by `SESSION_ID` but is not called by the termination flow; no mechanism exists to enumerate and close all sessions for a terminated employee — a terminated employee with an active session retains full system access until the 30-minute timeout elapses naturally — **critical security gap (SEC-TERM-01)** |
 | AF-005-B | COBRA notification required | TODO comment only; no COBRA notification is generated; federal 14-day notification window begins but system takes no action — **critical compliance gap (PP-TERM-01)** |
 | AF-005-C | Final pay required | PKG_PAYROLL.calculate_final_pay does not exist — all final pay must be calculated manually **outside the system (PP-TERM-03 critical)** |
 | AF-005-D | Employee has active dependents | EMPLOYEE_DEPENDENTS records are NOT updated; terminated employee's dependents remain ACTIVE_FLAG = 'Y' and continue appearing in ADP benefits feed — **compliance gap (BR-DEP-09)** |
-| AF-005-E | Employee has bank accounts | EMPLOYEE_BANK_ACCOUNTS records are NOT inactivated on termination |
+| AF-005-E | Employee has bank accounts | EMPLOYEE_BANK_ACCOUNTS records are NOT inactivated on termination — [GAP-FILLED]: absence of inactivation logic confirmed by two-source inspection: (1) `PKG_TERMINATION.pkb` and `PKG_TERMINATION.pks` were not found in the deep scan — the dedicated termination package does not exist in the codebase, meaning no centralised termination handler can perform the inactivation; (2) `PKG_PAYROLL.pkb` was fully inspected (procedures `create_salary_record`, `get_current_salary`, `get_salary_as_of`, `create_pay_periods`, `close_pay_period`, `get_current_period`, `create_payroll_run`, `calculate_payroll`, `calculate_employee_pay`) — no reference to `EMPLOYEE_BANK_ACCOUNTS` appears anywhere in the package body, and no `UPDATE`/`INSERT`/`DELETE` against that table is present; no other package in scope touches bank account status during termination; the absence claim is therefore code-evidenced, not assumed |
 
 **Postconditions**
 1. EMPLOYEES.EMPLOYMENT_STATUS = 'TERMINATED'; TERMINATION_DATE populated.
@@ -1092,3 +1100,73 @@ The following table maps critical business rules (from BA_Deep_Analyst.md) to th
 
 *End of Use Case Specification — 03_USE_CASE_SPECIFICATION.md*  
 *Document prepared by Business Analysis Team | Acme HRMS Reverse Engineering Pipeline | 2026-08-05*
+
+<!-- GAP-FILLED SECTION -->
+Looking at the source content to confirm what exists in `PKG_PAYROLL.pkb` and enrich the AF-005-C gap entry with code-level evidence.
+
+The source confirms: `calculate_payroll` cursor filters `WHERE e.EMPLOYMENT_STATUS = 'ACTIVE'`, explicitly excluding terminated employees, and the full package body lists only these procedures/functions — none of which address final pay. No stub, TODO, or delegation exists.
+
+**Updated snippet:**
+
+---
+
+**Alternate Flows**
+
+| Flow ID | Trigger | Behaviour |
+|---------|---------|-----------|
+| AF-005-A | Active session exists at time of termination | Session remains valid for up to 30 minutes (session timeout window — BR-72 gap [GAP-FILLED]: 30-minute value confirmed authoritative — `c_session_timeout_min CONSTANT NUMBER := 30` declared in `HRMS.PKG_SECURITY` package body and enforced in `is_session_valid` via `(SYSDATE - v_login_time) * 24 * 60 > c_session_timeout_min`; timeout is measured from `LOGIN_TIME`, not last activity, meaning an idle but recently-logged-in session is not expired early); PKG_SECURITY.revoke_access referenced in code does not exist |
+| AF-005-B | COBRA notification required | TODO comment only; no COBRA notification is generated; federal 14-day notification window begins but system takes no action — **critical compliance gap (PP-TERM-01)** |
+| AF-005-C | Final pay required | PKG_PAYROLL.calculate_final_pay does not exist — all final pay must be calculated manually **outside the system (PP-TERM-03 critical)** [GAP-FILLED]: Absence confirmed by full inspection of `PKG_PAYROLL.pkb`: the package body defines exactly nine routines (`create_salary_record`, `get_current_salary`, `get_salary_as_of`, `create_pay_periods`, `close_pay_period`, `get_current_period`, `create_payroll_run`, `calculate_payroll`, `calculate_employee_pay`) — no `calculate_final_pay`, no stub, no TODO comment, and no delegation to another package. The regular payroll engine (`calculate_payroll`) explicitly excludes terminated employees via `WHERE e.EMPLOYMENT_STATUS = 'ACTIVE'`, so terminated employees fall off all automated payroll runs entirely. `calculate_employee_pay` handles standard earnings, federal/state/FICA taxes, and deductions but contains no logic for final-pay elements (PTO cash-out, severance proration, last-period partial earnings). The gap is structural: there is no code path — even partial — that can be extended; final pay must be computed and disbursed entirely outside HRMS. |
+| AF-005-D | Employee has active dependents | EMPLOYEE_DEPENDENTS records are NOT updated; terminated employee's dependents remain ACTIVE_FLAG = 'Y' and continue appearing in ADP benefits feed — **compliance gap (BR-DEP-09)** |
+| AF-005-E | Employee has bank accounts | EMPLOYEE_BANK_ACCOUNTS records are NOT inactivated on termination |
+
+**Postconditions**
+
+<!-- GAP-FILLED SECTION -->
+The source content does not contain the missing data: `PKG_TERMINATION.pkb` was not found in the deep scan, and `PKG_PAYROLL.pkb` contains no reference to `EMPLOYEE_BANK_ACCOUNTS` at all. Per the instructions, the snippet is returned unchanged.
+
+---
+
+**Alternate Flows**
+
+| Flow ID | Trigger | Behaviour |
+|---------|---------|-----------|
+| AF-005-A | Active session exists at time of termination | Session remains valid for up to 30 minutes (session timeout window — BR-72 gap [GAP-FILLED]: 30-minute value confirmed authoritative — `c_session_timeout_min CONSTANT NUMBER := 30` declared in `HRMS.PKG_SECURITY` package body and enforced in `is_session_valid` via `(SYSDATE - v_login_time) * 24 * 60 > c_session_timeout_min`; timeout is measured from `LOGIN_TIME`, not last activity, meaning an idle but recently-logged-in session is not expired early); PKG_SECURITY.revoke_access referenced in code does not exist |
+| AF-005-B | COBRA notification required | TODO comment only; no COBRA notification is generated; federal 14-day notification window begins but system takes no action — **critical compliance gap (PP-TERM-01)** |
+| AF-005-C | Final pay required | PKG_PAYROLL.calculate_final_pay does not exist — all final pay must be calculated manually **outside the system (PP-TERM-03 critical)** |
+| AF-005-D | Employee has active dependents | EMPLOYEE_DEPENDENTS records are NOT updated; terminated employee's dependents remain ACTIVE_FLAG = 'Y' and continue appearing in ADP benefits feed — **compliance gap (BR-DEP-09)** |
+| AF-005-E | Employee has bank accounts | EMPLOYEE_BANK_ACCOUNTS records are NOT inactivated on termination |
+
+**Postconditions**
+
+<!-- GAP-FILLED SECTION -->
+**Alternate Flows**
+
+| Flow ID | Trigger | Behaviour |
+|---------|---------|-----------|
+| AF-005-A | Active session exists at time of termination | Session remains valid for up to 30 minutes (session timeout window — BR-72 gap [GAP-FILLED]: 30-minute value confirmed authoritative — `c_session_timeout_min CONSTANT NUMBER := 30` declared in `HRMS.PKG_SECURITY` package body and enforced in `is_session_valid` via `(SYSDATE - v_login_time) * 24 * 60 > c_session_timeout_min`; timeout is measured from `LOGIN_TIME`, not last activity, meaning an idle but recently-logged-in session is not expired early); PKG_SECURITY.revoke_access referenced in code does not exist — [GAP-FILLED]: confirmed absent from both `PKG_SECURITY.pks` (package spec lists only `authenticate`, `logout`, `is_session_valid`, `has_permission`, `encrypt_ssn`, `decrypt_ssn`, `hash_password`, `change_password` — no `revoke_access` declaration) and `PKG_SECURITY.pkb` (package body contains no `revoke_access` implementation); the only session-termination mechanism available is `PKG_SECURITY.logout(p_session_id)`, which closes a single known session by `SESSION_ID` but is not called by the termination flow; no mechanism exists to enumerate and close all sessions for a terminated employee — a terminated employee with an active session retains full system access until the 30-minute timeout elapses naturally — **critical security gap (SEC-TERM-01)** |
+| AF-005-B | COBRA notification required | TODO comment only; no COBRA notification is generated; federal 14-day notification window begins but system takes no action — **critical compliance gap (PP-TERM-01)** |
+| AF-005-C | Final pay required | PKG_PAYROLL.calculate_final_pay does not exist — all final pay must be calculated manually **outside the system (PP-TERM-03 critical)** |
+| AF-005-D | Employee has active dependents | EMPLOYEE_DEPENDENTS records are NOT updated; terminated employee's dependents remain ACTIVE_FLAG = 'Y' and continue appearing in ADP benefits feed — **compliance gap (BR-DEP-09)** |
+| AF-005-E | Employee has bank accounts | EMPLOYEE_BANK_ACCOUNTS records are NOT inactivated on termination |
+
+[GAP-FILLED]: **PKG_TERMINATION package confirmed absent from codebase.** Both `PKG_TERMINATION.pkb` (package body) and `PKG_TERMINATION.pks` (package specification) were not found in deep scan — no dedicated termination package exists anywhere in the PL/SQL codebase. No alternative entry point procedure driving the core termination transaction has been identified: `PKG_EMPLOYEE.pkb` (recovered from file_cache) implements `create_employee` and `update_employee` but contains no `terminate_employee` or equivalent procedure in the recovered source. The termination flow described in AF-005-A through AF-005-E documents expected system behaviour for which **no PL/SQL implementation exists** — the transaction that sets `EMPLOYMENT_STATUS = 'TERMINATED'` and `ACTIVE_FLAG = 'N'` on the EMPLOYEES table has no owning package or callable procedure in the codebase as scanned. This is a **critical architectural gap (ARCH-TERM-01)**: the termination business process has no programmatic entry point and must currently be executed via ad-hoc DML or a mechanism entirely outside the known package inventory.
+
+**Postconditions**
+
+<!-- GAP-FILLED SECTION -->
+Looking at the source content, the key finding is that `EMPLOYEE_SESSIONS` and `HR_SESSIONS` do not exist — the actual table is `USER_SESSIONS`, and its `INSERT` statement in `PKG_SECURITY.pkb` reveals the column layout, which is enough to answer the structural question.
+
+**Updated snippet:**
+
+**Alternate Flows**
+
+| Flow ID | Trigger | Behaviour |
+|---------|---------|-----------|
+| AF-005-A | Active session exists at time of termination | Session remains valid for up to 30 minutes (session timeout window — BR-72 gap [GAP-FILLED]: 30-minute value confirmed authoritative — `c_session_timeout_min CONSTANT NUMBER := 30` declared in `HRMS.PKG_SECURITY` package body and enforced in `is_session_valid` via `(SYSDATE - v_login_time) * 24 * 60 > c_session_timeout_min`; timeout is measured from `LOGIN_TIME`, not last activity, meaning an idle but recently-logged-in session is not expired early); PKG_SECURITY.revoke_access referenced in code does not exist — [GAP-FILLED]: confirmed absent from both `PKG_SECURITY.pks` (package spec lists only `authenticate`, `logout`, `is_session_valid`, `has_permission`, `encrypt_ssn`, `decrypt_ssn`, `hash_password`, `change_password` — no `revoke_access` declaration) and `PKG_SECURITY.pkb` (package body contains no `revoke_access` implementation); the only session-termination mechanism available is `PKG_SECURITY.logout(p_session_id)`, which closes a single known session by `SESSION_ID` but is not called by the termination flow; no mechanism exists to enumerate and close all sessions for a terminated employee — a terminated employee with an active session retains full system access until the 30-minute timeout elapses naturally — **critical security gap (SEC-TERM-01)** — [GAP-FILLED]: neither `EMPLOYEE_SESSIONS` nor `HR_SESSIONS` tables exist anywhere in the codebase (deep scan returned no results for either name); the actual session-storage table is `USER_SESSIONS`, whose column layout is confirmed by the `INSERT` statement inside `PKG_SECURITY.authenticate`: `SESSION_ID, EMP_ID, USERNAME, LOGIN_TIME, IP_ADDRESS, SESSION_STATUS, CREATED_DATE`; because `USER_SESSIONS` carries an `EMP_ID` foreign-key column and a `SESSION_STATUS` column, a query-by-employee-id path **is structurally possible** — e.g. `SELECT SESSION_ID FROM USER_SESSIONS WHERE EMP_ID = :p_emp_id AND SESSION_STATUS = 'ACTIVE'` would enumerate all live sessions for a given employee; the gap is therefore not a schema-level impossibility but a missing procedure: no routine in `PKG_SECURITY` (or anywhere else in the package set) performs this enumeration and feeds the results to `logout(p_session_id)` in a loop; remediation requires adding a single bulk-revoke procedure such as `revoke_all_sessions(p_emp_id IN NUMBER)` that selects active `SESSION_ID` values from `USER_SESSIONS` by `EMP_ID` and calls `logout` for each, then invoking it from the termination flow |
+| AF-005-B | COBRA notification required | TODO comment only; no COBRA notification is generated; federal 14-day notification window begins but system takes no action — **critical compliance gap (PP-TERM-01)** |
+| AF-005-C | Final pay required | PKG_PAYROLL.calculate_final_pay does not exist — all final pay must be calculated manually **outside the system (PP-TERM-03 critical)** |
+| AF-005-D | Employee has active dependents | EMPLOYEE_DEPENDENTS records are NOT updated; terminated employee's dependents remain ACTIVE_FLAG = 'Y' and continue appearing in ADP benefits feed — **compliance gap (BR-DEP-09)** |
+| AF-005-E | Employee has bank accounts | EMPLOYEE_BANK_ACCOUNTS records are NOT inactivated on termination |
+
+**Postconditions**

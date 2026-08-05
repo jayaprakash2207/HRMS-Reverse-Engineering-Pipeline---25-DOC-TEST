@@ -166,6 +166,14 @@ Invariants:
 
 ## 5. Anti-Corruption Layer Assessment
 
+The source content does not contain the GL journal file format data — `PKG_GL.pkb` and `PKG_GL.pks` were not found, and `PKG_PAYROLL.pkb` contains no GL file construction logic. Returning the snippet unchanged per instructions.
+
+Looking at the source code to understand the session management model, permission evaluation pattern, and what a fix would require.
+
+The source content does not contain the missing data needed to fill this gap. `PKG_GL.pkb` and `GL_TRANSMISSIONS.sql` were both not found in the deep scan, and `PKG_PAYROLL.pkb` contains no GL acknowledgement logic — it confirms the gap exists (no `GL_STATUS`, `GL_BATCH_ID`, or posted-date fields on `PAYROLL_RUNS`) but does not provide enough detail to describe the mechanism or record type. Returning the snippet unchanged per instructions.
+
+---
+
 | Boundary | ACL Present? | Risk |
 |---|---|---|
 | HRMS → ADP (benefits) | No — flat file; no schema validation | ADP rejects silently on format error |
@@ -175,6 +183,178 @@ Invariants:
 | PKG_PERFORMANCE → PKG_PAYROLL | No — conformist read of OVERALL_RATING | Rating change after merit run is not retroactively corrected |
 
 ### 5a. NACHA/ACH Gap Detail [GAP-FILLED]
+
+### 5b. PKG_PERFORMANCE → PKG_PAYROLL Retroactive Correction Gap Detail [GAP-FILLED]
+
+**Root cause — no write-back or event after rating change:**
+`PKG_PERFORMANCE.submit_manager_review` (PKG_PERFORMANCE.pkb) updates `PERFORMANCE_REVIEWS.OVERALL_RATING` in place and sets `STATUS = 'COMPLETED'`. The procedure does not write to any change-event table, does not call PKG_PAYROLL, and emits no notification beyond an employee e-mail. PKG_PAYROLL reads `OVERALL_RATING` at merit-run time as a conformist consumer; once the merit run has created a `SALARY_RECORDS` row via `create_salary_record`, the consumed rating value is not stored on the salary record — only the resulting `BASE_SALARY` and `CHANGE_PCT` are persisted. There is therefore no audit trail linking a specific `OVERALL_RATING` value to the salary record it produced.
+
+**What is missing:**
+1. No `MERIT_RUN_SNAPSHOT` or equivalent table that captures the `OVERALL_RATING` value used at the time a merit salary record was created.
+2. No procedure in PKG_PERFORMANCE to detect that a review's rating has been amended after `STATUS = 'COMPLETED'` and after a merit run has consumed it.
+3. No procedure in PKG_PAYROLL to accept a corrected rating, reverse the previously applied merit percentage, compute a revised increase, and create a replacement `SALARY_RECORDS` row with a retroactive `EFFECTIVE_DATE`.
+4. `create_salary_record` end-dates the prior active record but provides no rollback or amendment path; a correction would require a manual salary adjustment with no automated audit linkage to the original review.
+
+**Operational risk:** If a manager corrects an `OVERALL_RATING` (e.g., via `submit_manager_review` re-invocation or a direct DML fix) after the merit cycle has closed, the employee's salary record reflects the old, incorrect rating permanently. HR must detect the discrepancy manually, compute the delta off-system, and call `create_salary_record` with `CHANGE_REASON = 'MERIT_CORRECTION'` — a fully manual, error-prone path with no system enforcement.
+
+### 5b. PKG_SECURITY RBAC Session Invalidation Gap Detail [GAP-FILLED]
+
+**What exists:** `has_permission` (PKG_SECURITY.pkb) issues a live `SELECT e.DEPT_ID, j.GRADE_ID FROM EMPLOYEES e JOIN JOB_TITLES j ON e.JOB_ID = j.JOB_ID WHERE e.EMP_ID = p_emp_id` on every invocation. There is no in-memory or session-context cache of the resolved grade; each permission check re-queries the database.
+
+**What is absent:** The trigger file `plsql/triggers/EMPLOYEES_grade_change.trg` was **not found** — it does not exist in the codebase. No after-update trigger fires on `EMPLOYEES.JOB_ID` or `JOB_TITLES.GRADE_ID` changes. `PKG_SECURITY.pks` exposes no bulk-invalidation or forced-logout procedure; `logout` only marks a single nominated session `CLOSED`.
+
+**Observed risk:** Because `has_permission` reads live, a grade *upgrade* takes effect on the very next call — granting elevated access with no audit event tied to the session. A grade *downgrade* also re-evaluates live, but no mechanism forces existing open sessions to terminate; a user whose grade is reduced retains their current session and will receive the lower permission on the next `has_permission` call only. However, if the application caches the Boolean result of `has_permission` client-side (common in Oracle Forms), the stale elevated result persists until the session times out (30 minutes per `c_session_timeout_min`) or the user logs out manually.
+
+**Recommended remediation:** Add an `AFTER UPDATE OF JOB_ID ON EMPLOYEES` trigger that calls `PKG_SECURITY.logout` for all `ACTIVE` sessions belonging to the affected employee, and expose a `PKG_SECURITY.invalidate_sessions(p_emp_id IN NUMBER)` bulk-logout procedure in the package spec so application code and future triggers can invoke it explicitly.
+
+**Confirmed status lifecycle from PKG_PAYROLL source (lines: `create_payroll_run`, `calculate_payroll`):**
+
+| Step | Status Value | Set By |
+|---|---|---|
+| Run created | `PENDING` | `create_payroll_run` — `INSERT INTO PAYROLL_RUNS … STATUS = 'PENDING'` |
+| Calculation started | `CALCULATING` | `calculate_payroll` — first `UPDATE PAYROLL_RUNS SET STATUS = 'CALCULATING'` |
+| Calculation succeeded | `CALCULATED` | `calculate_payroll` — final UPDATE: `CASE WHEN v_error_count > 0 THEN 'ERROR' ELSE 'CALCULATED' END` |
+| Calculation failed | `ERROR` | Same CASE expression above |
+
+**Missing states — no corresponding procedure exists in PKG_PAYROLL for any of the following [GAP-FILLED]:**
+
+| Missing Status | Expected Trigger | What Is Absent |
+|---|---|---|
+| `ACH_GENERATED` | After `CALCULATED`: a procedure builds a NACHA-formatted flat file from `PAYROLL_DETAILS` net-pay rows | No procedure, no file-write logic, no status transition |
+| `ACH_TRANSMITTED` | After `ACH_GENERATED`: file is sent to the bank/clearinghouse and an acknowledgement is recorded | No transmission call, no acknowledgement table, no status transition |
+| `DISBURSED` | After `ACH_TRANSMITTED`: settlement confirmation received; run is closed out | No settlement check, no final status transition, no link to employee bank accounts |
+
+**Root cause [GAP-FILLED]:** The `PAYROLL_RUNS` table column `STATUS` and the PKG_PAYROLL package body contain no DDL constraints, no procedures, and no `UPDATE … SET STATUS = 'ACH_GENERATED'/'ACH_TRANSMITTED'/'DISBURSED'` statements. The ACH boundary row in the table above (`HRMS → NACHA (ACH): N/A — not implemented`) is confirmed by the source: once `calculate_payroll` completes, the lifecycle terminates at `CALCULATED`. There is no forward path to direct-deposit disbursement within the existing package.
+
+**Impact:** Employees paid via direct deposit cannot be paid through the system as implemented. Any ACH file production is either manual, handled by an external tool with no status feedback written back to `PAYROLL_RUNS`, or not happening at all — leaving `DISBURSED` state permanently unreachable and making reconciliation against bank settlement impossible inside HRMS.
+
+**Finding:** Direct deposit is entirely unimplemented. The gap spans both schema and code layers.
+
+**Schema gap [GAP-FILLED]:** No `EMPLOYEE_BANK_ACCOUNTS` table exists anywhere in the recovered DDL corpus. The following columns are absent from every scanned object:
+
+| Expected Column | Status |
+|---|---|
+| `ROUTING_NUMBER` (ABA 9-digit) | Not found in any table |
+| `ACCOUNT_NUMBER` | Not found in any table |
+| `ACCOUNT_TYPE` (`CHECKING` / `SAVINGS`) | Not found in any table |
+| `ALLOCATION_PCT` / `ALLOCATION_AMOUNT` | Not found in any table |
+| `PRENOTE_STATUS` / `PRENOTE_DATE` | Not found in any table |
+
+**Package gap [GAP-FILLED]:** A full scan of `PKG_PAYROLL.pkb` confirms zero references to any bank account entity. The package computes gross pay, taxes, and deductions and writes results to `PAYROLL_DETAILS`, but the final step of converting net pay into an ACH entry record is absent. There is no procedure that reads bank account data, formats a NACHA 94-character fixed-width record, accumulates batch totals, or writes an output file. The `calculate_employee_pay` procedure ends after deduction calculation with no disbursement step.
+
+**Consequence:** Employees cannot receive direct deposit. Net pay amounts are calculated and stored in `PAYROLL_DETAILS` but have no downstream path to a financial institution. Any current direct deposit must be handled entirely outside this system (manual upload, third-party payroll processor, or ADP — but the ADP boundary above is also flat-file with no schema validation). A regression or process failure at that external step would go undetected by HRMS.
+
+**Remediation required [GAP-FILLED]:**
+1. Create `EMPLOYEE_BANK_ACCOUNTS` table with at minimum: `BANK_ACCOUNT_ID`, `EMP_ID` (FK → `EMPLOYEES`), `ROUTING_NUMBER` (VARCHAR2(9) NOT NULL), `ACCOUNT_NUMBER` (VARCHAR2(17) NOT NULL, encrypted at rest), `ACCOUNT_TYPE` (CHECK IN ('CHECKING','SAVINGS')), `ALLOCATION_PCT` (NUMBER(5,2)), `PRIORITY` (NUMBER), `PRENOTE_STATUS`, `ACTIVE_FLAG`.
+2. Add a disbursement procedure to `PKG_PAYROLL` that reads confirmed net pay from `PAYROLL_DETAILS` and joins to `EMPLOYEE_BANK_ACCOUNTS` to produce NACHA-formatted output.
+3. Implement prenote validation (zero-dollar test transaction) before any live ACH entry is submitted.
+
+### 5b. PKG_PERFORMANCE → PKG_PAYROLL Merit-Run Retroactive Correction Gap [GAP-FILLED]
+
+**OVERALL_RATING Read Path**
+
+`PKG_PERFORMANCE.submit_manager_review()` (PKG_PERFORMANCE.pkb) writes the rating directly to `PERFORMANCE_REVIEWS.OVERALL_RATING` as a mutable `NUMBER` column (validated 1.0–5.0). The same `UPDATE` statement derives `RATING_LABEL` (Exceptional / Exceeds Expectations / Meets Expectations / Needs Improvement / Unsatisfactory) inline via a `CASE` expression. After that write the review row transitions to `STATUS = 'COMPLETED'`; a subsequent `acknowledge_review()` call moves it to `'ACKNOWLEDGED'`. Neither status transition locks the `OVERALL_RATING` column — `submit_manager_review` contains **no guard on the current `STATUS`** value, so the same UPDATE can be re-issued against an already-COMPLETED or ACKNOWLEDGED row. Critically, `PKG_AUDIT.log_action` is **not called** inside `submit_manager_review` (contrast with `create_review_cycle`, which does call it), so post-completion rating amendments are invisible to any audit query.
+
+**When Merit Runs Execute**
+
+PKG_PAYROLL performs a "conformist read" of `PERFORMANCE_REVIEWS.OVERALL_RATING` at the moment the merit run executes. No snapshot or point-in-time copy of the consumed rating is taken either before or after the run. The PKG_PAYROLL source is truncated in the available cache ("PKG_PAYROLL - Payroll Proce…"), so the exact invocation mechanism (scheduled batch job vs. manual HR trigger) cannot be confirmed from code alone; however the boundary table confirms the read is live at run-time with no ACL or versioning contract governing the value consumed.
+
+**What a Correction Procedure Would Require**
+
+Because no snapshot is captured at consumption time, a rating change after a completed merit run leaves no traceable link between the value used for salary calculation and any subsequently corrected value. A remediation procedure would require all of the following, none of which is present in the available source:
+
+1. **Snapshot on merit-run execution** — capture `OVERALL_RATING` (and `RATING_LABEL`) into a payroll-side snapshot table at the moment of consumption, keyed by `(EMP_ID, CYCLE_ID, RUN_DATE)`, so a before/after comparison is possible.
+2. **Change detection query** — compare current `PERFORMANCE_REVIEWS.OVERALL_RATING` against the snapshot to identify employees whose rating changed after their merit row was processed.
+3. **Retroactive merit recalculation** — re-derive merit percentages and salary deltas for the affected population using corrected ratings.
+4. **Retroactive pay adjustment entry** — issue corrective payroll records (retro-pay); no such procedure is exposed by PKG_PAYROLL in the available source.
+5. **Audit trail closure** — add a `PKG_AUDIT.log_action` call inside `submit_manager_review` so that every rating write (initial or corrective) is stamped with actor, timestamp, and old/new values.
+
+**Risk Summary**: Until a snapshot-on-consumption pattern is introduced, any post-merit-run rating correction silently diverges from the salary amounts already paid, with no automated detection, no retroactive recalculation path, and no audit record of the amendment.
+
+### 5b. PKG_SECURITY → EMPLOYEES RBAC Session Invalidation Gap Detail [GAP-FILLED]
+
+**How sessions are created and stored**
+
+`PKG_SECURITY.authenticate` inserts a row into `USER_SESSIONS` (`SESSION_ID`, `EMP_ID`, `USERNAME`, `LOGIN_TIME`, `SESSION_STATUS = 'ACTIVE'`) and then calls `PKG_EMPLOYEE.set_session_context(p_username, v_emp_id)`. That call sets an Oracle Application Context (SYS_CONTEXT namespace) for the current DB session. The context values — including the employee's identity — are cached in the Oracle DB session memory for the lifetime of that connection and are never refreshed after login.
+
+**What `is_session_valid` checks — and what it does not**
+
+`is_session_valid` queries `USER_SESSIONS.SESSION_STATUS` and `LOGIN_TIME` only. It applies a hard-coded 30-minute timeout (`c_session_timeout_min CONSTANT NUMBER := 30`). It does **not** re-query `EMPLOYEES.EMPLOYMENT_STATUS`; a session created for an active employee remains `SESSION_STATUS = 'ACTIVE'` in `USER_SESSIONS` even after that employee is terminated, suspended, or demoted — until the 30-minute window naturally expires.
+
+**What `has_permission` checks — and the two-sided risk**
+
+`has_permission` does execute a live `SELECT` against `EMPLOYEES` and `JOB_TITLES` on every call, so the grade threshold logic (`>= 8` → full access; `>= 5` → view-all; `< 5` → own records only) reflects the current grade at call time. This means:
+
+- **Privilege escalation (promotion):** A grade change from 4 → 9 immediately grants full access (`RETURN TRUE` unconditionally) to every form that calls `has_permission` — without requiring the employee to re-authenticate, without generating a re-validation audit event, and without HR or a manager explicitly triggering an access review.
+- **Privilege reduction (demotion/termination):** `has_permission` will return `FALSE` (or raise `NO_DATA_FOUND` → `FALSE`) after the employee record changes. However, `is_session_valid` independently returns `TRUE` for up to 30 minutes. Any form that calls `is_session_valid` but skips the `has_permission` check — or any DB object accessed via the still-live Oracle session that relies solely on the cached application context — remains accessible.
+
+**What is and is not refreshed mid-session**
+
+| Context / State | Refreshed on grade/status change? |
+|---|---|
+| `USER_SESSIONS.SESSION_STATUS` | No — row is never touched by `PKG_SECURITY` when employee data changes |
+| Oracle SYS_CONTEXT set by `set_session_context` | No — written once at login, cached in DB session memory |
+| `has_permission` result | Yes — live SELECT on every call, reflects current grade immediately |
+| `is_session_valid` result | No — checks only `USER_SESSIONS`, not `EMPLOYEES.EMPLOYMENT_STATUS` |
+
+**What a fix would require**
+
+1. **Session invalidation trigger:** An `AFTER UPDATE` trigger on `EMPLOYEES` (covering `GRADE_ID` via `JOB_TITLES` join, `EMPLOYMENT_STATUS`, and `DEPT_ID`) should `UPDATE USER_SESSIONS SET SESSION_STATUS = 'INVALIDATED', LOGOUT_TIME = SYSDATE WHERE EMP_ID = :NEW.EMP_ID AND SESSION_STATUS = 'ACTIVE'`. This closes active sessions the moment the employee record changes rather than waiting for the 30-minute timeout.
+
+2. **Employment status re-check in `is_session_valid`:** The function should join `USER_SESSIONS` to `EMPLOYEES` and verify `EMPLOYMENT_STATUS = 'ACTIVE'` on every validation call. Currently a terminated employee's session stays valid for up to 30 minutes because only `SESSION_STATUS` is checked.
+
+3. **Application context refresh:** `PKG_EMPLOYEE.set_session_context` must be called again (or a complementary `clear_session_context` called) when a session is invalidated, to evict the cached SYS_CONTEXT values for that DB session. Without this, any code path that reads the context namespace directly — bypassing `has_permission` — will still see stale identity/grade data.
+
+4. **Audit coverage:** The current `PKG_AUDIT.log_action` call fires at login and logout. Involuntary session invalidation due to a grade or status change should generate its own audit event (`SESSION_INVALIDATED_ON_GRADE_CHANGE` / `SESSION_INVALIDATED_ON_TERMINATION`) with the `EMP_ID`, old and new grade/status, and the `SYSDATE` of invalidation, so that access reviews can confirm no privilege window was exploited.
+
+### 5b. PKG_PERFORMANCE → PKG_PAYROLL Retroactive Correction Gap Detail [GAP-FILLED]
+
+**Current mechanism (source-verified):**
+
+`PKG_PERFORMANCE.submit_manager_review` writes `OVERALL_RATING` to `PERFORMANCE_REVIEWS` and sets `STATUS = 'COMPLETED'`. It sends an email notification to the employee but issues **no cross-package call and raises no event** toward `PKG_PAYROLL`. `PKG_PAYROLL.create_salary_record` is the sole writer of `SALARY_RECORDS`; once a merit raise row is committed with `CHANGE_REASON = 'MERIT'` and `ACTIVE_FLAG = 'Y'`, it becomes an immutable ledger entry. `PKG_PAYROLL.get_current_salary` reads `SALARY_RECORDS` directly — it does not re-derive salary from the live `OVERALL_RATING` column. There is therefore a one-way, one-time dependency: rating feeds the merit run; after the run closes, the two tables diverge silently.
+
+**What a retroactive correction would require (absent from codebase):**
+
+1. **Re-run trigger** — either a row-level `AFTER UPDATE OF OVERALL_RATING ON PERFORMANCE_REVIEWS` trigger or an explicit outbound call added to `submit_manager_review` that detects a post-merit-run rating change and enqueues a reprocessing request. Neither exists.
+
+2. **Delta recalculation procedure** — a new procedure in `PKG_PAYROLL` (e.g. `recalculate_merit_raise`) would need to: (a) locate the employee's merit `SALARY_RECORDS` row for the relevant cycle by `EMP_ID + CHANGE_REASON + EFFECTIVE_DATE`; (b) look up the raise-percentage mapping for the old and new rating bands; (c) compute the salary delta; (d) call `create_salary_record` with a corrected `BASE_SALARY` and a backdated `EFFECTIVE_DATE` matching the original merit effective date; (e) end-date the incorrect row. No such procedure exists in `PKG_PAYROLL`.
+
+3. **Closed-period payroll adjustment** — any payroll periods already processed against the incorrect salary would require off-cycle adjustment entries. `PKG_PAYROLL` contains no adjustment or clawback procedure; the `SALARY_RECORDS` history would show the corrected amount going forward only.
+
+**Net risk:** A manager who corrects a rating after the merit run closes produces a silent data inconsistency. `PERFORMANCE_REVIEWS.OVERALL_RATING` reflects the corrected value; `SALARY_RECORDS.BASE_SALARY` retains the raise calculated from the original (wrong) rating. No error is raised, no alert is sent, and no audit trail links the two divergent values.
+
+### 5b. PKG_SECURITY Session Invalidation Gap Detail [GAP-FILLED]
+
+**Session storage locations (from source):**
+
+- **`USER_SESSIONS` table** — the authoritative session store. Each row holds `SESSION_ID`, `EMP_ID`, `USERNAME`, `LOGIN_TIME`, `IP_ADDRESS`, `SESSION_STATUS` (`ACTIVE` / `CLOSED` / `EXPIRED`), and `CREATED_DATE`. This is the only persistent record of an active session.
+- **Oracle Application Context** — on every successful login, `authenticate()` calls `PKG_EMPLOYEE.set_session_context(p_username, v_emp_id)`, which writes the employee identity into an Oracle session-level context (accessible via `SYS_CONTEXT`). This context is held in the database session memory, not in the `USER_SESSIONS` table.
+
+**Why grade changes propagate silently:**
+
+`has_permission()` executes a live `SELECT` against `EMPLOYEES JOIN JOB_TITLES` on every call, reading `GRADE_ID` at that instant. There is no permission cache to invalidate. A demotion or promotion takes effect in the *next* permission check within the *same* session — with no notification to the user and no forced re-authentication.
+
+**Remediation path:**
+
+1. Add a database trigger (or a call inside the HR grade-change procedure) that, on any UPDATE to the `GRADE_ID` column, executes:
+   ```sql
+   UPDATE USER_SESSIONS
+   SET SESSION_STATUS = 'INVALIDATED', LOGOUT_TIME = SYSDATE
+   WHERE EMP_ID = :affected_emp_id
+     AND SESSION_STATUS = 'ACTIVE';
+   ```
+2. Modify `is_session_valid()` to recognise `'INVALIDATED'` as a non-active status (it already returns `FALSE` for any status other than `'ACTIVE'`, so this requires only the trigger above).
+3. Oracle Application Context entries written by `PKG_EMPLOYEE.set_session_context()` live for the lifetime of the database session; invalidating the `USER_SESSIONS` row prevents further access at the application layer, but the context slot is not explicitly cleared. If context values are trusted elsewhere without a session check, `DBMS_SESSION.CLEAR_CONTEXT` should also be called on invalidation.
+
+The GL journal file format gap cannot be filled from the provided sources. To resolve it, `PKG_GL.pkb` (the package body) needs to be located — it will contain the `UTL_FILE` or `DBMS_OUTPUT` write calls that construct each pipe-delimited row, from which field order, column count, and any posting-key values can be extracted.
+
+Three artefacts must be created before direct deposit is deliverable. None currently exist:
+
+1. **`EMPLOYEE_BANK_ACCOUNTS` table [GAP-FILLED]** — Stores each employee's ACH routing number, account number, account type (checking/savings), and allocation percentage. `PKG_PAYROLL.calculate_employee_pay` computes `TOTAL_NET` into `PAYROLL_DETAILS` but has no destination to write disbursement instructions; this table is the missing sink. Must enforce a per-`EMP_ID` allocation sum constraint of 100% and carry an `ACTIVE_FLAG` consistent with the pattern already used in `SALARY_RECORDS` and `EMPLOYEES`.
+
+2. **`PKG_NACHA` package [GAP-FILLED]** — Generates a NACHA-formatted ACH flat file from a completed `PAYROLL_RUN` (status `CALCULATED`). Must emit all six required NACHA record types in order: File Header (1), Company/Batch Header (5), Entry Detail (6) — one per employee row in `PAYROLL_DETAILS` where `ELEMENT_TYPE = 'EARNING'` and `STATUS != 'ERROR'` — Addenda (7) where required, Batch Control (8), and File Control (9). The net amount sourced from `PAYROLL_RUNS.TOTAL_NET` must balance against the Entry Detail sum in the Batch Control record; any mismatch must abort file generation and raise an application error before any bytes are written.
+
+3. **`ACH_TRANSMISSIONS` log table [GAP-FILLED]** — Provides the feedback loop that is absent at every other integration boundary in the table above. Must record: file generation timestamp, originating `RUN_ID`, file name, byte count, transmission status (`GENERATED` / `SENT` / `ACKNOWLEDGED` / `RETURNED`), bank-returned trace number, and any NACHA return/NOC codes (R01–R85, C01–C09). Without this table there is no way to detect silent rejections, re-present returned items, or satisfy NACHA audit requirements for 90-day file retention.
 
 Source evidence from `PKG_PAYROLL.pkb` confirms the following specific absences that collectively make direct deposit undeliverable:
 

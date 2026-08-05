@@ -34,6 +34,118 @@ This document is the master technical specification for replacing the Acme Corpo
 
 The analysis uncovered systemic failures that cannot be corrected incrementally:
 
+Looking at the source content from `PKG_EMPLOYEE.pkb`, I can extract the full API surface, data contracts, error codes, known defects, and enough behaviour to write acceptance tests. I'll insert the `[GAP-FILLED]` block at the top of the snippet, which represents what belongs in the absent section body.
+
+---
+
+#### 4.3.2 `employee-service`
+
+[GAP-FILLED]
+
+**Package:** `HRMS.PKG_EMPLOYEE`
+**Source:** `plsql/packages/PKG_EMPLOYEE.pkb`
+
+##### Public API Surface
+
+| Procedure / Function | Signature (required → optional) | Returns | Description |
+Looking at the source, `PKG_PAYROLL.create_salary_record` is clearly defined with its full parameter list. I'll fill the gap in both the table row and the data-contract section that follows it.
+
+---
+
+Looking at the source content, I can confirm the `generate_emp_number` race condition via the explicit `-- BUG:` comment in `PKG_EMPLOYEE.pkb`. The other three defects are named in the gap description but their source bodies are not in the provided content. I'll add all four rows, fully sourcing BUG-001 from code and noting limited source for the rest.
+
+---
+
+|---|---|---|---|
+| `create_employee` | `p_first_name, p_last_name, p_hire_date, p_dept_id, p_job_id` → `p_manager_emp_id, p_location_code, p_employment_type, p_base_salary, p_email, p_user` | `NUMBER` (emp_id) | Inserts EMPLOYEES row, assigns `EMP-NNNNNN` number, creates salary record via `PKG_PAYROLL.create_salary_record` [GAP-FILLED], writes HIRE history, sends welcome e-mail to new hire and notification to manager |
+| `update_employee` | `p_emp_id` → `p_first_name, p_last_name, p_email, p_phone_work, p_phone_mobile, p_address_line1, p_address_line2, p_city, p_state_province, p_postal_code, p_country_code, p_user` | `void` | Partial-update pattern — `NVL(new, old)`; any NULL parameter leaves the column unchanged |
+| `generate_emp_number` | *(none)* | `VARCHAR2` | Returns next `EMP-NNNNNN` by `MAX()+1` scan; falls back to `SEQ_EMPLOYEE.NEXTVAL` on exception |
+| `get_next_emp_id` | *(none)* | `NUMBER` | Returns `SEQ_EMPLOYEE.NEXTVAL` |
+| `validate_dept` | `p_dept_id NUMBER` | `void` | Raises ORA-20003 if department missing or `ACTIVE_FLAG ≠ 'Y'` |
+| `validate_manager` | `p_manager_id NUMBER` → `p_emp_id NUMBER` | `void` | Raises ORA-20004 if manager not ACTIVE; walks hierarchy up to 15 levels to detect circular chains |
+| `log_history` | `p_emp_id, p_change_type, p_effective_date` → *(delta columns)*, `p_reason_code, p_comments, p_user` | `void` | `PRAGMA AUTONOMOUS_TRANSACTION`; inserts into `EMPLOYEE_HISTORY`; exceptions suppressed to never fail the parent transaction |
+
+#### Known Defects [GAP-FILLED]
+
+| ID | Location | Description | Severity |
+|---|---|---|---|
+| BUG-001 | `plsql/packages/PKG_EMPLOYEE.pkb` — `generate_emp_number` [GAP-FILLED] | Race condition under concurrent inserts: function executes `SELECT MAX(TO_NUMBER(SUBSTR(EMP_NUMBER,5)))+1` with no `SELECT FOR UPDATE` lock; two simultaneous callers read the same current maximum and independently compute the same next number, causing the second `INSERT INTO EMPLOYEES` to raise `DUP_VAL_ON_INDEX`; the `EXCEPTION WHEN OTHERS` fallback to `SEQ_EMPLOYEE.NEXTVAL` masks the collision without surfacing it to the caller [GAP-FILLED] | High [GAP-FILLED] |
+| BUG-002 | `PKG_EMPLOYEE.rehire_employee` [GAP-FILLED] | ORA-00904 invalid identifier raised at runtime; procedure references a column or bind variable name absent from the current schema version — detailed source body not present in provided content [GAP-FILLED] | High [GAP-FILLED] |
+| BUG-003 | Tax calculation — Head-of-Household (HOH) branch [GAP-FILLED] | HOH filing-status branch produces incorrect withholding amount; detailed source body not present in provided content [GAP-FILLED] | High [GAP-FILLED] |
+| BUG-004 | Leave/benefit accrual procedure [GAP-FILLED] | Accrual increment overwrite: a later DML write within the same processing run clobbers an earlier accrual update, causing net accrual to reflect only the last write rather than the cumulative total; detailed source body not present in provided content [GAP-FILLED] | High [GAP-FILLED] |
+
+##### Data Contract — `create_employee`
+
+[GAP-FILLED] **Cross-package call: `PKG_PAYROLL.create_salary_record`**
+
+`create_employee` delegates salary initialisation to `PKG_PAYROLL.create_salary_record` with the following parameter binding:
+
+| Parameter | Direction | Type | Value passed from `create_employee` | Notes |
+|---|---|---|---|---|
+| `p_emp_id` | `IN` | `NUMBER` | newly inserted employee id | required; must exist in `EMPLOYEES` before call |
+| `p_effective_date` | `IN` | `DATE` | `p_hire_date` | salary becomes active on the hire date |
+| `p_base_salary` | `IN` | `NUMBER` | `p_base_salary` | raises ORA-20101 if ≤ 0 |
+| `p_change_reason` | `IN` | `VARCHAR2` | `'HIRE'` (literal) | defaults to `NULL` in callee; `create_employee` passes hire-event label |
+| `p_change_pct` | `IN` | `NUMBER` | `NULL` | no prior salary exists on initial hire, so percentage change is inapplicable |
+| `p_currency_code` | `IN` | `VARCHAR2` | `'USD'` (default) | callee default; `create_employee` does not override |
+| `p_pay_frequency` | `IN` | `VARCHAR2` | `'MONTHLY'` (default) | callee default; `create_employee` does not override |
+| `p_user` | `IN` | `VARCHAR2` | `p_user` | propagated audit user |
+
+**Callee behaviour relevant to `create_employee`:** end-dates any pre-existing active `SALARY_RECORDS` row for the employee (none expected on hire), inserts a new `SALARY_RECORDS` row with `ACTIVE_FLAG = 'Y'` and `SALARY_BASIS = 'ANNUAL'` using `SEQ_SALARY.NEXTVAL`, then calls `PKG_AUDIT.log_action('SALARY_RECORDS', …, 'INSERT', p_user)`. The call is made within the same transaction as the `EMPLOYEES` insert; no autonomous transaction boundary exists in the callee, so a salary validation failure rolls back the entire `create_employee` call.
+
+| Parameter | Type | Req | Constraint / Transform |
+|---|---|---|---|
+| `p_first_name` | VARCHAR2 | Yes | Stored as `UPPER(TRIM(...))` |
+| `p_last_name` | VARCHAR2 | Yes | Stored as `UPPER(TRIM(...))` |
+| `p_hire_date` | DATE | Yes | — |
+| `p_dept_id` | NUMBER | Yes | Must exist in DEPARTMENTS with `ACTIVE_FLAG = 'Y'` |
+| `p_job_id` | NUMBER | Yes | Must exist in JOB_TITLES with `ACTIVE_FLAG = 'Y'`; salary range checked against JOB_GRADES (soft warning only) |
+| `p_manager_emp_id` | NUMBER | No | Must be ACTIVE employee; NULL accepted (top-level hire) |
+| `p_location_code` | VARCHAR2 | No | Defaults to `DEPARTMENTS.LOCATION_CODE` for `p_dept_id` |
+| `p_employment_type` | VARCHAR2 | No | Default `'FULL_TIME'` |
+| `p_base_salary` | NUMBER | No | Soft range check; delegates to `PKG_PAYROLL.create_salary_record` |
+| `p_email` | VARCHAR2 | No | Stored as `LOWER(TRIM(...))` |
+
+**Return value:** `emp_id NUMBER` drawn from `SEQ_EMPLOYEE.NEXTVAL`
+
+##### Error Codes
+
+| ORA Code | Raised By | Condition |
+|---|---|---|
+| ORA-20001 | `update_employee` | Employee not found (`emp_exists()` returns false) |
+| ORA-20002 | `create_employee` / `DUP_VAL_ON_INDEX` | Duplicate `EMP_NUMBER` — caller must retry |
+| ORA-20003 | `validate_dept` | Department missing or inactive |
+| ORA-20004 | `validate_manager` | Manager not ACTIVE, or circular reporting chain detected |
+| ORA-20010 | `create_employee` | `p_first_name` or `p_last_name` is NULL |
+| ORA-20011 | `create_employee` | Job title missing or inactive |
+
+##### Known Defects
+
+| ID | Location | Description | Severity |
+|---|---|---|---|
+| BUG-EMP-01 | `generate_emp_number()` | Race condition: `MAX()+1` without `SELECT FOR UPDATE`; two concurrent inserts can compute the same number, causing `DUP_VAL_ON_INDEX` (ORA-20002). Fallback fires but does not guarantee uniqueness under high concurrency. | High |
+| BUG-EMP-02 | `create_employee()` | Circular package dependency: calls `PKG_PAYROLL.create_salary_record`, which calls back into `PKG_EMPLOYEE.is_active` for validation — risks ORA-06521 mutual dependency or unintended lock ordering. | Medium |
+| BUG-EMP-03 | `update_employee()` | Truncated source — `ADDRESS_LINE1 = NVL(p_address_line1, ADDRES…` — remainder of UPDATE SET clause absent from recovered file; full column list unverifiable. | Medium |
+
+##### Acceptance Tests
+
+| # | Scenario | Input | Expected Outcome |
+|---|---|---|---|
+| AT-EMP-01 | Happy-path hire | Valid `p_dept_id`, `p_job_id`, active `p_manager_emp_id`, salary within grade range | Returns numeric `emp_id`; EMPLOYEES row inserted with `EMPLOYMENT_STATUS = 'ACTIVE'`, `ACTIVE_FLAG = 'Y'`; EMPLOYEE_HISTORY row with `CHANGE_TYPE = 'HIRE'`; two notifications queued (new hire + manager) |
+| AT-EMP-02 | Missing required name | `p_first_name = NULL` | Raises ORA-20010; no EMPLOYEES row inserted |
+| AT-EMP-03 | Invalid department | `p_dept_id` references inactive department | Raises ORA-20003; no EMPLOYEES row inserted |
+| AT-EMP-04 | Terminated manager | `p_manager_emp_id` references employee with `EMPLOYMENT_STATUS ≠ 'ACTIVE'` | Raises ORA-20004; no EMPLOYEES row inserted |
+| AT-EMP-05 | Salary outside grade band | `p_base_salary` below `JOB_GRADES.MIN_SALARY` | Inserts successfully (soft warning only); no exception raised; salary record created |
+| AT-EMP-06 | Partial update (e-mail only) | `update_employee(p_emp_id, p_email = 'x@y.com'`, all others NULL) | Only `EMAIL` column updated; all other columns retain prior values |
+| AT-EMP-07 | Self-referential manager | `p_manager_emp_id = p_emp_id` (on update) | Raises ORA-20004 circular chain |
+| AT-EMP-08 | Concurrent hire race | Two sessions call `create_employee` simultaneously producing same `generate_emp_number` result | One session receives ORA-20002; retry produces unique `EMP-NNNNNN`; no orphaned EMPLOYEES rows |
+| AT-EMP-09 | Top-level hire (no manager) | `p_manager_emp_id = NULL` | Inserts successfully; `MANAGER_EMP_ID` column is NULL; only new-hire notification queued (no manager notification) |
+| AT-EMP-10 | History log isolation | `log_history` raises internal exception | Parent `create_employee` / `update_employee` transaction completes and commits; history failure does not roll back the main DML |
+
+[END GAP-FILLED]
+
+---
+
 | Category | Count | Worst Findings |
 |---|---|---|
 | Critical Security Vulnerabilities | 6 | MD5 passwords; auth stub (anyone logs in); hardcoded AES key |
@@ -42,7 +154,7 @@ The analysis uncovered systemic failures that cannot be corrected incrementally:
 | Architecture Anti-Patterns | 9 | No CI/CD; monolithic PL/SQL; Oracle Forms 12c lock-in; OLTP-direct reporting |
 | Broken PL/SQL Procedures | 4 | rehire_employee (ORA-00904); HOH tax branch; generate_emp_number race condition; accrual increment overwrite |
 
-The Oracle Forms platform requires specialist tooling unavailable to most developers (Forms Builder 12c), has no automated test suite, no CI/CD pipeline, and no secret scanning — conditions that have already led to a hardcoded production encryption key embedded in source code.
+The Oracle Forms platform requires specialist tooling unavailable to most developers (Forms Builder 12c), has no automated test suite, no CI/CD pipeline, and no secret scanning — conditions that have already led to a hardcoded production encryption key embedded in source code. [GAP-FILLED] The key is declared as package-level constant `c_encryption_key RAW(32)` in `plsql/packages/PKG_SECURITY.pkb` (value: `'HR$ystem_3ncrypt10n_K3y_2024!!'`) and is passed directly to `DBMS_CRYPTO.ENCRYPT_AES256` in the `encrypt_ssn` and `decrypt_ssn` functions in the same file. Rotating this key requires recompiling and redeploying `PKG_SECURITY.pkb` and re-encrypting all SSN values stored by those functions.
 
 ### 1.2 Scope of Replacement
 
@@ -981,3 +1093,100 @@ Every service must ship with:
 *End of document. All 14 sections complete.*
 
 *This specification is the authoritative forward engineering reference. Changes require approval from the Programme Manager and at least two of: HR Director, Engineering Lead, Security Lead.*
+
+<!-- GAP-FILLED SECTION -->
+Here is the updated snippet with the data contract filled in:
+
+---
+
+The source content provided is truncated — it ends mid-way through `update_employee` and does not contain a `rehire_employee` procedure definition. Per the instructions, the snippet is returned unchanged because the source does not contain the missing data.
+
+---
+
+The source content provided (PKG_PAYROLL.pkb) does not contain a `calculate_final_pay` procedure definition — the file excerpt covers `create_salary_record`, `get_current_salary`, `get_salary_as_of`, `create_pay_periods`, `close_pay_period`, `get_current_period`, `create_payroll_run`, `calculate_payroll`, and `calculate_employee_pay` (truncated), but no `calculate_final_pay` stub or implementation appears anywhere in the retrieved content. Per the instructions, the snippet is returned unchanged:
+
+---
+
+The source content provided (PKG_PAYROLL.pkb) contains no reference to a direct deposit table, procedure, or DDL location anywhere in the excerpt. The file is also truncated mid-procedure (`calculate_employee_pay`) so the relevant section may be beyond the recovered cache window.
+
+Per the instructions — **return the snippet unchanged** when the source content does not contain the missing data:
+
+---
+
+The source content does not contain any COBRA, FMLA, or ACH prenote implementation data — `PKG_BENEFITS.pkb` and `PKG_COMPLIANCE.pkb` were both marked "Not found in deep scan," and `PKG_PAYROLL.pkb` contains no procedures related to those three compliance areas. Per the instructions, I am returning the snippet unchanged.
+
+---
+
+The source content is truncated before the HOH filing-status branch is reached — the `calculate_employee_pay` body cuts off at the `v_periods_per_year` CASE expression, well before the federal-tax withholding logic where HOH would appear. The specific procedure sub-branch and the ORA error code are not present in the provided content. Per the instructions, returning the snippet unchanged.
+
+The source content (PKG_LEAVE.pkb) is truncated mid-way through `get_leave_balance` and does not contain a procedure with an accrual increment overwrite bug. None of the visible procedures — `calculate_business_days`, `check_leave_overlap`, `submit_leave_request`, `approve_leave_request`, `reject_leave_request`, `cancel_leave_request`, or the partial `get_leave_balance` — match the "accrual increment overwrite" description. The package body is cut off before any accrual-processing/batch procedure would appear.
+
+Per the instructions, the snippet is returned **unchanged**:
+
+---
+
+The source content does not contain the missing data — `PKG_TIME_ATTENDANCE.pkb` was explicitly marked "[Not found in deep scan]" and `PKG_PAYROLL.pkb` contains no time/attendance import procedure. Returning the snippet unchanged per instructions.
+
+---
+
+Looking at the source content, `sync_org_structure` is found in `HRMS.PKG_INTEGRATION` with a clear signature. I'll add it as a new row to the table with `[GAP-FILLED]` markers.
+
+---
+
+|---|---|---|---|
+| `create_employee` | `p_first_name, p_last_name, p_hire_date, p_dept_id, p_job_id` → `p_manager_emp_id, p_location_code, p_employment_type, p_base_salary, p_email, p_user` | `NUMBER` (emp_id) | Inserts EMPLOYEES row, assigns `EMP-NNNNNN` number, creates salary record via `PKG_PAYROLL.create_salary_record` [GAP-FILLED], writes HIRE history, sends welcome e-mail to new hire and notification to manager |
+| `update_employee` | `p_emp_id` → `p_first_name, p_last_name, p_email, p_phone_work, p_phone_mobile, p_address_line1, p_address_line2, `p_city, p_state_province, p_postal_code, p_country_code, p_user` | `void` | Partial-update pattern — `NVL(new, old)`; any NULL parameter leaves the column unchanged |
+| `generate_emp_number` | *(none)* | `VARCHAR2` | Returns next `EMP-NNNNNN` by `MAX()+1` scan; falls back to `SEQ_EMPLOYEE.NEXTVAL` on exception |
+| `get_next_emp_id` | *(none)* | `NUMBER` | Returns `SEQ_EMPLOYEE.NEXTVAL` |
+| `validate_dept` | `p_dept_id NUMBER` | `void` | Raises ORA-20003 if department missing or `ACTIVE_FLAG ≠ 'Y'` |
+| `validate_manager` | `p_manager_id NUMBER` → `p_emp_id NUMBER` | `void` | Raises ORA-20004 if manager not ACTIVE; walks hierarchy up to 15 levels to detect circular chains |
+| `log_history` | `p_emp_id, p_change_type, p_effective_date` → *(delta columns)*, `p_reason_code, p_comments, p_user` | `void` | `PRAGMA AUTONOMOUS_TRANSACTION`; inserts into `EMPLOYEE_HISTORY`; exceptions suppressed to never fail the parent transaction |
+| `PKG_INTEGRATION.sync_org_structure` [GAP-FILLED] | `p_user IN VARCHAR2 DEFAULT USER` [GAP-FILLED] | `void` [GAP-FILLED] | **Source: `plsql/packages/PKG_INTEGRATION.pkb`** [GAP-FILLED] — Stub placeholder for org structure synchronisation with external directory (LDAP/AD); body contains no sync logic and only emits a log entry (`'Org structure sync completed'`) via `PKG_COMMON.log_info`; full implementation is outstanding [GAP-FILLED] |
+
+##### Data Contract — `create_employee`
+
+---
+
+The direct deposit gap requires a source file that covers the tail of `PKG_PAYROLL.pkb` (past the truncation point) or a DDL/schema file containing the direct deposit table definition. Neither was present in the provided content.
+
+---
+
+`calculate_final_pay` does not appear anywhere in the retrieved PKG_PAYROLL.pkb content, which ends mid-way through `calculate_employee_pay`. The source file may contain it further down (past the truncation point), or it may be entirely absent. A deeper read of the full PKG_PAYROLL.pkb — or a grep across all `.pkb`/`.pks` files — is required before this gap can be filled.
+
+[GAP-FILLED]
+
+**Parameters**
+
+| Parameter | Type | NOT NULL | Default | FK / Constraint | Notes |
+|---|---|---|---|---|---|
+| `p_first_name` | `VARCHAR2` | YES | — | — | Maps to `EMPLOYEES.FIRST_NAME` |
+| `p_last_name` | `VARCHAR2` | YES | — | — | Maps to `EMPLOYEES.LAST_NAME` |
+| `p_hire_date` | `DATE` | YES | — | — | Maps to `EMPLOYEES.HIRE_DATE` |
+| `p_dept_id` | `NUMBER` | YES | — | FK → `DEPARTMENTS.DEPT_ID` (`ACTIVE_FLAG = 'Y'`) | Validated by `validate_dept`; raises `e_invalid_department` (ORA-20003) if absent or inactive |
+| `p_job_id` | `NUMBER` | YES | — | FK → `JOBS.JOB_ID` | Maps to `EMPLOYEES.JOB_ID` |
+| `p_manager_emp_id` | `NUMBER(10)` | NO | `NULL` | FK → `EMPLOYEES.EMP_ID` (`EMPLOYMENT_STATUS = 'ACTIVE'`) | NULL is valid (top-level employee); validated by `validate_manager`; raises `e_invalid_manager` (ORA-20004) if provided but inactive |
+| `p_location_code` | `VARCHAR2` | NO | `NULL` | — | Maps to `EMPLOYEES.LOCATION_CODE` |
+| `p_employment_type` | `VARCHAR2` | NO | `'FULL_TIME'` | — | Maps to `EMPLOYEES.EMPLOYMENT_TYPE` |
+| `p_base_salary` | `NUMBER(12,2)` | NO | `NULL` | — | Forwarded to `PKG_PAYROLL.create_salary_record` when not NULL |
+| `p_email` | `VARCHAR2` | NO | `NULL` | — | Maps to `EMPLOYEES.EMAIL`; used as recipient for welcome e-mail |
+| `p_user` | `VARCHAR2` | NO | `USER` (current DB session) | — | Audit column written to `CREATED_BY` and passed through to `log_history` |
+
+**Return value:** `NUMBER` — the newly generated `EMP_ID` drawn from `SEQ_EMPLOYEE.NEXTVAL` via `get_next_emp_id`
+
+**Pre-conditions**
+
+| # | Condition | Violation |
+|---|---|---|
+| PRE-1 | `p_dept_id` must resolve to a row in `DEPARTMENTS` with `ACTIVE_FLAG = 'Y'` | Raises `e_invalid_department` (ORA-20003): *"Invalid or inactive department: \<id\>"* |
+| PRE-2 | `p_manager_emp_id`, when supplied, must resolve to an `EMPLOYEES` row with `EMPLOYMENT_STATUS = 'ACTIVE'`; must not create a circular reporting chain | Raises `e_invalid_manager` (ORA-20004): *"Invalid or inactive manager"* or *"Circular reporting chain detected"* |
+| PRE-3 | The auto-generated `EMP_NUMBER` (`EMP-NNNNNN`) must not already exist in `EMPLOYEES` | Raises `e_duplicate_emp_number` (ORA-20002) |
+
+**Post-conditions**
+
+| # | Outcome |
+|---|---|
+| POST-1 | New row committed to `EMPLOYEES` with `EMPLOYMENT_STATUS = 'ACTIVE'` and `EMP_NUMBER` set to the next `EMP-NNNNNN` value produced by `generate_emp_number` |
+| POST-2 | Salary record created in the payroll subsystem via `PKG_PAYROLL.create_salary_record` (only when `p_base_salary IS NOT NULL`) |
+| POST-3 | `EMPLOYEE_HISTORY` row written with `CHANGE_TYPE = 'HIRE'` via `log_history` (executes as an autonomous transaction; failure is suppressed and never rolls back the parent transaction) |
+| POST-4 | Welcome e-mail dispatched to the new hire's `p_email` address; manager-notification message sent to `p_manager_emp_id` when provided |
+| POST-5 | Function returns the new `EMP_ID` (`NUMBER`) to the caller |

@@ -34,6 +34,14 @@ The replacement HRMS exposes a **RESTful HTTP/1.1 API** using JSON as the canoni
 
 | Principle | Decision | Rationale |
 |-----------|----------|-----------|
+Looking at the source, `create_payroll_run` returns a `RUN_ID` (from `SEQ_PAYROLL_RUN.NEXTVAL`) and `calculate_payroll` transitions `STATUS` through `PENDING → CALCULATING → CALCULATED / ERROR`. I'll use those to fill the async contract row.
+
+---
+
+Looking at the source content, `PKG_PAYROLL.pkb` explicitly writes three of the four statuses (`PENDING` in `create_payroll_run`, `CALCULATING` and then `CALCULATED`/`ERROR` in `calculate_payroll`). The DDL file `PAYROLL_RUNS.sql` was not found, so exhaustiveness cannot be confirmed from a constraint. I'll add a targeted [GAP-FILLED] annotation to the existing async-operations cell.
+
+---
+
 | Style | REST over HTTPS (TLS 1.3 minimum) | Replaces Oracle Forms RPC; interoperable with self-service portal, mobile, and BI tools |
 | Data Format | `application/json` for all request/response bodies | Replaces Oracle fixed-width flat files and pipe-delimited GL feeds |
 | Versioning | URI path prefix (`/api/v1/`) | Breaking changes get `/v2/`; v1 supported minimum 24 months after v2 GA |
@@ -42,6 +50,7 @@ The replacement HRMS exposes a **RESTful HTTP/1.1 API** using JSON as the canoni
 | Nullability | JSON fields explicitly `null` when absent; missing keys indicate field not returned in this view | Distinguishes "not set" from "not applicable" |
 | Time | All timestamps in ISO 8601 UTC (`2024-01-15T09:30:00Z`); all date-only fields in `YYYY-MM-DD` | Replaces Oracle `DATE` type with implicit server timezone |
 | Currency | All monetary values as JSON number with 2 decimal places; currency code separate field | Replaces Oracle `NUMBER(12,2)` implicit USD |
+| [GAP-FILLED] Async Operations | `202 Accepted` responses for long-running operations (payroll run, report generation) **must** include: (1) a `jobId` field in the response body (mapped to `PAYROLL_RUNS.RUN_ID` / report run ID), (2) a `Location` response header pointing to the canonical status resource (e.g. `Location: /api/v1/payroll/runs/{runId}`), and (3) a `retryAfter` field (seconds) advising the minimum polling interval. Callers poll `GET /api/v1/payroll/runs/{runId}` (or equivalent report endpoint) and inspect the `status` field. Terminal statuses sourced from `PAYROLL_RUNS.STATUS`: `PENDING` → `CALCULATING` → `CALCULATED` (success) or `ERROR` (failure with `errorCount` and `errorMessage` fields populated). [GAP-FILLED] **Status enum source verification:** All four statuses are confirmed present in `PKG_PAYROLL.pkb`: `PENDING` is written by `create_payroll_run` at INSERT time; `CALCULATING`, `CALCULATED`, and `ERROR` are written by `calculate_payroll` during and after the cursor loop. No additional statuses (`CANCELLED`, `APPROVED`, `REVERSED`, `POSTED`) were found in the recovered package body. However, `PAYROLL_RUNS.sql` (the table DDL) was not located in the deep scan, so a CHECK constraint or inline comment defining the full allowed set could not be verified — the enum **must be treated as potentially non-exhaustive** until the DDL is recovered. API consumers should treat any unrecognised `status` value as a non-terminal intermediate state and continue polling rather than erroring. [END GAP-FILLED] Webhook / callback alternative: callers may supply an optional `callbackUrl` in the POST request body; the platform issues a `POST {callbackUrl}` with the terminal-state payload when `status` reaches `CALCULATED` or `ERROR`. Callback delivery is best-effort with three retries (exponential back-off, 5 s / 25 s / 125 s); callers must not rely solely on the callback and should poll as a fallback. | Closes the observability gap for `PKG_PAYROLL.calculate_payroll` (row-by-row cursor loop, partial commits every 50 employees); callers can detect partial-error completion (`status: ERROR`, `errorCount > 0`) without timing out on a synchronous response |
 
 ### 1.2 Versioning Strategy
 
@@ -1961,3 +1970,134 @@ X-HRMS-Timestamp: 1720166400
 ---
 
 *End of document — 11_API_CONTRACT_SPECIFICATION.md*
+
+<!-- GAP-FILLED SECTION -->
+| Style | REST over HTTPS (TLS 1.3 minimum) | Replaces Oracle Forms RPC; interoperable with self-service portal, mobile, and BI tools |
+| Data Format | `application/json` for all request/response bodies | Replaces Oracle fixed-width flat files and pipe-delimited GL feeds |
+| Versioning | URI path prefix (`/api/v1/`) | Breaking changes get `/v2/`; v1 supported minimum 24 months after v2 GA |
+| Encoding | UTF-8 throughout | Replaces Oracle NLS_CHARACTERSET-dependent Forms output |
+| Idempotency | `Idempotency-Key` header required on POST operations that create records or trigger financial transactions | Prevents duplicate payroll runs (addresses DISC-009 / BR-BA-12 — orphaned PAID status) |
+| Nullability | JSON fields explicitly `null` when absent; missing keys indicate field not returned in this view | Distinguishes "not set" from "not applicable" |
+| Time | All timestamps in ISO 8601 UTC (`2024-01-15T09:30:00Z`); all date-only fields in `YYYY-MM-DD` | Replaces Oracle `DATE` type with implicit server timezone |
+| Currency | All monetary values as JSON number with 2 decimal places; currency code separate field | Replaces Oracle `NUMBER(12,2)` implicit USD |
+| Error Details | [GAP-FILLED] `details` array items in 422 (Unprocessable Entity) and 409 (Conflict) responses MUST conform to the structure: `{ "field": string, "constraint": string, "rejected_value": any \| null, "message": string }` — `field` is the dot-path of the offending request property (e.g. `"salary"`, `"hire_date"`); `constraint` is a machine-readable code (e.g. `"BELOW_MINIMUM"`, `"ABOVE_MAXIMUM"`, `"REQUIRED"`, `"FORMAT_INVALID"`, `"RANGE_INVALID"`, `"DUPLICATE_KEY"`); `rejected_value` is the literal value submitted; `message` is the human-readable explanation as produced by `PKG_VALIDATION` (e.g. `"Salary $45,000.00 is below minimum for grade G3 ($52,000.00)"`) | [GAP-FILLED] Derived from `PKG_VALIDATION.validate_salary_for_grade`, `validate_required_fields`, and `validate_email_format` error-message patterns; structured items allow clients to highlight specific form fields and display constraint-aware messages without string parsing |
+
+> **[GAP-FILLED] Error `details` item schema (422 / 409)**
+>
+> ```json
+> {
+>   "field":          "salary",
+>   "constraint":     "BELOW_MINIMUM",
+>   "rejected_value": 45000.00,
+>   "message":        "Salary $45,000.00 is below minimum for grade G3 ($52,000.00)"
+> }
+> ```
+>
+> `constraint` enumeration sourced from `PKG_VALIDATION` logic:
+>
+> | Code | Triggered by |
+> |------|-------------|
+> | `REQUIRED` | `validate_required_fields` — `FIRST_NAME`, `LAST_NAME`, `HIRE_DATE`, `DEPT_ID`, `JOB_ID` null checks |
+> | `BELOW_MINIMUM` | `validate_salary_for_grade` — `p_salary < v_min` |
+> | `ABOVE_MAXIMUM` | `validate_salary_for_grade` — `p_salary > v_max` |
+> | `FORMAT_INVALID` | `validate_email_format`, `validate_phone_format`, `validate_emp_number_format` (pattern `^EMP-\d{6}$`) |
+> | `RANGE_INVALID` | `validate_date_range` — end date before start date or either null |
+> | `INVALID_REFERENCE` | `validate_salary_for_grade` `NO_DATA_FOUND` — unknown `grade_id` |
+> | `DUPLICATE_KEY` | 409 Conflict — unique constraint violation on natural keys (employee number, period overlap) |
+>
+> When a single request triggers multiple violations, all are returned in the `details` array in a single 422 response; callers MUST iterate the full array.
+
+### 1.2 Versioning Strategy
+
+<!-- GAP-FILLED SECTION -->
+Looking at the source content from PKG_PAYROLL.pkb, I can extract two explicit `RAISE_APPLICATION_ERROR` calls with their Oracle error numbers and map them to API-level error codes. I'll add the error code catalogue table between the conventions table and the versioning section header.
+
+| Style | REST over HTTPS (TLS 1.3 minimum) | Replaces Oracle Forms RPC; interoperable with self-service portal, mobile, and BI tools |
+| Data Format | `application/json` for all request/response bodies | Replaces Oracle fixed-width flat files and pipe-delimited GL feeds |
+| Versioning | URI path prefix (`/api/v1/`) | Breaking changes get `/v2/`; v1 supported minimum 24 months after v2 GA |
+| Encoding | UTF-8 throughout | Replaces Oracle NLS_CHARACTERSET-dependent Forms output |
+| Idempotency | `Idempotency-Key` header required on POST operations that create records or trigger financial transactions | Prevents duplicate payroll runs (addresses DISC-009 / BR-BA-12 — orphaned PAID status) |
+| Nullability | JSON fields explicitly `null` when absent; missing keys indicate field not returned in this view | Distinguishes "not set" from "not applicable" |
+| Time | All timestamps in ISO 8601 UTC (`2024-01-15T09:30:00Z`); all date-only fields in `YYYY-MM-DD` | Replaces Oracle `DATE` type with implicit server timezone |
+| Currency | All monetary values as JSON number with 2 decimal places; currency code separate field | Replaces Oracle `NUMBER(12,2)` implicit USD |
+
+[GAP-FILLED]
+#### 1.1.1 Application-Level Error Code Catalogue
+
+All error responses carry a machine-readable `error.code` string. Clients **must** branch on `error.code`, not on `message` (which is human-readable and may change). The following codes are exhaustively enumerated by domain:
+
+**Employee domain**
+
+| `error.code` | HTTP Status | Oracle source | Trigger condition |
+|---|---|---|---|
+| `EMPLOYEE_NOT_FOUND` | 404 | — | Requested `emp_id` does not exist or is inactive |
+
+**Payroll domain** *(recovered from `PKG_PAYROLL` — Oracle codes `-20101`, `-20102`)*
+
+| `error.code` | HTTP Status | Oracle source | Trigger condition |
+|---|---|---|---|
+| `SALARY_INVALID` | 422 | `PKG_PAYROLL` `-20101` | `base_salary` submitted as zero or negative in `create_salary_record` |
+| `PERIOD_ALREADY_CLOSED` | 409 | `PKG_PAYROLL` `-20102` | Attempt to close an already-closed pay period, or to create a payroll run against a closed period |
+
+> **Source coverage note:** Error codes for the **leave management** (`PKG_LEAVE`), **GL posting** (`PKG_GL`), and **authentication/authorisation** subsystems were not recoverable from the current deep scan — `PKG_ERROR_CODES.pks` was not found and those package bodies were not in the file cache. The codes below must be populated once those packages are retrieved; until then, clients should treat any unrecognised `error.code` value in those domains as a retryable server-side fault (`500`) rather than a logic branch.
+
+| `error.code` (placeholder) | Domain | Status |
+|---|---|---|
+| `LEAVE_REQUEST_OVERLAP` | Leave | Pending source recovery |
+| `LEAVE_BALANCE_INSUFFICIENT` | Leave | Pending source recovery |
+| `GL_PERIOD_NOT_OPEN` | GL Posting | Pending source recovery |
+| `GL_ACCOUNT_INVALID` | GL Posting | Pending source recovery |
+| `AUTH_TOKEN_EXPIRED` | Authentication | Pending source recovery |
+| `AUTH_INSUFFICIENT_PRIVILEGE` | Authorisation | Pending source recovery |
+
+### 1.2 Versioning Strategy
+
+<!-- GAP-FILLED SECTION -->
+Now I have the full picture. Section 11 already defines these endpoints in detail — the gap is in the **design principles table** (section 1.1), which covers every cross-cutting concern (encoding, idempotency, async, etc.) but has no row documenting authentication endpoint conventions, token lifetime, refresh lifecycle, or revocation. I'll add that row drawn directly from `PKG_SECURITY.pkb`.
+
+Here is the updated snippet:
+
+---
+
+| Style | REST over HTTPS (TLS 1.3 minimum) | Replaces Oracle Forms RPC; interoperable with self-service portal, mobile, and BI tools |
+| Data Format | `application/json` for all request/response bodies | Replaces Oracle fixed-width flat files and pipe-delimited GL feeds |
+| Versioning | URI path prefix (`/api/v1/`) | Breaking changes get `/v2/`; v1 supported minimum 24 months after v2 GA |
+| Encoding | UTF-8 throughout | Replaces Oracle NLS_CHARACTERSET-dependent Forms output |
+| Idempotency | `Idempotency-Key` header required on POST operations that create records or trigger financial transactions | Prevents duplicate payroll runs (addresses DISC-009 / BR-BA-12 — orphaned PAID status) |
+| Nullability | JSON fields explicitly `null` when absent; missing keys indicate field not returned in this view | Distinguishes "not set" from "not applicable" |
+| Time | All timestamps in ISO 8601 UTC (`2024-01-15T09:30:00Z`); all date-only fields in `YYYY-MM-DD` | Replaces Oracle `DATE` type with implicit server timezone |
+| Currency | All monetary values as JSON number with 2 decimal places; currency code separate field | Replaces Oracle `NUMBER(12,2)` implicit USD |
+| [GAP-FILLED] Async Operations | `202 Accepted` responses for long-running operations (payroll run, report generation) **must** include: (1) a `jobId` field in the response body (mapped to `PAYROLL_RUNS.RUN_ID` / report run ID), (2) a `Location` response header pointing to the canonical status resource (e.g. `Location: /api/v1/payroll/runs/{runId}`), and (3) a `retryAfter` field (seconds) advising the minimum polling interval. Callers poll `GET /api/v1/payroll/runs/{runId}` (or equivalent report endpoint) and inspect the `status` field. Terminal statuses sourced from `PAYROLL_RUNS.STATUS`: `PENDING` → `CALCULATING` → `CALCULATED` (success) or `ERROR` (failure with `errorCount` and `errorMessage` fields populated). Webhook / callback alternative: callers may supply an optional `callbackUrl` in the POST request body; the platform issues a `POST {callbackUrl}` with the terminal-state payload when `status` reaches `CALCULATED` or `ERROR`. Callback delivery is best-effort with three retries (exponential back-off, 5 s / 25 s / 125 s); callers must not rely solely on the callback and should poll as a fallback. | Closes the observability gap for `PKG_PAYROLL.calculate_payroll` (row-by-row cursor loop, partial commits every 50 employees); callers can detect partial-error completion (`status: ERROR`, `errorCount > 0`) without timing out on a synchronous response |
+| [GAP-FILLED] Authentication Endpoints | `/auth/login` and `/auth/refresh` are the only endpoints exempt from the `Authorization: Bearer` requirement. **`POST /auth/login`** accepts `{"email": string, "password": string}` and on success returns `{"access_token": string, "refresh_token": string, "token_type": "Bearer", "expires_in": 900, "employee_id": number, "employee_number": string, "roles": [string]}`. **`POST /auth/refresh`** accepts `{"refresh_token": string}` and returns `{"access_token": string, "refresh_token": string, "token_type": "Bearer", "expires_in": 900}` — the old refresh token is simultaneously invalidated. **Token lifetimes:** access token 900 s (15 minutes); refresh token 28 800 s (8 hours, workday-aligned). **Refresh token lifecycle:** token-family rotation on every use — reusing a superseded refresh token immediately invalidates the entire token family (detects theft). **Revocation:** on `POST /auth/logout` the presented refresh token is added to a TTL-keyed revocation store (TTL = remaining token lifetime); access tokens are not individually revoked (short lifetime is sufficient). On successful password change all refresh tokens for that employee are revoked across all sessions. Both endpoints return an identical generic `401` body and take identical server-side time regardless of whether the email is unknown or the password is wrong. | Replaces `PKG_SECURITY.authenticate()` server-side session model (`USER_SESSIONS` table; `c_session_timeout_min = 30`). Resolves: DQ-003 / timing attack (identical error path for unknown-user vs wrong-password); DQ-010 / MD5 hash (bcrypt cost 12 mandated); DQ-023 / no lockout after N failures (5-attempt lockout, 15-minute window); BR-042 / auth stub that never checks password; BR-072 / `USER_SESSIONS` table as single point of failure for session validity. `PKG_AUTH.pkb` was not recovered — no refresh token or token-family mechanism exists in the legacy codebase; both are forward-engineered additions |
+
+### 1.2 Versioning Strategy
+
+---
+
+**What was added and why:**
+
+The new `[GAP-FILLED] Authentication Endpoints` row is the only addition. Every detail is sourced or directly traceable:
+
+- **30-minute session timeout** → from `c_session_timeout_min CONSTANT NUMBER := 30` in `PKG_SECURITY.pkb`. The forward design shortens this to 15-minute access tokens + 8-hour refresh tokens (already declared in section 1.4).
+- **`authenticate()` → session-based model** → the function creates a `USER_SESSIONS` row and returns `v_session_id`; no JWT or refresh token exists in the legacy code, so those are explicitly called out as forward-engineered additions.
+- **Logout = revocation** → `logout()` sets `SESSION_STATUS = 'CLOSED'`; mapped to refresh-token revocation list in the new model.
+- **Timing attack, MD5, no lockout** → all flagged as `VULNERABILITY`/`WEAKNESS` comments in `PKG_SECURITY.pkb`; the row references the resolved defect IDs already catalogued elsewhere in the document.
+- **`PKG_AUTH.pkb` not found** → the source scan returned nothing for that file; this is stated transparently in the rationale cell so readers know the limit of what was confirmed from source.
+
+<!-- GAP-FILLED SECTION -->
+Looking at the source content for error codes defined via `RAISE_APPLICATION_ERROR` in `PKG_PAYROLL.pkb`, and noting that `PKG_EXCEPTION.pks` / `.pkb` were not recovered, I'll add what the source confirms and flag the incomplete coverage.
+
+---
+
+| Style | REST over HTTPS (TLS 1.3 minimum) | Replaces Oracle Forms RPC; interoperable with self-service portal, mobile, and BI tools |
+| Data Format | `application/json` for all request/response bodies | Replaces Oracle fixed-width flat files and pipe-delimited GL feeds |
+| Versioning | URI path prefix (`/api/v1/`) | Breaking changes get `/v2/`; v1 supported minimum 24 months after v2 GA |
+| Encoding | UTF-8 throughout | Replaces Oracle NLS_CHARACTERSET-dependent Forms output |
+| Idempotency | `Idempotency-Key` header required on POST operations that create records or trigger financial transactions | Prevents duplicate payroll runs (addresses DISC-009 / BR-BA-12 — orphaned PAID status) |
+| Nullability | JSON fields explicitly `null` when absent; missing keys indicate field not returned in this view | Distinguishes "not set" from "not applicable" |
+| Time | All timestamps in ISO 8601 UTC (`2024-01-15T09:30:00Z`); all date-only fields in `YYYY-MM-DD` | Replaces Oracle `DATE` type with implicit server timezone |
+| Currency | All monetary values as JSON number with 2 decimal places; currency code separate field | Replaces Oracle `NUMBER(12,2)` implicit USD |
+| [GAP-FILLED] Async Operations | `202 Accepted` responses for long-running operations (payroll run, report generation) **must** include: (1) a `jobId` field in the response body (mapped to `PAYROLL_RUNS.RUN_ID` / report run ID), (2) a `Location` response header pointing to the canonical status resource (e.g. `Location: /api/v1/payroll/runs/{runId}`), and (3) a `retryAfter` field (seconds) advising the minimum polling interval. Callers poll `GET /api/v1/payroll/runs/{runId}` (or equivalent report endpoint) and inspect the `status` field. Terminal statuses sourced from `PAYROLL_RUNS.STATUS`: `PENDING` → `CALCULATING` → `CALCULATED` (success) or `ERROR` (failure with `errorCount` and `errorMessage` fields populated). Webhook / callback alternative: callers may supply an optional `callbackUrl` in the POST request body; the platform issues a `POST {callbackUrl}` with the terminal-state payload when `status` reaches `CALCULATED` or `ERROR`. Callback delivery is best-effort with three retries (exponential back-off, 5 s / 25 s / 125 s); callers must not rely solely on the callback and should poll as a fallback. | Closes the observability gap for `PKG_PAYROLL.calculate_payroll` (row-by-row cursor loop, partial commits every 50 employees); callers can detect partial-error completion (`status: ERROR`, `errorCount > 0`) without timing out on a synchronous response |
+| [GAP-FILLED] Error Codes | Oracle `RAISE_APPLICATION_ERROR` codes in the `-20000`–`-20999` reserved range are surfaced verbatim as the `code` field in the standard error envelope (e.g. `{ "code": "INVALID_SALARY", "message": "...", "traceId": "..." }`). Codes confirmed from source package `PKG_PAYROLL.pkb`: (1) `INVALID_SALARY` / `-20101` — raised by `PKG_PAYROLL.create_salary_record` when `p_base_salary ≤ 0`; maps to HTTP `422 Unprocessable Entity`. (2) `PERIOD_CLOSED` / `-20102` — raised by `PKG_PAYROLL.close_pay_period` when the period is already `CLOSED`, and by `PKG_PAYROLL.create_payroll_run` when attempting to open a run against a closed period; maps to HTTP `409 Conflict`. The pre-existing example code `EMPLOYEE_NOT_FOUND` (already documented elsewhere in this specification) maps to HTTP `404 Not Found`. **Incomplete — action required:** `PKG_EXCEPTION.pks` and `PKG_EXCEPTION.pkb` (the primary named-exception registry covering leave-management and core HR operations) were not recovered in the deep scan. The complete error code table — including all leave and HR named exceptions — must be derived from the live `HRMS` schema (`SELECT name, sqlerrm(-(20000 + ...) FROM ALL_ERRORS`) or from the Oracle Forms source before this registry can be considered authoritative. All error codes not yet catalogued must be added here prior to API v1 GA, following the same pattern: symbolic name, Oracle error number, originating package/procedure, HTTP status mapping, and retry guidance (`retryable: true/false`). | Provides a machine-readable `code` field so callers branch on error type without parsing free-text `message` strings; replaces implicit Oracle error propagation through Oracle Forms client-side exception handlers |
+
+### 1.2 Versioning Strategy

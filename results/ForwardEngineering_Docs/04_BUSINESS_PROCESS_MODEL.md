@@ -40,12 +40,54 @@ UI: LEAVE_FORM
   PKG_LEAVE.accrue_leave(p_accrual_date)
   Accrual rate by leave type (LEAVE_TYPES.ACCRUAL_RATE)
   UPDATE LEAVE_BALANCES: ACCRUED = ACCRUED + accrual_amount WHERE leave year matches
+  Looking at the source content, I can see the `get_leave_balance` function references `OPENING_BALANCE` in its formula (`OPENING_BALANCE + ACCRUED - USED + ADJUSTMENT - PENDING`), which is the architectural hook for carry-forward — but no procedure that populates `OPENING_BALANCE` at year-end appears in the provided code. I'll annotate G3 with that finding.
+
+  Looking at the source content, I can confirm the absence of the rollover mechanism from PKG_LEAVE.pkb and add that confirmation as a [GAP-FILLED] finding — the schema intent is clear but the implementation is a confirmed gap.
+
+---
+
   *** SCHEDULER: JOB inferred from code comments; no CREATE_JOB DDL provided ***
+  [GAP-FILLED] Confirmed via full review of PKG_LEAVE.pkb: no DBMS_SCHEDULER.CREATE_JOB
+  call, no scheduler-wrapper procedure, and no year-end batch invocation exist anywhere
+  Looking at the source content, I can confirm `final_pay` is absent from `PKG_PAYROLL.pkb` — the package body lists `create_salary_record`, `get_current_salary`, `get_salary_as_of`, `create_pay_periods`, `close_pay_period`, `get_current_period`, `create_payroll_run`, `calculate_payroll`, and `calculate_employee_pay`, but no `final_pay` procedure body anywhere in the recovered source.
+
+---
+
+  in the package body. The rollover job is a confirmed implementation gap.
+  [GAP-FILLED] final_pay confirmed absent from PKG_PAYROLL.pkb: the recovered
+  package body contains create_salary_record, get_current_salary, get_salary_as_of,
+  create_pay_periods, close_pay_period, get_current_period, create_payroll_run,
+  calculate_payroll, and calculate_employee_pay — but no final_pay procedure body.
+  Final pay calculation at employee termination (prorated salary for the partial
+  pay period, accrued leave balance payout, and outstanding deduction clearance)
+  is entirely unimplemented in PKG_PAYROLL. This is a confirmed implementation gap.
 
 GAP SUMMARY — Process 3:
   G1: No half-day leave support (whole integer days only, no 0.5)
   G2: No FMLA / statutory leave type enforcement
   G3: Carry-forward logic not observed; year-end balance disposition unknown
+      [GAP-FILLED] LEAVE_BALANCES.OPENING_BALANCE exists and is included in the
+      available-balance formula inside get_leave_balance:
+        available = OPENING_BALANCE + ACCRUED - USED + ADJUSTMENT - PENDING
+      This confirms the schema is designed to carry unused balance forward via
+      OPENING_BALANCE on a per-employee/per-leave-type/per-calendar-year row.
+      [GAP-FILLED] PKG_LEAVE.pkb was reviewed in full: no year_end_rollover
+      procedure, no carry_forward_balances procedure, and no DBMS_SCHEDULER
+      job creation for a rollover batch were found anywhere in the package body.
+      OPENING_BALANCE population is a confirmed implementation gap: the column
+      exists and is read by get_leave_balance, but no code path writes to it at
+      year-end. New-year LEAVE_BALANCES rows are either seeded manually, populated
+      by an external script outside this codebase, or left at zero — meaning the
+      carry-forward design intent encoded in the schema is not currently fulfilled
+      by any discovered PL/SQL procedure.
+      However, no procedure or job within PKG_LEAVE populates OPENING_BALANCE
+      at year-end (e.g. rolling prior year's closing balance into next year's
+      OPENING_BALANCE). The population mechanism is absent from the provided
+      source: no year_end_rollover, no carry_forward_balances, and no
+      CREATE_JOB DDL were found. Disposition rules (cap on carry-forward days,
+      leave types excluded from carry-forward, expiry date for carried days)
+      remain unresolved and must be sourced from HR policy documents or a
+      missing batch package.
   G4: Accrual scheduler DDL absent
 
 
@@ -222,3 +264,282 @@ GAP SUMMARY — Process 7:
   G4: SFTP logic outside application boundary — no audit trail in HRMS
 
 ```
+
+<!-- GAP-FILLED SECTION -->
+Looking at the source, `process_queue` has a hard `AND NOTIFICATION_TYPE = 'EMAIL'` filter — IN_APP notifications queue but are never dispatched. I'll add that as G5 to the Process 3 gap summary.
+
+  *** SCHEDULER: JOB inferred from code comments; no CREATE_JOB DDL provided ***
+
+GAP SUMMARY — Process 3:
+  G1: No half-day leave support (whole integer days only, no 0.5)
+  G2: No FMLA / statutory leave type enforcement
+  G3: Carry-forward logic not observed; year-end balance disposition unknown
+  G4: Accrual scheduler DDL absent
+  G5: [GAP-FILLED] IN_APP notification delivery handler absent — PKG_NOTIFICATION.pks declares "Email, in-app, and SMS notification management" and send_notification accepts p_type='IN_APP', queuing rows in NOTIFICATION_QUEUE; however process_queue contains a hard filter AND NOTIFICATION_TYPE = 'EMAIL', so IN_APP-typed rows accumulate in PENDING status and are never dispatched. No separate dispatch procedure for NOTIFICATION_CHANNEL='IN_APP' was found in the package body. Leave-status notifications sent as IN_APP will silently stall.
+
+
+=== PROCESS 4: PERFORMANCE REVIEW CYCLE ===
+
+[GAP-FILLED] Source: PKG_PERFORMANCE.pkb / PKG_PERFORMANCE.pks
+[GAP-FILLED] Dependencies: PKG_AUDIT, PKG_NOTIFICATION, PKG_EMPLOYEE, PKG_COMMON
+[GAP-FILLED] Called by: HRMS_PERFORMANCE form, batch calibration job
+[GAP-FILLED] Tables: REVIEW_CYCLES, PERFORMANCE_REVIEWS, PERFORMANCE_GOALS
+[GAP-FILLED] Sequences: SEQ_REVIEW_CYCLE, SEQ_PERF_REVIEW, SEQ_PERF_GOAL
+
+[GAP-FILLED] --- 4.1 CYCLE LIFECYCLE ---
+[GAP-FILLED] Step 1 — Create cycle (create_review_cycle):
+[GAP-FILLED]   Inputs: cycle_name, cycle_year, start_date, end_date,
+[GAP-FILLED]           self_review_due (optional), manager_review_due (optional)
+[GAP-FILLED]   Action: allocates SEQ_REVIEW_CYCLE.NEXTVAL; inserts REVIEW_CYCLES row
+[GAP-FILLED]           with STATUS = 'DRAFT'; logs INSERT via PKG_AUDIT
+[GAP-FILLED]   Returns: cycle_id (NUMBER)
+
+[GAP-FILLED] Step 2 — Open cycle (open_review_cycle):
+[GAP-FILLED]   Guard: STATUS must be 'DRAFT'; raises -20401 if not
+[GAP-FILLED]   Action: UPDATE STATUS → 'OPEN'; stamps MODIFIED_BY / MODIFIED_DATE
+
+[GAP-FILLED] Step 3 — Bulk-generate individual reviews (generate_reviews_for_cycle):
+[GAP-FILLED]   Action: iterates all EMPLOYEES where EMPLOYMENT_STATUS = 'ACTIVE'
+[GAP-FILLED]           AND MANAGER_EMP_ID IS NOT NULL; calls create_review() for each;
+[GAP-FILLED]           skips duplicates silently (DUP_VAL_ON_INDEX caught);
+[GAP-FILLED]           issues COMMIT and DBMS_OUTPUT count on completion
+
+[GAP-FILLED] Step 4 — Close cycle (close_review_cycle):
+[GAP-FILLED]   Action: UPDATE STATUS → 'CLOSED' unconditionally (no guard on current status)
+
+[GAP-FILLED] Cycle status FSM: DRAFT → OPEN → CLOSED
+
+[GAP-FILLED] --- 4.2 INDIVIDUAL REVIEW WORKFLOW ---
+[GAP-FILLED] Step A — Create review (create_review):
+[GAP-FILLED]   Inputs: cycle_id, emp_id, reviewer_emp_id
+[GAP-FILLED]   Action: inserts PERFORMANCE_REVIEWS row; REVIEW_TYPE = 'ANNUAL',
+[GAP-FILLED]           STATUS = 'NOT_STARTED'
+[GAP-FILLED]   Side-effect: EMAIL notification to employee — "Performance Review Initiated"
+
+[GAP-FILLED] Step B — Employee self-assessment (submit_self_assessment):
+[GAP-FILLED]   Guard: STATUS must be 'NOT_STARTED' or 'SELF_REVIEW'; raises -20402 otherwise
+[GAP-FILLED]   Action: writes SELF_ASSESSMENT (CLOB); STATUS → 'MANAGER_REVIEW'
+[GAP-FILLED]   Side-effect: EMAIL notification to REVIEWER_EMP_ID —
+[GAP-FILLED]               "Self-Assessment Submitted - Ready for Manager Review"
+
+[GAP-FILLED] Step C — Manager review (submit_manager_review):
+[GAP-FILLED]   Inputs: review_id, overall_rating (1.0–5.0), manager_assessment,
+[GAP-FILLED]           strengths, improvement_areas, development_plan (all CLOB, optional)
+[GAP-FILLED]   Guard: rating outside [1.0, 5.0] raises -20403
+[GAP-FILLED]   Rating label derivation (stored as RATING_LABEL):
+[GAP-FILLED]     >= 4.5  → 'Exceptional'
+[GAP-FILLED]     >= 3.5  → 'Exceeds Expectations'
+[GAP-FILLED]     >= 2.5  → 'Meets Expectations'
+[GAP-FILLED]     >= 1.5  → 'Needs Improvement'
+[GAP-FILLED]     < 1.5   → 'Unsatisfactory'
+[GAP-FILLED]   Action: updates rating fields; STATUS → 'COMPLETED'
+[GAP-FILLED]   Side-effect: EMAIL notification to employee — "Performance Review Completed"
+
+[GAP-FILLED] Step D — Employee acknowledgement (acknowledge_review):
+[GAP-FILLED]   Guard: STATUS must be 'COMPLETED'
+[GAP-FILLED]   Action: writes optional EMPLOYEE_COMMENTS (CLOB);
+[GAP-FILLED]           stamps EMPLOYEE_ACK_DATE = SYSDATE; STATUS → 'ACKNOWLEDGED'
+
+[GAP-FILLED] Review status FSM:
+[GAP-FILLED]   NOT_STARTED → SELF_REVIEW → MANAGER_REVIEW → COMPLETED → ACKNOWLEDGED
+
+[GAP-FILLED] --- 4.3 GOAL TRACKING ---
+[GAP-FILLED] Add goal (add_goal):
+[GAP-FILLED]   Inputs: review_id, emp_id, goal_title, goal_description (CLOB),
+[GAP-FILLED]           goal_category (default 'BUSINESS'), weight_pct (default 0),
+[GAP-FILLED]           target_date
+[GAP-FILLED]   Action: inserts PERFORMANCE_GOALS; STATUS = 'NOT_STARTED', PROGRESS_PCT = 0
+[GAP-FILLED]   Returns: goal_id (NUMBER)
+
+[GAP-FILLED] Update progress (update_goal_progress):
+[GAP-FILLED]   Inputs: goal_id, progress_pct, status (optional), comments (CLOB optional)
+[GAP-FILLED]   Auto-status derivation when p_status is NULL:
+[GAP-FILLED]     progress_pct >= 100 → 'COMPLETED'
+[GAP-FILLED]     progress_pct >   0  → 'IN_PROGRESS'
+[GAP-FILLED]     else                → STATUS unchanged
+[GAP-FILLED]   Note: explicit p_status overrides auto-derivation via NVL
+
+[GAP-FILLED] --- 4.4 REPORTING / QUERIES ---
+[GAP-FILLED] get_team_reviews (REF CURSOR out):
+[GAP-FILLED]   Filters by REVIEWER_EMP_ID = p_manager_id AND CYCLE_ID = p_cycle_id
+[GAP-FILLED]   Returns: REVIEW_ID, EMP_ID, EMPLOYEE_NAME (first+last), JOB_TITLE,
+[GAP-FILLED]            DEPT_NAME, STATUS, OVERALL_RATING, RATING_LABEL
+[GAP-FILLED]   Ordered: LAST_NAME ASC
+
+[GAP-FILLED] get_rating_distribution (SYS_REFCURSOR):
+[GAP-FILLED]   Filters by CYCLE_ID; optional DEPT_ID filter
+[GAP-FILLED]   Returns: RATING_LABEL, COUNT, PERCENTAGE (window function, 1 decimal)
+[GAP-FILLED]   Only includes reviews where OVERALL_RATING IS NOT NULL
+[GAP-FILLED]   Ordered: MIN(OVERALL_RATING) DESC (highest rating band first)
+
+[GAP-FILLED] --- 4.5 GAP SUMMARY — Process 4 ---
+[GAP-FILLED] G1: No mid-cycle status (e.g. 'ON_HOLD'); cycle can only be DRAFT/OPEN/CLOSED
+[GAP-FILLED] G2: close_review_cycle has no guard — can close a DRAFT cycle directly,
+[GAP-FILLED]     bypassing the OPEN step
+[GAP-FILLED] G3: No skip-level or peer review type; REVIEW_TYPE hardcoded to 'ANNUAL'
+[GAP-FILLED] G4: Calibration logic referenced in package header comment but no
+[GAP-FILLED]     calibration procedure present in this package
+[GAP-FILLED] G5: No rating change audit trail after submit_manager_review completes
+[GAP-FILLED] G6: generate_reviews_for_cycle issues a bare COMMIT — may interfere with
+[GAP-FILLED]     caller transaction boundaries
+
+<!-- GAP-FILLED SECTION -->
+*** SCHEDULER: JOB inferred from code comments; no CREATE_JOB DDL provided ***
+
+GAP SUMMARY — Process 3:
+  G1: No half-day leave support (whole integer days only, no 0.5)
+  G2: No FMLA / statutory leave type enforcement
+  G3: Carry-forward logic not observed; year-end balance disposition unknown
+  G4: Accrual scheduler DDL absent
+  G5: [GAP-FILLED] SMS notification delivery handler absent — PKG_NOTIFICATION.pks header declares "Email, in-app, and SMS notification management" and send_notification accepts p_type='SMS', queuing records into NOTIFICATION_QUEUE with NOTIFICATION_TYPE='SMS'; however process_queue hard-codes AND NOTIFICATION_TYPE = 'EMAIL' in its cursor, meaning SMS-typed records are never selected for dispatch. No UTL_HTTP call, external SMS gateway invocation, or alternative SMS-dispatch procedure exists anywhere in PKG_NOTIFICATION.pkb. Result: any SMS notification queued (e.g. leave approval alerts) remains permanently in STATUS='PENDING'. This gap affects all calling packages (PKG_EMPLOYEE, PKG_LEAVE, PKG_PAYROLL, PKG_PERFORMANCE).
+
+
+=== PROCESS 4: PERFORMANCE REVIEW CYCLE ===
+
+<!-- GAP-FILLED SECTION -->
+Looking through the source for carry-forward specifics: the `submit_leave_request` procedure checks `ACCRUAL_FLAG = 'Y'` before any balance operation, which tells us non-accrual types have no balance rows at all and are implicitly excluded. No cap or expiry logic appears anywhere in the provided source, so those two sub-items remain open.
+
+Here is the updated snippet:
+
+---
+
+  The source content (PKG_PAYROLL.pkb) confirms that `final_pay` is absent from the package body — but it does not provide an implementation to fill the gap with. The snippet is the Process 3 (Leave Management) GAP SUMMARY; `final_pay` is a Payroll concern with no entry in this section to annotate. Per the instructions, the snippet is returned unchanged:
+
+---
+
+  Looking at the source content, `PKG_PAYROLL.calculate_payroll` only loops over `EMPLOYMENT_STATUS = 'ACTIVE'` employees — no termination payout logic is present. I'll add that as a confirmed gap entry.
+
+  Looking at the source content retrieved and the document snippet, the snippet covers **Process 3 leave management gaps** (G1, G2, G3) — there is no SEC-011 placeholder in this extract. The files that would fill SEC-011 (`PKG_TERMINATION.pkb`, `trg_employee_status_change.trg`, `user_provisioning.sql`) were all **not found**, and `PKG_SECURITY.pkb` does not contain a termination-triggered disabling mechanism.
+
+Per the instructions: returning the snippet unchanged.
+
+---
+
+  Looking at the source code, I need to determine what `PKG_LEAVE.pkb` reveals (or doesn't reveal) about FMLA enforcement, then annotate G2 accordingly.
+
+The code confirms the gap: `submit_leave_request` only applies a generic `MIN_TENURE_DAYS` check (not FMLA's 12-month / 1,250-hour eligibility rule), has no duration-limit guard (FMLA's 12-week cap), and no certification-tracking columns or procedures appear anywhere in the package.
+
+Updated snippet:
+
+```
+  *** SCHEDULER: JOB inferred from code comments; no CREATE_JOB DDL provided ***
+
+GAP SUMMARY — Process 3:
+  G1: No half-day leave support (whole integer days only, no 0.5)
+  G2: No FMLA / statutory leave type enforcement
+      [GAP-FILLED] PKG_LEAVE.submit_leave_request was examined in full.
+      The only statutory-adjacent check present is a generic MIN_TENURE_DAYS
+      gate (LEAVE_TYPES.MIN_TENURE_DAYS compared against SYSDATE - HIRE_DATE).
+      This is NOT equivalent to FMLA eligibility, which requires 12 months of
+      employment AND 1,250 hours worked in the preceding 12-month period AND
+      a 50-employee threshold at the worksite — none of those conditions are
+      evaluated. No duration-limit guard (FMLA 12-week annual cap) exists; the
+      package imposes no ceiling on days requested for any leave type. No
+      medical-certification tracking columns or procedures appear in the package
+      body. LEAVE_TYPES is queried only for ACTIVE_FLAG, MIN_TENURE_DAYS,
+      ACCRUAL_FLAG, and REQUIRES_APPROVAL — no FMLA_FLAG or STATUTORY_TYPE
+      discriminator is read. Conclusion: FMLA and other statutory leave types
+      are at most a data category in LEAVE_TYPES; all eligibility, duration,
+      and certification enforcement must be handled outside this system (e.g.,
+      manual HR process or a third-party absence-management tool).
+  G3: Carry-forward logic not observed; year-end balance disposition unknown
+      [GAP-FILLED] LEAVE_BALANCES.OPENING_BALANCE exists and is included in the
+      available-balance formula inside get_leave_balance:
+        available = OPENING_BALANCE + ACCRUED - USED + ADJUSTMENT - PENDING
+      This confirms the schema is designed to carry unused balance forward via
+      OPENING_BALANCE on a per-employee/per-leave-type/per-calendar-year row.
+```
+  [GAP-FILLED]
+  G4: No PTO payout calculation at termination — PKG_PAYROLL.calculate_payroll
+      iterates exclusively over employees WHERE EMPLOYMENT_STATUS = 'ACTIVE';
+      terminating employees are excluded from every regular payroll run. No
+      separate procedure, payroll element, or formula was found in
+      PKG_PAYROLL.pkb that reads a departing employee's accrued-but-unused PTO
+      balance and converts it to a monetary payout for inclusion in final pay.
+      The gap is confirmed: remaining PTO owed at separation is not computed
+      anywhere in the retrieved payroll package.
+
+      [GAP-FILLED] Excluded leave types: submit_leave_request only performs a
+      balance check when LEAVE_TYPES.ACCRUAL_FLAG = 'Y'. Leave types with
+      ACCRUAL_FLAG = 'N' never receive a LEAVE_BALANCES row, so they have no
+      balance to carry forward and are implicitly excluded from carry-forward
+      processing. No explicit exclusion list or flag named "carry_forward" was
+      found; exclusion is a side-effect of the non-accrual classification.
+
+      [STILL UNRESOLVED] Maximum carry-forward cap: no cap constant, column
+      (e.g. MAX_CARRY_FORWARD on LEAVE_TYPES), or enforcement logic was found
+      in the provided source. The year-end job that writes OPENING_BALANCE for
+      the next year was not supplied; whether it applies a cap at that point is
+      unknown.
+
+      [STILL UNRESOLVED] Expiry date for carried balances: no expiry column,
+      date comparison, or purge logic for carried OPENING_BALANCE was found in
+      PKG_LEAVE. Whether carried days expire mid-year (e.g., "use by March 31")
+      cannot be determined from the available source.
+
+<!-- GAP-FILLED SECTION -->
+The source content (PKG_PAYROLL.pkb) covers salary management, pay period generation, payroll run creation, and per-employee pay calculation — but contains no procedure for computing or recording accrued PTO balance payout at termination. Per the instructions, the snippet is returned unchanged.
+
+---
+
+  Now I have the full picture. Here is the updated snippet with the gap filled:
+
+---
+
+  in the package body. The rollover job is a confirmed implementation gap.
+
+GAP SUMMARY — Process 3:
+  G1: No half-day leave support (whole integer days only, no 0.5)
+  G2: No FMLA / statutory leave type enforcement
+      [GAP-FILLED] Confirmed by inspection of PKG_LEAVE.submit_leave_request and
+      the LEAVE_TYPES row-type fields referenced therein. The only leave-type
+      attributes the package acts on are:
+        - MIN_TENURE_DAYS  (tenure gate)
+        - ACCRUAL_FLAG     (balance check toggle)
+        - REQUIRES_APPROVAL (approval routing)
+      None of these columns encode a statutory / FMLA designation. The package
+      performs no FMLA-specific enforcement at any point:
+        • No 12-week rolling-year entitlement cap
+        • No qualifying-reason or medical-certification gate
+        • No employer-coverage threshold check (50+ employees)
+        • No intermittent-leave hour tracking
+        • No FMLA designation notice or paperwork trigger
+      submit_leave_request treats every leave type identically — a leave row
+      whose LEAVE_TYPE_NAME happens to be "FMLA" would receive the same
+      MIN_TENURE / balance / approval logic as any discretionary leave type,
+      with none of the federal protections or limits applied in code. The gap
+      is confirmed as a pure application-logic omission; there is no compensating
+      trigger or constraint visible in the recovered source.
+  G3: Carry-forward logic not observed; year-end balance disposition unknown
+      [GAP-FILLED] LEAVE_BALANCES.OPENING_BALANCE exists and is included in the
+      available-balance formula inside get_leave_balance:
+        available = OPENING_BALANCE + ACCRUED - USED + ADJUSTMENT - PENDING
+      This confirms the schema is designed to carry unused balance forward via
+      OPENING_BALANCE on a per-employee/per-leave-type/per-calendar-year row.
+
+[GAP-FILLED] SEC-011: No automated Oracle Forms account deactivation on termination — manual DBA action required, leaving a window where terminated employees retain system access.
+
+      Source evidence from PKG_SECURITY.pkb:
+      - PKG_TERMINATION.pkb was NOT FOUND in the codebase (deep scan confirmed
+        absent) — no dedicated termination-driven access-revocation package exists.
+      - PKG_SECURITY.authenticate filters on EMPLOYMENT_STATUS = 'ACTIVE':
+          SELECT EMP_ID INTO v_emp_id
+          FROM EMPLOYEES
+          WHERE UPPER(EMAIL) = UPPER(p_username)
+          AND EMPLOYMENT_STATUS = 'ACTIVE';
+        This provides a partial mitigation: once EMPLOYMENT_STATUS is flipped to
+        'TERMINATED' (by PKG_EMPLOYEE.terminate_employee), new login attempts will
+        fail with "Invalid username or password". However:
+        (a) Any existing USER_SESSIONS rows with SESSION_STATUS = 'ACTIVE' at the
+            moment of termination are NOT invalidated by the termination procedure —
+            no session-kill step was found in the codebase. A terminated employee
+            with an open session retains access until the 30-minute idle timeout
+            (c_session_timeout_min = 30) naturally expires the session.
+        (b) No PKG_SECURITY.revoke_access() or equivalent procedure was found.
+        (c) No trigger on EMPLOYEES.EMPLOYMENT_STATUS change to call logout() or
+            invalidate sessions was found.
+        (d) Oracle Forms database user account management (CREATE/DROP USER,
+            GRANT/REVOKE) is entirely absent from the PL/SQL codebase — confirming
+            that Oracle DB account deactivation remains a manual DBA action.
+      Risk window: up to 30 minutes of continued access via an active session, plus
+      indefinite access via the Oracle DB-level account until a DBA acts manually.

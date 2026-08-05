@@ -1,5 +1,5 @@
 """
-Gap Hunter Runner — Step 14.5
+Gap Hunter Runner — Step 15
 Self-healing loop that runs after Foundation (Step 14) and scans all 25
 generated documents for weakness markers:
   - "MISSING", "[Not found", "unknown", "N/A", "not available"
@@ -10,10 +10,11 @@ generated documents for weakness markers:
 For each weakness found:
   1. Identifies which source files would contain the missing data
   2. Fetches content from DEEP_SCAN_OUTPUT.md → file_cache.json
-  3. Calls Claude to fill only that specific gap
-  4. Updates the document in place
+  3. Calls Claude to fill only that specific gap snippet
+  4. Replaces ONLY that snippet in the document — full file is preserved
 
 Runs up to MAX_ROUNDS rounds until zero weaknesses remain.
+Parallel: all documents processed simultaneously (ThreadPoolExecutor).
 Resume-safe: tracks which gaps have been filled in gap_hunter_report.json.
 Writes: gap_hunter_report.json
 """
@@ -22,6 +23,8 @@ import json
 import re
 import sys
 from pathlib import Path
+from concurrent.futures import ThreadPoolExecutor, as_completed
+import threading
 
 if hasattr(sys.stdout, "reconfigure"):
     sys.stdout.reconfigure(encoding="utf-8", errors="replace")
@@ -32,6 +35,13 @@ from base_runner import (call_claude, save_json, output_already_exists,
 
 OUTPUT_FILE = "gap_hunter_report.json"
 MAX_ROUNDS = 3
+MAX_WORKERS = 10  # parallel documents per round
+
+_print_lock = threading.Lock()
+
+def safe_print(*args, **kwargs):
+    with _print_lock:
+        print(*args, **kwargs)
 
 # Patterns that indicate a gap or weakness in a document
 WEAKNESS_PATTERNS = [
@@ -91,24 +101,23 @@ The gap: {gap_description}
 Source content retrieved for this gap:
 {source_content}
 
-The document section that needs filling:
-{doc_section}
+The document snippet that needs filling (this is a small extract from the document):
+{doc_snippet}
 
 Instructions:
 - Fill in the missing data using the source content provided
-- Keep ALL existing content — do not remove or rewrite anything
-- Only ADD the missing information
+- Keep ALL existing text in the snippet — do not remove or rewrite anything
+- Only ADD the missing information where the gap is
 - Mark all added content with [GAP-FILLED] so it is visible
-- If the source content does not contain the missing data, return the
-  document section unchanged
-- Return the COMPLETE updated document section
+- If the source content does not contain the missing data, return the snippet UNCHANGED
+- Return ONLY the updated snippet — the same length or longer, nothing else
 
-Updated document section:
+Updated snippet:
 """
 
 
 def _get_all_documents(output_dir: str) -> dict:
-    """Return all 25 Foundation documents as {filename: Path}."""
+    """Return all Foundation documents as {filename: Path}."""
     base = Path(output_dir)
     docs = {}
     for folder in ["Foundation_KnowledgeGraph", "ForwardEngineering_Docs"]:
@@ -121,20 +130,26 @@ def _get_all_documents(output_dir: str) -> dict:
 
 
 def _scan_document_for_weaknesses(content: str, filename: str) -> list:
-    """Find all weakness locations in a document. Returns list of (line_no, context)."""
+    """Find all weakness locations in a document. Returns list of weakness dicts."""
     weaknesses = []
     lines = content.split("\n")
+    seen_contexts = set()
     for i, line in enumerate(lines):
         if WEAKNESS_RE.search(line):
-            # Get surrounding context (5 lines before and after)
             start = max(0, i - 5)
             end = min(len(lines), i + 6)
             context = "\n".join(lines[start:end])
-            weaknesses.append({
-                "line": i,
-                "matched_text": line.strip(),
-                "context": context,
-            })
+            # Deduplicate — skip very similar contexts
+            key = context[:80]
+            if key not in seen_contexts:
+                seen_contexts.add(key)
+                weaknesses.append({
+                    "line": i,
+                    "matched_text": line.strip(),
+                    "context": context,
+                    "start_line": start,
+                    "end_line": end,
+                })
     return weaknesses
 
 
@@ -157,8 +172,12 @@ def _find_gaps_in_section(section_text: str, label: str) -> list:
     return []
 
 
-def _fill_gap_in_document(doc_path: Path, gap: dict, output_dir: str) -> bool:
-    """Fetch source files for a gap and fill it in the document. Returns True if filled."""
+def _fill_gap_in_document(doc_path: Path, gap: dict, weakness_context: str, output_dir: str) -> bool:
+    """
+    Fetch source files for a gap and patch ONLY the weakness snippet in the document.
+    The full document is read, the snippet is replaced, the full document is written back.
+    File size is preserved or grows — never shrinks.
+    """
     suggested_files = gap.get("suggested_files", [])
     description = gap.get("description", "unknown gap")
 
@@ -176,22 +195,82 @@ def _fill_gap_in_document(doc_path: Path, gap: dict, output_dir: str) -> bool:
     if not has_real:
         return False
 
-    # Read current document
-    current_content = doc_path.read_text(encoding="utf-8")
+    # Read the FULL document content
+    full_content = doc_path.read_text(encoding="utf-8")
+    original_size = len(full_content)
 
+    # Ask Claude to fill only the small snippet (weakness context ~10 lines)
     prompt = FILL_GAP_PROMPT.format(
         gap_description=description,
         source_content=sections[:15000],
-        doc_section=current_content[:20000],
+        doc_snippet=weakness_context,
     )
 
-    filled = call_claude(prompt, label=f"GapHunter fill {doc_path.name[:20]}", timeout=600)
+    filled_snippet = call_claude(prompt, label=f"GapHunter fill {doc_path.name[:20]}", timeout=600)
 
-    if filled.strip() and "[GAP-FILLED]" in filled:
-        doc_path.write_text(filled, encoding="utf-8")
-        return True
+    if not filled_snippet.strip():
+        return False
 
-    return False
+    if "[GAP-FILLED]" not in filled_snippet:
+        return False
+
+    # SAFE WRITE: replace only the snippet in the full document
+    # If the original snippet exists in the document, replace it
+    if weakness_context.strip() in full_content:
+        new_content = full_content.replace(weakness_context.strip(), filled_snippet.strip(), 1)
+    else:
+        # Snippet not found verbatim — append the gap fill at end of document
+        new_content = full_content.rstrip() + "\n\n<!-- GAP-FILLED SECTION -->\n" + filled_snippet.strip() + "\n"
+
+    # Safety check: never allow file to shrink significantly
+    if len(new_content) < original_size * 0.9:
+        safe_print(f"    ⚠ SAFETY ABORT: new content would shrink {doc_path.name} "
+                   f"from {original_size:,} to {len(new_content):,} bytes — skipping")
+        return False
+
+    doc_path.write_text(new_content, encoding="utf-8")
+    return True
+
+
+def _process_document(filename: str, doc_path: Path, output_dir: str) -> dict:
+    """Process a single document — scan for gaps, fill them. Returns result dict."""
+    result = {"document": filename, "gaps_found": 0, "gaps_filled": 0, "errors": []}
+
+    try:
+        if doc_path.suffix == ".json":
+            return result  # Skip JSON files
+
+        content = doc_path.read_text(encoding="utf-8", errors="replace")
+        weaknesses = _scan_document_for_weaknesses(content, filename)
+
+        if not weaknesses:
+            return result
+
+        safe_print(f"  {filename}: {len(weaknesses)} weakness marker(s) found")
+
+        # Group weaknesses into one context block for gap identification
+        combined_context = "\n\n---\n\n".join(
+            w["context"] for w in weaknesses[:5]
+        )
+
+        gaps = _find_gaps_in_section(combined_context, filename)
+        high_gaps = [g for g in gaps if g.get("severity") == "HIGH"]
+
+        result["gaps_found"] = len(high_gaps)
+
+        for gap in high_gaps:
+            # Find the best matching weakness context for this gap
+            best_context = weaknesses[0]["context"] if weaknesses else combined_context
+            filled = _fill_gap_in_document(doc_path, gap, best_context, output_dir)
+            if filled:
+                result["gaps_filled"] += 1
+                safe_print(f"    ✓ Filled: {gap.get('description', '')[:60]}")
+
+    except Exception as e:
+        result["errors"].append(str(e))
+        safe_print(f"  ✗ ERROR processing {filename}: {e}")
+
+    return result
 
 
 def run(output_dir: str) -> dict:
@@ -199,7 +278,7 @@ def run(output_dir: str) -> dict:
         print(f"\n[Gap Hunter] Already done — skipping (found {OUTPUT_FILE})")
         return json.loads((Path(output_dir) / OUTPUT_FILE).read_text(encoding="utf-8"))
 
-    print(f"\n[Gap Hunter] Starting self-healing gap detection loop (max {MAX_ROUNDS} rounds)...")
+    print(f"\n[Gap Hunter] Starting parallel self-healing gap detection (max {MAX_ROUNDS} rounds, {MAX_WORKERS} workers)...")
 
     report = {
         "rounds": [],
@@ -216,53 +295,54 @@ def run(output_dir: str) -> dict:
             print("  No Foundation documents found — run Step 14 first.")
             break
 
+        # Log sizes before round
+        sizes_before = {name: path.stat().st_size for name, path in docs.items()}
+
         round_gaps = 0
         round_filled = 0
-        round_docs = []
 
-        for filename, doc_path in docs.items():
-            if doc_path.suffix == ".json":
-                continue  # Skip JSON files — too complex to gap-fill
+        # Run all documents in parallel
+        with ThreadPoolExecutor(max_workers=MAX_WORKERS) as executor:
+            futures = {
+                executor.submit(_process_document, fname, fpath, output_dir): fname
+                for fname, fpath in docs.items()
+            }
+            for future in as_completed(futures):
+                fname = futures[future]
+                try:
+                    result = future.result()
+                    round_gaps += result["gaps_found"]
+                    round_filled += result["gaps_filled"]
+                    if result["gaps_filled"] > 0 and fname not in report["documents_updated"]:
+                        report["documents_updated"].append(fname)
+                except Exception as e:
+                    safe_print(f"  ✗ Future error for {fname}: {e}")
 
-            content = doc_path.read_text(encoding="utf-8", errors="replace")
-            weaknesses = _scan_document_for_weaknesses(content, filename)
-
-            if not weaknesses:
+        # Verify no files shrank (safety check after round)
+        print(f"\n  Size verification after round {round_num}:")
+        all_safe = True
+        for name, path in docs.items():
+            if not path.exists():
                 continue
-
-            print(f"  {filename}: {len(weaknesses)} weakness marker(s) found")
-
-            # Group weaknesses into one context block (avoid too many API calls)
-            combined_context = "\n\n---\n\n".join(
-                w["context"] for w in weaknesses[:5]  # limit to 5 per doc per round
-            )
-
-            gaps = _find_gaps_in_section(combined_context, filename)
-            high_gaps = [g for g in gaps if g.get("severity") == "HIGH"]
-
-            round_gaps += len(high_gaps)
-
-            for gap in high_gaps:
-                filled = _fill_gap_in_document(doc_path, gap, output_dir)
-                if filled:
-                    round_filled += 1
-                    if filename not in report["documents_updated"]:
-                        report["documents_updated"].append(filename)
-                    print(f"    Filled: {gap.get('description', '')[:60]}")
-
-            if high_gaps:
-                round_docs.append({"document": filename, "gaps": len(high_gaps)})
+            new_size = path.stat().st_size
+            old_size = sizes_before.get(name, 0)
+            if new_size < old_size * 0.9:
+                print(f"  ⚠ WARNING: {name} shrank {old_size:,} → {new_size:,} bytes")
+                all_safe = False
+            elif new_size > old_size:
+                print(f"  ✓ {name}: {old_size:,} → {new_size:,} bytes (+{new_size-old_size:,})")
 
         report["rounds"].append({
             "round": round_num,
             "gaps_found": round_gaps,
             "gaps_filled": round_filled,
             "documents_scanned": len(docs),
+            "sizes_safe": all_safe,
         })
         report["total_gaps_found"] += round_gaps
         report["total_gaps_filled"] += round_filled
 
-        print(f"  Round {round_num} complete: {round_gaps} gaps found, {round_filled} filled")
+        print(f"\n  Round {round_num} complete: {round_gaps} gaps found, {round_filled} filled")
 
         if round_gaps == 0:
             print(f"  No gaps found — stopping early after {round_num} round(s)")

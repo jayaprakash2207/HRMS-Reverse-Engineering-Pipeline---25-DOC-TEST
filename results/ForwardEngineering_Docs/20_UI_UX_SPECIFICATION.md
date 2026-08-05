@@ -241,6 +241,7 @@ Step 4: Review & Submit
 ```
 ┌─────────────────────────────────────────────────────┐
 │  Terminate Employee                             [×]  │
+```
 │  ─────────────────────────────────────────────────  │
 │  You are terminating: Jane Smith (EMP-01001)         │
 │                                                      │
@@ -252,6 +253,33 @@ Step 4: Review & Submit
 │  ⚠ This will cancel 1 pending leave request and     │
 │    end all active benefit enrollments.               │
 │                                                      │
+
+[GAP-FILLED]
+Performance Rating Scale — Source Definition
+─────────────────────────────────────────────────────
+Defined location: PKG_PERFORMANCE.pkb, procedure
+submit_manager_review (hardcoded CASE expression;
+no lookup table or configurable source exists).
+
+  Numeric range : 1.0 – 5.0 (PL/SQL guard raises
+                  ORA-20403 outside this range)
+  Scale is fixed: NOT configurable per review cycle
+
+  Score band    │ Label
+  ──────────────┼─────────────────────
+  4.5 – 5.0     │ Exceptional
+  3.5 – 4.49    │ Exceeds Expectations
+  2.5 – 3.49    │ Meets Expectations
+  1.5 – 2.49    │ Needs Improvement
+  1.0 – 1.49    │ Unsatisfactory
+
+  RATING_LABEL is computed at write-time and stored
+  directly on PERFORMANCE_REVIEWS; it is not looked
+  up at read-time.  No RATING_SCALE or LOOKUP_VALUES
+  table governs these bands — changing them requires
+  a package recompile.
+[/GAP-FILLED]
+```
 │       [Cancel]          [Confirm Termination]        │
 └─────────────────────────────────────────────────────┘
 ```

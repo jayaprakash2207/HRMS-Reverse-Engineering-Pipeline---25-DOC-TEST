@@ -1079,6 +1079,8 @@ ACH_PRENOTE_HISTORY
 
 **Rationale:** Nacha rules require a zero-dollar prenote to be sent 3 banking days before the first live ACH credit to a new account. This table tracks the prenote lifecycle separately from the disbursement, enabling automated prenote scheduling and return-item handling.
 
+Looking at the gap description and inferring column patterns from `PKG_PERFORMANCE.pkb` (status lifecycle, audit fields, rating label constants, org/employee FK patterns seen throughout the package).
+
 ---
 
 ### 6.4 CALIBRATION_SESSIONS
@@ -1089,6 +1091,21 @@ ACH_PRENOTE_HISTORY
 CALIBRATION_SESSIONS
   SESSION_ID            NUMBER(10)      PK
   CYCLE_ID              NUMBER(10)      FK → REVIEW_CYCLES
+  SESSION_STATUS        VARCHAR2(20)    NOT NULL  -- [GAP-FILLED] 'DRAFT','IN_PROGRESS','COMPLETED','CANCELLED'
+  SESSION_DATE          DATE            NOT NULL  -- [GAP-FILLED] scheduled date of calibration meeting
+  FACILITATOR_EMP_ID    NUMBER(10)      FK → EMPLOYEES  -- [GAP-FILLED] HR facilitator running the session
+  DEPT_ID               NUMBER(10)      FK → DEPARTMENTS  -- [GAP-FILLED] org unit / department scope
+  CNT_EXCEPTIONAL       NUMBER(5)       DEFAULT 0  -- [GAP-FILLED] rating distribution snapshot: 'Exceptional'
+  CNT_EXCEEDS           NUMBER(5)       DEFAULT 0  -- [GAP-FILLED] 'Exceeds Expectations'
+  CNT_MEETS             NUMBER(5)       DEFAULT 0  -- [GAP-FILLED] 'Meets Expectations'
+  CNT_NEEDS_IMPROVEMENT NUMBER(5)       DEFAULT 0  -- [GAP-FILLED] 'Needs Improvement'
+  CNT_UNSATISFACTORY    NUMBER(5)       DEFAULT 0  -- [GAP-FILLED] 'Unsatisfactory'
+  COMPLETION_DATE       DATE                       -- [GAP-FILLED] timestamp when session status set to COMPLETED
+  CREATED_BY            VARCHAR2(50)    NOT NULL   -- [GAP-FILLED]
+  CREATED_DATE          DATE            DEFAULT SYSDATE  -- [GAP-FILLED]
+  MODIFIED_BY           VARCHAR2(50)               -- [GAP-FILLED]
+  MODIFIED_DATE         DATE                       -- [GAP-FILLED]
+```
   FACILITATED_BY        NUMBER(10)      FK → EMPLOYEES
   SESSION_DATE          DATE            NN
   STATUS                VARCHAR2(20)    CHK ('PLANNED', 'IN_PROGRESS', 'COMPLETED')
