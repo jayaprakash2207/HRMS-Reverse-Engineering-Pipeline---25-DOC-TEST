@@ -7,7 +7,7 @@
 [![Python](https://img.shields.io/badge/Python-3.9+-3776AB?style=for-the-badge&logo=python&logoColor=white)](https://python.org)
 [![Claude AI](https://img.shields.io/badge/Claude-AI%20Powered-D97706?style=for-the-badge&logo=anthropic&logoColor=white)](https://anthropic.com)
 [![Oracle](https://img.shields.io/badge/Oracle-Forms%20%2B%20PL%2FSQL-F80000?style=for-the-badge&logo=oracle&logoColor=white)](https://oracle.com)
-[![Accuracy](https://img.shields.io/badge/Target%20Accuracy-98--100%25-22c55e?style=for-the-badge)](https://github.com/jayaprakash2207/oracle-reverse-engg-correction-1)
+[![Accuracy](https://img.shields.io/badge/Target%20Accuracy-97--98%25-22c55e?style=for-the-badge)](https://github.com/jayaprakash2207/HRMS-Reverse-Engineering-Pipeline---25-DOC-TEST)
 [![License](https://img.shields.io/badge/License-MIT-22c55e?style=for-the-badge)](LICENSE)
 
 <br/>
@@ -23,15 +23,16 @@
 
 ---
 
-## 🚦 Current Pipeline Status (as of 2026-08-05)
+## 🚦 Current Pipeline Status (as of 2026-08-11)
 
 > **For teammates picking this up — read [TEAM_CONTEXT.md](TEAM_CONTEXT.md) first.**
 
 | Step | Description | Status |
 |------|-------------|--------|
 | Steps 1–13 | Source extraction, caching, annotation, deep scan, BA/DA/TA/AA analysis, cross-validation | ✅ **Complete** |
-| Step 14 | Foundation docs (25 documents + Knowledge Graph) | ✅ **Complete** — all 25 docs generated (400–1963 lines each) |
+| Step 14 | Foundation docs (25 documents + Knowledge Graph) | ✅ **Complete** — all 25 docs generated, Call 4 consistency check added |
 | Step 15 | Gap Hunter (self-healing loop) | ✅ **Complete** — 256 gaps filled across 21 documents in 3 rounds |
+| Document QA | 03_USE_CASE_SPECIFICATION.md cleaned | ✅ **Fixed** — duplicate sections and pipeline artifacts removed |
 | Human Review | 6 structured review files in `docs/` | ✅ **Ready** — pre-populated with all real findings |
 
 **Next action for teammate:** Open `docs/HUMAN_REVIEW_GUIDE.md` and complete the human review. Resolve all 7 contradictions in `docs/06_REVIEW_Gap_Reports.md` before code generation. See [TEAM_CONTEXT.md](TEAM_CONTEXT.md) for exact details.
@@ -114,6 +115,14 @@ After generating all 25 documents (Calls 1+2), a third verification call:
 - Reads all 25 generated documents
 - Reads original 8 agent outputs (source of truth)
 - Finds anything in agent outputs that didn't make it into the documents
+- Detects duplicate sections and pipeline artifact text within documents
+- Detects missing mandatory sections (preconditions, postconditions, business rules)
+
+**6. Foundation Call 4 Consistency Check** (`pipeline/foundation_runner.py`)  
+After Call 3, a fourth cross-document consistency pass:
+- Validates every `BR-xxx`, `UC-xxx`, table name, `PKG_xxx.procedure`, `ACT-xxx` ID across all 25 docs
+- Detects contradictions where the same fact is stated differently in two documents
+- Produces `Foundation_KnowledgeGraph/CONSISTENCY_REPORT.md` with all findings
 - Updates only the documents that need additions (marks new content with `[VERIFIED-SUPPLEMENT]`)
 
 ---
@@ -203,6 +212,7 @@ Kill the pipeline at any time — re-run the **same command** and it continues f
 │               Call 1: Enterprise KG + 5 foundation docs + docs 01–10        │
 │               Call 2: docs 11–20  (receives gap-filled docs from Call 1)     │
 │               Call 3: Verification — cross-check all 25 docs vs agent outs  │
+│               Call 4: Consistency — validate all BR/UC/table/PKG IDs  [NEW] │
 │                                                                              │
 │  Step 15  ─► Gap Hunter           (gap_hunter_report.json)           NEW    │
 │               Self-healing loop — scans all 25 docs for MISSING/TBD/unknown │
@@ -375,7 +385,8 @@ automated-reverse-engineering-pipeline/
 │   │   ├── _reload_filled_docs()           ← ensures Call 2 gets gap-filled Call 1 context
 │   │   ├── Call 1: KG + docs 01–10
 │   │   ├── Call 2: docs 11–20
-│   │   └── Call 3: verification pass (cross-check all 25 docs vs agent outputs)  [NEW]
+│   │   ├── Call 3: verification pass (cross-check all 25 docs vs agent outputs)  [NEW]
+│   │   └── Call 4: consistency check (validate all BR/UC/table/PKG IDs across docs) [NEW]
 │   │
 │   ├── layer1/                             ← Step 1: deterministic extraction (no AI)
 │   │   ├── oracle_forms_extractor.py       ← .frmxml parser
@@ -456,8 +467,8 @@ python run.py --source <path> --output ./results --from-step 13 --to-step 13
 ### Clone and Run
 
 ```bash
-git clone https://github.com/jayaprakash2207/oracle-reverse-engg-correction-1.git
-cd oracle-reverse-engg-correction-1
+git clone https://github.com/jayaprakash2207/HRMS-Reverse-Engineering-Pipeline---25-DOC-TEST.git
+cd HRMS-Reverse-Engineering-Pipeline---25-DOC-TEST
 
 pip install -r requirements.txt
 npm install -g @anthropic-ai/claude-code
@@ -515,7 +526,10 @@ Business rules encoded in seed data, Oracle Forms REQUIRED fields, and PL/SQL `-
 Each analysis track (BA/DA/TA/AA) runs independently. A package documented in AA might never appear in BA because BA's agent didn't happen to look at the right file. Step 13 cross-checks all 4 completed outputs, finds these cross-track gaps, and supplements the missing track before Foundation sees it.
 
 ### Why Foundation Call 3?
-Even with gap detection in each Call 1/2 document, information can fall through the cracks when context windows are large. Call 3 takes a completely fresh look: "Here are your 25 documents AND the original agent outputs — what's missing?" It produces targeted updates, not a full rewrite.
+Even with gap detection in each Call 1/2 document, information can fall through the cracks when context windows are large. Call 3 takes a completely fresh look: "Here are your 25 documents AND the original agent outputs — what's missing?" It also detects structural corruption — duplicate sections, artifact text, missing mandatory sections — that can occur when the pipeline appends output fragments into a document.
+
+### Why Foundation Call 4?
+25 documents are generated independently across 3 calls. A document can reference `BR-042` while the business rules catalogue only defines `BR-041`. A use case can reference table `EMPLOYEE_BANK_ACCOUNTS` while the data model has it listed as `EMP_BANK_ACCOUNTS`. These cross-document inconsistencies are invisible within a single document — they only show up when you check all 25 together. Call 4 is that cross-document check. It validates every ID reference, finds every contradiction, and produces `CONSISTENCY_REPORT.md` so human reviewers know exactly what needs resolving before forward engineering starts.
 
 ### Why per-document gap detection in Foundation?
 The 25 Foundation documents are each a different document type (BRD vs ERD vs API contracts). A gap in the Data Dictionary is irrelevant to the Deployment Architecture. Running gap detection independently on each document means:
