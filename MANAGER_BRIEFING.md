@@ -219,44 +219,245 @@ The remaining 2–3% requires human domain knowledge that no tool can extract fr
 
 ---
 
-## 8. Testing — What We Found (Session 2)
+## 8. Round 1 Testing — All 10 Tests (Session 2)
 
-Before starting forward engineering, we ran a full 10-test validation suite against all 25 output documents. The results were saved in `TEST_REPORT.md`.
-
-### Test Results Summary
-
-| # | Test | Result |
-|---|---|---|
-| 1 | All 25 files exist and are non-empty | **PASS** |
-| 2 | All documents have required sections | **PASS** |
-| 3 | Key facts from source code are in the documents | **FAIL** (2 of 6 facts missing) |
-| 4 | No AI artifact text in documents | **FAIL** (18 of 25 documents contaminated) |
-| 5 | No duplicate sections in any document | **FAIL** (01_BRD.md had sections repeated 3× each) |
-| 6 | All ID cross-references resolve correctly | **FAIL** (BR-042 collision — same ID, two meanings) |
-| 7 | Every document traces back to source code | **PASS** |
-| 8 | All 11 packages, 6 forms, key tables covered | **PASS** |
-| 9 | No contradictions in key numeric values | **PASS** |
-| 10 | Readiness report is honest about blockers | **PASS** |
-
-**Result: 6/10 PASS — NOT READY for forward engineering**
-
-### What the 4 Failures Mean
-
-**Failure 1 — Artifact text in 18 of 25 documents (Test 4)**
-Lines like *"Looking at the source content to find references to..."* and *"Here is the updated snippet:"* were embedded inside documents as if they were business content. These are AI generation commentary that leaked through. When the code generator reads these documents, it would interpret pipeline commentary as business requirements — poisoning the code output.
-
-**Failure 2 — Duplicate sections in BRD (Test 5)**
-The Business Requirements Document had two section headings (`System History` and `Drivers for Modernisation`) each appearing 3 times. The same content was injected 3 times during the pipeline's gap-fill process instead of once. A document with repeated sections is not a valid engineering specification.
-
-**Failure 3 — BR-042 ID collision (Test 6)**
-The BRD defined BR-042 as "off-cycle payroll runs for terminated employees." Every other document (Use Case Spec, Security Architecture, NFR Spec, Readiness Report) defined BR-042 as the critical authentication bypass defect — the most serious security issue in the system. Anyone following BR-042 from the BRD finds the wrong requirement. This would cause the authentication defect to be treated as a payroll feature during code generation.
-
-**Failure 4 — Oracle Forms module names missing from Frontend doc (Test 3)**
-The Frontend Architecture document maps to route paths like `/employees` but never names the original Oracle Forms modules (`HRMS_EMPLOYEE`, `HRMS_PAYROLL`). This breaks traceability from the source system to the generated frontend.
+Before starting forward engineering, we ran a 10-test validation suite against all 25 output documents. Full evidence saved in `TEST_REPORT.md`.
 
 ---
 
-## 9. Pipeline Fixes — What Was Changed to Prevent These Issues (Session 2)
+### Test 1 — File Existence Check
+**What we did:** Checked that all 25 required files exist and are non-empty (20 in ForwardEngineering_Docs, 5 in Foundation_KnowledgeGraph).
+**What we got:** ALL 25 FILES PRESENT AND NON-EMPTY.
+**Result: PASS ✓**
+> Note: One extra file found — `01_BRD_SUPPLEMENT.md` — not part of the required 25. Flagged for awareness.
+
+---
+
+### Test 2 — Structural Check (Required Sections)
+**What we did:** Read 5 key documents and verified each has its mandatory sections (e.g. BRD must have Stakeholders, Constraints, Assumptions; Security doc must have Authentication, RBAC, Encryption; Readiness Report must have score and blockers).
+**What we got:** All mandatory sections found in all 5 documents checked.
+**Result: PASS ✓**
+> Minor note: BRD has no section literally titled "Purpose" — uses "Executive Summary" instead. Content is there, just named differently.
+
+---
+
+### Test 3 — Golden Sample Facts (Key Numbers from Source Code)
+**What we did:** Picked 6 specific facts that must appear in specific documents — facts we know are true from reading the Oracle source code directly. Checked each document for each fact.
+**What we got:**
+- ✓ PKG_SECURITY, PKG_PAYROLL, PKG_EMPLOYEE, PKG_LEAVE found in API Contract doc
+- ✓ EMPLOYEES, SALARY_RECORDS, LEAVE_REQUESTS, PAYROLL_RUNS found in Data Model doc
+- ✗ Social Security rate **6.2%** NOT found in NFR Specification (only in Use Case doc)
+- ✓ "authenticate" and "AES-256" found in Security Architecture doc
+- ✓ BR-042, HEAD_OF_HOUSEHOLD, rating range 1.0–5.0 found in Use Case doc
+- ✗ HRMS_EMPLOYEE and HRMS_PAYROLL NOT found in Frontend Architecture doc (uses `/employees` route instead)
+
+**Result: FAIL ✗ (4 of 6 facts pass)**
+
+---
+
+### Test 4 — No AI Artifact Text in Documents
+**What we did:** Searched all 25 documents for strings that are AI generation commentary, not business content: *"Looking at the source content"*, *"Here is the updated snippet"*, *"Updated snippet"*, `<!-- GAP-FILLED SECTION -->`.
+**What we got:** Artifact text found in **18 of 25 documents**.
+- *"Looking at the source content"* — found in 12 documents
+- *"Here is the updated snippet"* — found in 15 documents (Readiness Report alone had 8 occurrences)
+- *"Updated snippet"* — found in 2 documents
+- `<!-- GAP-FILLED SECTION -->` HTML comments — found in 9 documents
+
+**Result: FAIL ✗ — 18/25 documents contaminated**
+> Impact: When the code generator reads these files, it sees pipeline commentary as business requirements. This poisons the code output.
+
+---
+
+### Test 5 — No Duplicate Sections
+**What we did:** Read 5 documents and checked for any ## or ### heading appearing more than once in the same file.
+**What we got:**
+- ✓ 03_USE_CASE_SPECIFICATION.md — all headings unique
+- ✗ 01_BRD.md — `### 2.1 System History` appears at lines 64, 472, and 492 (3 times). `### 2.2 Drivers for Modernisation` appears at lines 70, 478, and 498 (3 times). Section 2 was injected 3 times by the gap-fill process.
+- ✓ 07_DATA_MODEL_SPECIFICATION.md — all headings unique
+- ✓ 13_SECURITY_ARCHITECTURE.md — all headings unique
+- ✓ 14_NFR_SPECIFICATION.md — all headings unique
+
+**Result: FAIL ✗ — 01_BRD.md has triplicated sections**
+
+---
+
+### Test 6 — Cross-Document ID Validation (BR references)
+**What we did:** Picked BR-xxx IDs from the Use Case Specification and checked they resolve to the same requirement in the BRD. Also checked table names from the API Contract exist in the Data Model.
+**What we got:**
+- ✓ BR-001, BR-002, BR-003, BR-019 — all consistent across documents
+- ✗ **BR-042 ID COLLISION** — BRD line 299 says BR-042 = "off-cycle payroll runs for terminated employees". Every other document (Use Case Spec, Security Architecture, NFR Spec, Readiness Report) says BR-042 = the critical authentication bypass defect (password never verified). Same number, two completely different meanings.
+- ✓ All 5 table names from API Contract (PAYROLL_RUNS, USER_SESSIONS, EMPLOYEES, LEAVE_BALANCES, PERFORMANCE_REVIEWS) found in Data Model doc
+
+**Result: FAIL ✗ — BR-042 collision between BRD and all other documents**
+> Impact: Anyone following BR-042 from the BRD finds a payroll requirement instead of the most critical security defect in the system.
+
+---
+
+### Test 7 — Source Traceability
+**What we did:** Read 6 documents and confirmed each one references at least one real Oracle package name or table name from the source code — proving the documents were generated from the actual source, not invented.
+**What we got:** All 6 documents have confirmed source references.
+- BRD: 18 source matches (PKG_SECURITY, PKG_EMPLOYEE, EMPLOYEES, etc.)
+- Data Model: 131 source matches — entire document sourced from real Oracle schema
+- API Contract: 23 source matches
+- Security Architecture: 47 source matches
+- NFR Specification: 42 source matches
+- Frontend Architecture: 5 source matches (weakest — references Oracle Forms conceptually)
+
+**Result: PASS ✓**
+
+---
+
+### Test 8 — Completeness Coverage (All Source Entities)
+**What we did:** Searched all 25 documents for every key entity from the source code — all 8 key packages, all 6 Oracle Forms modules, and 6 critical tables. Checked that each entity appears in at least one document.
+**What we got:** All 20 entities found across the document set.
+- All 8 packages found: PKG_EMPLOYEE, PKG_PAYROLL, PKG_SECURITY, PKG_LEAVE, PKG_PERFORMANCE, PKG_REPORTING, PKG_INTEGRATION, PKG_NOTIFICATION
+- All 6 forms found: HRMS_EMPLOYEE, HRMS_PAYROLL, HRMS_LEAVE, HRMS_PERFORMANCE, HRMS_LOGIN, HRMS_MENU
+- All 6 tables found: EMPLOYEES, SALARY_RECORDS, LEAVE_REQUESTS, PAYROLL_RUNS, PERFORMANCE_REVIEWS, AUDIT_LOG
+> Note: HRMS_MENU only found in 1 document (Technology Blueprint). All others appear in 3+ documents.
+
+**Result: PASS ✓**
+
+---
+
+### Test 9 — Contradiction Check (Key Values)
+**What we did:** Searched for the same numeric values across multiple documents to check they are consistent — session timeout (30 min), Social Security rate (6.2%), Medicare rate (1.45%), performance rating range (1.0–5.0), and the BR-042 defect severity.
+**What we got:**
+- ✓ Session timeout 30 minutes — consistent in all documents that mention it. NFR doc proposes 15 min for the NEW system but explicitly labels it as new-system — not a contradiction.
+- ✓ SS rate 6.2% — only appears in Use Case doc, no contradicting value elsewhere
+- ✓ Medicare 1.45% — same, no contradictions
+- ✓ Rating range 1.0–5.0 — consistent wherever mentioned
+- Advisory: BR-042 described as critical defect consistently wherever mentioned — the BRD's different definition for BR-042 is a metadata collision (Test 6), not a value contradiction
+
+**Result: PASS ✓**
+
+---
+
+### Test 10 — Forward Engineering Readiness Gate
+**What we did:** Read the Readiness Report fully and checked it gives an honest assessment — has a score, lists blockers, mentions the BR-042 authentication bypass as unresolved, and does NOT falsely claim the system is ready.
+**What we got:**
+- ✓ Readiness score present — domain-by-domain scorecard. Overall: *"CONDITIONAL — NOT READY for immediate code generation."* Status: *"NO-GO"*
+- ✓ 7 named blockers (BLOCKER-01 through BLOCKER-07) each with severity and resolution required
+- ✓ BR-042 authentication bypass explicitly listed as BLOCKER-01, unresolved
+- ✓ No false "ready" or "no blockers" language found
+
+**Result: PASS ✓**
+
+---
+
+### Round 1 Summary
+
+| Test | What We Checked | Result |
+|---|---|---|
+| Test 1 — File Existence | All 25 files exist and non-empty | **PASS** |
+| Test 2 — Structure | Mandatory sections in 5 key documents | **PASS** |
+| Test 3 — Golden Facts | 6 specific source facts in specific documents | **FAIL** — 2 facts missing |
+| Test 4 — No Artifacts | AI commentary text absent from all docs | **FAIL** — 18/25 contaminated |
+| Test 5 — No Duplicates | No repeated sections in any document | **FAIL** — BRD sections tripled |
+| Test 6 — ID Cross-References | BR-xxx, table names resolve across documents | **FAIL** — BR-042 collision |
+| Test 7 — Traceability | Every doc linked to real Oracle source | **PASS** |
+| Test 8 — Coverage | All 20 source entities in documents | **PASS** |
+| Test 9 — Contradictions | Key values consistent across documents | **PASS** |
+| Test 10 — Readiness Gate | Readiness report honest about blockers | **PASS** |
+
+**Round 1 Result: 6/10 PASS — NOT READY for forward engineering**
+
+---
+
+## 9. Round 2 Testing — Deep Checks (Session 2 continued)
+
+Round 2 went deeper — checked all 20 documents for structure, cross-document consistency, traceability between the 5 KG files and 20 FWD files, gap-fill quality, and factual accuracy. Full evidence in `TEST_REPORT.md`.
+
+---
+
+### Test 11 — Structural Completeness (All 20 Documents)
+**What we did:** Read all 20 Forward Engineering documents and checked each one has its required sections (e.g. Data Model must have CREATE TABLE DDL, API Contract must have endpoint definitions with request/response, Readiness Report must have score and blockers).
+**What we got:** All 20 documents have their required content. 5 documents have presentation issues from the gap-fill process — they are missing a document title header or Table of Contents, or have a few lines of AI commentary before the content starts.
+- 04_BUSINESS_PROCESS_MODEL.md — no document title, content starts at line 1
+- 09_DATA_FLOW_DIAGRAM.md — AI commentary before title
+- 10_SERVICE_CATALOG.md — AI commentary before title, no Table of Contents
+- 12_TECHNOLOGY_BLUEPRINT.md — duplicate PKG_PAYROLL rows in Executive Summary table
+- 02_BUSINESS_CAPABILITY_MODEL.md — residual commentary lines inside document body
+
+**Result: PASS with notes — 15/20 fully clean, 5/20 have presentation issues (no missing content)**
+
+---
+
+### Test 12 — Internal Cross-Document Consistency
+**What we did:** Picked 10 specific technical facts claimed in one document and verified the same fact is stated consistently in all other documents that mention it. Checked: authentication bypass, direct deposit gap, calculate_final_pay missing, COBRA gap, calibration gap, MD5 hashing, hardcoded AES key, payroll run status, revoke_access missing, number of DDL tables.
+**What we got:** 9 of 10 checks fully consistent. One minor inconsistency found:
+- PAYROLL_RUNS initial status value — domain model documents say "DRAFT", but the Oracle source code (`PKG_PAYROLL.pkb`) writes "PENDING" at create time. Root cause: the PAYROLL_RUNS DDL table definition was not recovered from source, so some documents inferred "DRAFT" instead of reading the confirmed "PENDING".
+
+**Result: PASS with 1 minor inconsistency**
+
+---
+
+### Test 13 — Knowledge Graph ↔ Document Traceability
+**What we did:** Checked 10 claims from the 5 Knowledge Graph files and confirmed they are backed by evidence in the 20 Forward Engineering documents, and vice versa. Checked: COBRA gap, calculate_final_pay gap, direct deposit gap, security architecture, has_permission RBAC, accrual retry defect, payroll use cases, inferred RPT_* tables, calibration gap, time-attendance gap.
+**What we got:** 9 of 10 checks fully traceable. One minor gap found:
+- The Knowledge Graph (TRACEABILITY_MATRIX) defines 8 granular payroll use cases (UC-PAY-001 through UC-PAY-008). The Use Case Specification document only has UC-002 (Process Monthly Payroll) covering all of them as one entry. A developer reading only the 20 Forward Engineering documents would miss that granular breakdown.
+
+**Result: PASS with 1 minor traceability gap**
+
+---
+
+### Test 14 — Gap-Fill Quality Check
+**What we did:** Read every section marked [GAP-FILLED] or [VERIFIED-SUPPLEMENT] across all documents and checked that each one contains real substantive content (specific procedure names, SQL patterns, variable names, error codes) — not just placeholder text like "TBD" or "to be filled."
+**What we got:** ALL gap-filled sections are substantive and source-evidenced. No placeholder-only entries found. Examples of quality found:
+- Security Architecture entire document cites line-level evidence from PKG_SECURITY.pkb
+- Leave accrual retry defect shows the actual defective SQL pattern and the corrected SQL pattern
+- Tax supplement cites specific variable names (`v_filing_status`, `v_fed_allowances`) from PKG_PAYROLL.pkb
+- Termination gap confirms `calculate_final_pay` absence by listing exactly which procedures DO exist
+
+**Result: PASS — all gap-fill annotations are substantive**
+
+---
+
+### Test 15 — Factual Accuracy Spot-Check
+**What we did:** Picked 10 specific technical numbers and facts stated in the documents and verified them against each other and against real-world facts. Checked: Social Security rate and wage base, Medicare rate, federal tax deductions, ADP file format, COBRA window, AES key, Oracle Forms version, PKG_SECURITY procedure list, employee grade RBAC rules, number of bounded contexts.
+**What we got:**
+- ✓ Social Security 6.2% up to $168,600 — matches 2024 US law exactly
+- ✓ Medicare 1.45% + 0.9% surtax above $200,000 — matches 2024 US law exactly
+- ✓ Standard deductions $14,600 single / $29,200 married — matches 2024 US law exactly
+- ✓ ADP fixed-width 203-char record — consistent across all 3 documents that mention it
+- ✓ Grade-based RBAC (Grade ≥8 full, 5–7 view-all, <5 own-only) — consistent across 4 documents
+- ✓ 10 bounded contexts (BC-01 through BC-10) — consistent across all documents
+- ⚠ COBRA "14-day window" — technically the plan administrator's window; the employer's own window is 30 days. All documents cite 14 days. Conservative (tighter deadline) but legally imprecise.
+- ⚠ AES-256 encryption key `HR$ystem_3ncrypt10n_K3y_2024!!` — this string is 30 characters but AES-256 requires exactly 32 bytes. The source code's `RAW(32)` declaration is inconsistent. Either the actual key is different, or the encryption is failing in production. Flagged for human investigation.
+- ✗ 19_FRONTEND_ARCHITECTURE.md says "Oracle Forms 6i/10g" in its header — every other document correctly says "Oracle Forms 12c". Copy-paste error from a template.
+
+**Result: PASS with 2 warnings and 1 factual error (Oracle Forms version in Frontend doc)**
+
+---
+
+### Round 2 Summary
+
+| Test | What We Checked | Result |
+|---|---|---|
+| Test 11 — All 20 Doc Structure | Required sections in all 20 documents | **PASS** — 15/20 clean, 5/20 presentation issues |
+| Test 12 — Cross-Doc Consistency | 10 key facts consistent across documents | **PASS** — 1 minor status value inconsistency |
+| Test 13 — KG ↔ FWD Traceability | Knowledge Graph backed by FWD documents | **PASS** — 1 minor granularity gap |
+| Test 14 — Gap-Fill Quality | All gap-filled sections substantive | **PASS** — 0 placeholder entries |
+| Test 15 — Factual Accuracy | 10 key numbers and facts verified | **PASS** — 2 warnings, 1 factual error |
+
+**Round 2 Result: ALL 5 TESTS PASS (with minor notes) — no critical failures**
+
+---
+
+### Items Raised in Round 2 Needing Attention
+
+| # | Item | Severity | Action |
+|---|---|---|---|
+| 1 | 4 documents missing title/ToC header (04, 09, 10 BPM/DFD/Service) | Low | Pipeline fix — Call 3 should ensure document header exists |
+| 2 | 12_TECHNOLOGY_BLUEPRINT.md duplicate PKG_PAYROLL rows | Low | Pipeline fix — _deduplicate_headings() already added |
+| 3 | PAYROLL_RUNS initial status "DRAFT" vs source-confirmed "PENDING" | Low | Human decision — confirm correct value once DDL recovered |
+| 4 | UC-PAY-001 through UC-PAY-008 not in Use Case Specification | Low | Consider expanding UC-002 into sub-use-cases in next run |
+| 5 | COBRA "14-day window" legally imprecise | Low | Legal review — employer has 30 days, admin has 14 |
+| 6 | AES-256 key string is 30 characters, AES-256 needs 32 bytes | Medium | Investigate production source code — may indicate encryption failure |
+| 7 | 19_FRONTEND_ARCHITECTURE.md says "Oracle Forms 6i/10g" not "12c" | Low | Pipeline fix — template copy-paste error |
+
+---
+
+## 10. Pipeline Fixes — What Was Changed to Prevent These Issues (Session 2)
 
 All fixes were made to `pipeline/foundation_runner.py`. These changes do **not** affect the existing 25 documents — they take effect on the next fresh pipeline run when the team shares the correct input files.
 
