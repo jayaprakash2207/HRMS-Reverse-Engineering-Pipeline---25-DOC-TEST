@@ -209,7 +209,7 @@ The remaining 2–3% requires human domain knowledge that no tool can extract fr
 
 ---
 
-## 7. Files Changed in This Session
+## 7. Files Changed — Session 1 (2026-08-11)
 
 | File | Change | Reason |
 |---|---|---|
@@ -219,12 +219,128 @@ The remaining 2–3% requires human domain knowledge that no tool can extract fr
 
 ---
 
-## 8. What Happens Next
+## 8. Testing — What We Found (Session 2)
 
-1. **Human review** of the 25 documents — especially the 7 blockers in `17_FORWARD_ENGINEERING_READINESS_REPORT.md`
-2. **Resolve contradictions** identified in `cross_validation_report.json`
-3. **Forward engineering** — use the 25 documents to generate modern application code
+Before starting forward engineering, we ran a full 10-test validation suite against all 25 output documents. The results were saved in `TEST_REPORT.md`.
+
+### Test Results Summary
+
+| # | Test | Result |
+|---|---|---|
+| 1 | All 25 files exist and are non-empty | **PASS** |
+| 2 | All documents have required sections | **PASS** |
+| 3 | Key facts from source code are in the documents | **FAIL** (2 of 6 facts missing) |
+| 4 | No AI artifact text in documents | **FAIL** (18 of 25 documents contaminated) |
+| 5 | No duplicate sections in any document | **FAIL** (01_BRD.md had sections repeated 3× each) |
+| 6 | All ID cross-references resolve correctly | **FAIL** (BR-042 collision — same ID, two meanings) |
+| 7 | Every document traces back to source code | **PASS** |
+| 8 | All 11 packages, 6 forms, key tables covered | **PASS** |
+| 9 | No contradictions in key numeric values | **PASS** |
+| 10 | Readiness report is honest about blockers | **PASS** |
+
+**Result: 6/10 PASS — NOT READY for forward engineering**
+
+### What the 4 Failures Mean
+
+**Failure 1 — Artifact text in 18 of 25 documents (Test 4)**
+Lines like *"Looking at the source content to find references to..."* and *"Here is the updated snippet:"* were embedded inside documents as if they were business content. These are AI generation commentary that leaked through. When the code generator reads these documents, it would interpret pipeline commentary as business requirements — poisoning the code output.
+
+**Failure 2 — Duplicate sections in BRD (Test 5)**
+The Business Requirements Document had two section headings (`System History` and `Drivers for Modernisation`) each appearing 3 times. The same content was injected 3 times during the pipeline's gap-fill process instead of once. A document with repeated sections is not a valid engineering specification.
+
+**Failure 3 — BR-042 ID collision (Test 6)**
+The BRD defined BR-042 as "off-cycle payroll runs for terminated employees." Every other document (Use Case Spec, Security Architecture, NFR Spec, Readiness Report) defined BR-042 as the critical authentication bypass defect — the most serious security issue in the system. Anyone following BR-042 from the BRD finds the wrong requirement. This would cause the authentication defect to be treated as a payroll feature during code generation.
+
+**Failure 4 — Oracle Forms module names missing from Frontend doc (Test 3)**
+The Frontend Architecture document maps to route paths like `/employees` but never names the original Oracle Forms modules (`HRMS_EMPLOYEE`, `HRMS_PAYROLL`). This breaks traceability from the source system to the generated frontend.
 
 ---
 
-*Prepared by: Automated Reverse Engineering Pipeline — Session 2026-08-11*
+## 9. Pipeline Fixes — What Was Changed to Prevent These Issues (Session 2)
+
+All fixes were made to `pipeline/foundation_runner.py`. These changes do **not** affect the existing 25 documents — they take effect on the next fresh pipeline run when the team shares the correct input files.
+
+### Fix 1 — Automatic Artifact Text Removal (addresses Test 4 failure)
+
+Added a new function `_strip_artifacts()` that runs on every document before it is saved to disk. It removes all known AI generation commentary strings line by line:
+
+| Strings removed | Why |
+|---|---|
+| `Looking at the source content` | AI reasoning commentary — not a business requirement |
+| `Here is the updated snippet` | Pipeline debug text — not document content |
+| `Updated snippet` | Same — pipeline debug text |
+| `Let me check`, `I'll now read`, `I need to` | AI internal reasoning — not business content |
+| `<!-- GAP-FILLED SECTION -->` HTML comments | Debug markers — not valid document markup |
+
+This runs on **every document** on **every call** (Calls 1, 2, 3, and 4). There is no path through the pipeline that bypasses this cleaning step.
+
+### Fix 2 — Automatic Duplicate Section Removal (addresses Test 5 failure)
+
+Added a new function `_deduplicate_headings()` that detects when the same `##` or `###` heading appears more than once in a document and removes all occurrences after the first. This prevents the gap-fill process from injecting the same section multiple times.
+
+Both Fix 1 and Fix 2 are combined into a single `_clean_document()` function that is called at every write point.
+
+### Fix 3 — BR-xxx ID Uniqueness Enforcement (addresses Test 6 failure)
+
+Added **Rule 12** to the Call 1 prompt: each BR-xxx number must have exactly one meaning across all 25 documents. The model is instructed that assigning the same BR number to two different requirements is a critical error.
+
+Added to the Call 2 prompt: BR-xxx IDs must be copied exactly as defined in `01_BRD.md` — no reassignment allowed in documents 11–20.
+
+Added to the Call 4 prompt: a new **ID Collision Check** that explicitly compares every BR-xxx definition in the BRD against every usage in all other documents. Any collision is flagged and added to the Consistency Report for human decision.
+
+### Fix 4 — Oracle Forms Coverage Enforcement (addresses Test 3 failure)
+
+Added to the Call 4 prompt: a new **Oracle Forms Module Coverage Check** that verifies all 6 original Oracle Forms module names (`HRMS_EMPLOYEE`, `HRMS_PAYROLL`, `HRMS_LEAVE`, `HRMS_PERFORMANCE`, `HRMS_LOGIN`, `HRMS_MENU`) appear in the Frontend Architecture or UI/UX Specification. If any are absent, Call 4 produces an updated document that adds the source-to-feature mapping.
+
+### Fix 5 — Call 3 Restructured as Cleaning Pass First (addresses Test 4 root cause)
+
+The Call 3 verification prompt was restructured so that **artifact removal is the first and highest priority task**, before any content gap checking. Previously Call 3 only added missing content; now it is explicitly a cleaning pass that happens to also add missing content.
+
+Updated also: the Call 3 output requirement now states that every UPDATE block must be the **complete document from first line to last** — not a diff, not an excerpt. This prevents partial rewrites that previously left old artifact text in place.
+
+---
+
+## 10. Files Changed — Session 2 (2026-08-11)
+
+| File | Change | Reason |
+|---|---|---|
+| `pipeline/foundation_runner.py` | Added `_strip_artifacts()` function | Removes AI artifact text from every document before saving |
+| `pipeline/foundation_runner.py` | Added `_deduplicate_headings()` function | Removes duplicate ## / ### sections caused by repeated gap-fill injection |
+| `pipeline/foundation_runner.py` | Added `_clean_document()` — wired into all 4 call paths | Single entry point that applies both artifact and dedup cleaning |
+| `pipeline/foundation_runner.py` | CALL1_PROMPT Rule 12 added | Enforces single-definition BR-xxx IDs from document generation start |
+| `pipeline/foundation_runner.py` | CALL2_PROMPT updated | Requires BR-xxx IDs to be copied exactly from BRD — no reassignment |
+| `pipeline/foundation_runner.py` | CALL3_PROMPT restructured | Artifact removal promoted to PRIMARY task; UPDATE blocks must be full documents |
+| `pipeline/foundation_runner.py` | CALL4_PROMPT enhanced | Adds BR-xxx collision detection + Oracle Forms module coverage check |
+| `pipeline/foundation_runner.py` | Gap-fill sub-prompt updated | Forbids any preamble or commentary text before document content |
+| `TEST_REPORT.md` | New file created | Full 10-test validation suite results with pass/fail evidence for each test |
+
+---
+
+## 11. Before vs After — Full Comparison (Both Sessions)
+
+| | Original | After Session 1 | After Session 2 |
+|---|---|---|---|
+| Claude calls per pipeline run | 3 | 4 | 4 |
+| Artifact text in documents | Not detected | Detected in Call 3 | **Stripped automatically before save** |
+| Duplicate sections in documents | Not detected | Detected in Call 3 | **Removed automatically before save** |
+| BR-xxx ID uniqueness | Not enforced | Not enforced | **Enforced in Call 1 prompt + collision-checked in Call 4** |
+| Oracle Forms module coverage | Not checked | Not checked | **Checked in Call 4 — gaps trigger automatic fix** |
+| Cross-document ID validation | None | Full in Call 4 | Full in Call 4 + collision detection added |
+| Test suite | None | None | **10-test suite — TEST_REPORT.md produced** |
+| Documents passing all tests | Unknown | Unknown | 6/10 tests pass (current docs) |
+| Documents from fresh run | 90–95% accuracy | 97–98% accuracy | **Target: 100% clean on fresh run** |
+
+---
+
+## 12. What Happens Next
+
+1. **Team shares correct input files** — DEEP_SCAN_OUTPUT.md, file_cache.json, and all 8 agent outputs from the full pipeline run on the correct Oracle HRMS source code
+2. **Pipeline runs fresh** — all 25 documents are regenerated. The new cleaning functions run automatically — no manual post-processing needed
+3. **Run TEST_REPORT again** — the 10-test suite validates the fresh documents. Target: 10/10 PASS
+4. **Human review** of the 25 documents — especially the 7 blockers in `17_FORWARD_ENGINEERING_READINESS_REPORT.md`
+5. **Resolve blockers** — authentication architecture decision, payroll policy decisions, COBRA notification policy, AES-256 key migration plan
+6. **Forward engineering** — use the clean 25 documents to generate modern application code
+
+---
+
+*Updated by: Automated Reverse Engineering Pipeline — Session 2 — 2026-08-11*
