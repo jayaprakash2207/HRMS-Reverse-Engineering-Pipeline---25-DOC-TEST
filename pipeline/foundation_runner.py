@@ -64,6 +64,15 @@ the first 10 forward-engineering documents.
 11. BUSINESS RULES: Extract EXACT values — thresholds, limits, formulas.
     "hire_date must be within 180 days of offer" is a business rule.
     "hire date validation" is not. Always prefer the specific over the general.
+12. BR-xxx ID ASSIGNMENT — assign sequential BR-xxx IDs starting from BR-001.
+    CRITICAL DEFECTS must be assigned prominent, low-numbered IDs so they appear
+    early in all lists. Known critical security defects found in the source code
+    (e.g. authentication bypass where password is never verified, hardcoded
+    encryption keys, session management bugs) must be assigned BR-xxx IDs in
+    the BRD's Security Requirements section with the SAME ID used throughout
+    ALL documents. Never assign the same BR-xxx number to two different
+    requirements — each BR-xxx ID must have exactly one meaning across all
+    25 output documents.
 
 ## Required Output — Part 1
 
@@ -130,6 +139,8 @@ Each document must be:
 - Technology-neutral where the target stack is unresolved
 - Written at senior-architect level
 - Self-contained — a developer should be able to implement from each document alone
+- BR-xxx IDs must be used exactly as they were defined in 01_BRD.md from Part 1.
+  Never reassign a BR-xxx to a different requirement. Copy the exact IDs.
 
 Produce ALL of the following in order, separated by markers:
 
@@ -172,39 +183,61 @@ CRITICAL RULES:
 # ── Call 3 prompt: verification pass ──────────────────────────────────────────
 
 CALL3_PROMPT = """
-# Foundation Synthesis Agent — Verification Pass (Part 3 of 3)
+# Foundation Synthesis Agent — Verification Pass (Part 3 of 4)
 
 You are given all 25 generated Foundation documents plus the original 8 agent
 outputs that were used to create them.
 
-Your job: find ANYTHING in the agent outputs that did NOT make it into the
-25 documents. Cross-check every document against the agent outputs.
+## PRIMARY TASK: Clean artifact text from every document
 
-Specifically find:
+Before checking for missing content, scan every document for the following
+strings and REMOVE them (they are AI generation artifacts, not business content):
+
+ARTIFACT STRINGS TO REMOVE (any document that contains these must be updated):
+- "Looking at the source content"
+- "Here is the updated snippet"
+- "Updated snippet"
+- "Let me check"
+- "I'll now read"
+- "I need to"
+- "Let me look"
+- Any HTML comment block: <!-- GAP-FILLED SECTION --> or similar
+- Any inline editorial marker: [GAP-FILLED] when it appears as a label rather than content
+- Any line that reads like AI internal reasoning ("I can see that...", "Based on the above...")
+
+When removing artifact text, do NOT leave a blank line or break the document structure.
+Remove the artifact line completely and join cleanly to the surrounding content.
+
+## SECONDARY TASK: Check for duplicate sections
+
+For each document, check for any ## or ### heading that appears more than once.
+If found: keep the FIRST occurrence only. Delete all subsequent duplicate blocks
+(from the duplicate heading down to the next same-level heading).
+
+## TERTIARY TASK: Check for missing content from agent outputs
+
 1. Tables documented in agent outputs but NOT in 06_DATA_DICTIONARY.md or 08_ERD.md
 2. Procedures documented in agent outputs but NOT in 10_SERVICE_CATALOG.md or 11_API_CONTRACT_SPECIFICATION.md
 3. Business rules in BA agent output NOT reflected in 01_BRD.md or 03_USE_CASE_SPECIFICATION.md
 4. Security findings in TA agent output NOT in 13_SECURITY_ARCHITECTURE.md
 5. Form triggers or UI patterns NOT in 19_FRONTEND_ARCHITECTURE.md or 20_UI_UX_SPECIFICATION.md
-6. Contradictions between documents — same rule stated differently in two documents
-7. Structural problems — any document missing mandatory sections (preconditions, postconditions, business rules, alternate flows)
-8. Duplicate sections — same content appearing more than once in any single document
-9. Raw pipeline artifact text embedded in documents — analysis commentary, debug text, or generation notes that are not business content
+6. Any use case in 03_USE_CASE_SPECIFICATION.md missing: Actor, Preconditions, Postconditions, Main Flow, Alternate Flows, Business Rules Applied, or Defects/Gaps
+7. Contradictions between documents — same rule stated differently in two documents
 
-For each gap found, specify which document needs updating and what needs to be added.
-Then PRODUCE THE UPDATED DOCUMENT CONTENT for each affected document.
+## OUTPUT FORMAT
 
-Output format — for each document that needs updating:
+For each document that needs any change (artifact removal, dedup, or content addition):
 === UPDATE: <filename> ===
-<the complete updated document content including the new additions>
+<the COMPLETE updated document content — every line, from start to finish>
 
-Only output documents that actually need changes. If a document is already complete, skip it.
-Mark all added content with [VERIFIED-SUPPLEMENT] so changes are visible.
-Mark any removed artifact text with [ARTIFACT-REMOVED] at the point of removal.
-
-CRITICAL: Only add what is genuinely missing. Do not rewrite documents that are already complete.
-CRITICAL: Remove any duplicate sections — keep only the first clean occurrence.
-CRITICAL: Remove any raw pipeline commentary or debug text embedded in documents.
+CRITICAL OUTPUT RULES:
+- Every UPDATE block must contain the FULL document from the very first line to the very last line.
+  Do NOT produce a partial document or a diff. The entire file content goes in the UPDATE block.
+- Do NOT begin the document content with phrases like "Here is the updated document:" or
+  "I've removed the artifacts from". Start directly with the document content (e.g., # Document Title).
+- Only output UPDATE blocks for documents that actually changed.
+- Mark all ADDED content with [VERIFIED-SUPPLEMENT] so new additions are visible.
+- Do NOT add [VERIFIED-SUPPLEMENT] to existing content that you are keeping unchanged.
 
 ---
 """
@@ -216,56 +249,192 @@ CALL4_PROMPT = """
 
 You are given all 25 generated Foundation documents.
 
-Your job: check that every ID reference in every document resolves correctly
-across all other documents. This is a cross-document link validation pass.
+Your job: validate that every ID reference, every fact, and every table/procedure
+name is consistent across all 25 documents. This is a cross-document link
+validation and ID collision detection pass.
 
-Check the following:
+## Checks to perform
 
-1. BUSINESS RULES — every BR-xxx ID mentioned in any document must exist in 10_BUSINESS_RULES_CATALOGUE.md
-   If a BR-xxx is referenced but not defined in the catalogue, flag it.
+1. BR-xxx REFERENCE INTEGRITY
+   a) Every BR-xxx ID mentioned in any document must exist in 01_BRD.md.
+      Flag any BR-xxx that is referenced elsewhere but not defined in the BRD.
+   b) ID COLLISION CHECK — each BR-xxx number must mean exactly one thing.
+      If 01_BRD.md defines BR-042 as Requirement A, and 03_USE_CASE_SPECIFICATION.md
+      uses BR-042 to mean Requirement B, that is a collision.
+      For collisions: the BRD is authoritative for the requirement text.
+      All other documents must use the BRD's definition, or the BRD must be corrected.
+      Flag every collision as a HUMAN-DECISION-REQUIRED item.
 
-2. USE CASES — every UC-xxx ID mentioned in any document must exist in 03_USE_CASE_SPECIFICATION.md
-   If a UC-xxx is referenced but not defined, flag it.
+2. USE CASE REFERENCE INTEGRITY
+   Every UC-xxx ID mentioned in any document must exist in 03_USE_CASE_SPECIFICATION.md.
+   Flag any UC-xxx that is referenced but not defined.
 
-3. TABLES — every table name mentioned in any document must appear in 07_DATA_MODEL_SPECIFICATION.md
-   If a table is referenced but not documented in the data model, flag it.
+3. TABLE REFERENCE INTEGRITY
+   Every table name (UPPER_CASE naming) mentioned in any document must appear in
+   07_DATA_MODEL_SPECIFICATION.md. Flag any table referenced but not in the data model.
 
-4. PACKAGES AND PROCEDURES — every PKG_xxx.procedure_name mentioned must appear in 11_API_CONTRACT_SPECIFICATION.md
-   If a procedure is referenced but not documented in the API contract, flag it.
+4. PACKAGE/PROCEDURE REFERENCE INTEGRITY
+   Every PKG_xxx.procedure_name mentioned in any document must appear in
+   11_API_CONTRACT_SPECIFICATION.md. Flag any that are missing.
 
-5. CONTRADICTIONS — find cases where the same fact is stated differently in two documents:
-   - Same business rule with different values (e.g. timeout = 30min in one doc, 60min in another)
-   - Same table with different column lists
-   - Same procedure with different parameter signatures
-   - Same actor with different grade or permission levels
+5. ACTOR ID INTEGRITY
+   Every ACT-xxx ID must exist in 03_USE_CASE_SPECIFICATION.md Actor Catalogue.
 
-6. ACTOR IDs — every ACT-xxx ID mentioned must exist in 03_USE_CASE_SPECIFICATION.md Actor Catalogue
+6. NUMERIC FACT CONTRADICTIONS
+   Find cases where the same numeric fact appears with different values in two documents:
+   - Session timeout values (e.g. 30 minutes vs 60 minutes for the SAME system)
+   - Tax rates (SS, Medicare, FUTA)
+   - Rating ranges (performance review scale)
+   - Salary/deduction limits or thresholds
+   Note: it is NOT a contradiction if one value is the current/legacy system and
+   another is the proposed/new system, as long as both documents clearly label which
+   system the value applies to.
 
-For each problem found, report it in this format:
+7. ORACLE FORMS MODULE COVERAGE
+   Every Oracle Forms module name (HRMS_EMPLOYEE, HRMS_PAYROLL, HRMS_LEAVE,
+   HRMS_PERFORMANCE, HRMS_LOGIN, HRMS_MENU) must appear in at least one of:
+   19_FRONTEND_ARCHITECTURE.md, 20_UI_UX_SPECIFICATION.md.
+   If a form module is absent, flag it — the frontend doc must reference each
+   source form by its original Oracle Forms name.
+
+## Output format
 
 === CONSISTENCY_REPORT ===
-## Broken References
-| ID | Type | Referenced In | Not Found In | Recommendation |
+## BR-xxx Broken References
+| BR ID | Referenced In | Not Found In BRD | Recommendation |
+|---|---|---|---|
+
+## BR-xxx ID Collisions
+| BR ID | BRD Definition | Other Document + Definition | Resolution |
+|---|---|---|---|
+
+## Other Broken References
+| ID / Name | Type | Referenced In | Missing From | Recommendation |
 |---|---|---|---|---|
 
-## Contradictions
-| ID | Fact | Document A says | Document B says | Recommendation |
-|---|---|---|---|---|
+## Numeric Contradictions
+| Fact | Document A says | Document B says | HUMAN-DECISION-REQUIRED? |
+|---|---|---|---|
+
+## Oracle Forms Coverage Gaps
+| Form Module | Present In | Gap |
+|---|---|---|
 
 ## Summary
+Total BR collisions: N
 Total broken references: N
 Total contradictions: N
+Oracle Forms coverage gaps: N
 Documents needing update: list them
+Overall assessment: CONSISTENT / ISSUES-FOUND
 
 Then for each document that needs fixing, produce the corrected version:
 === UPDATE: <filename> ===
-<complete corrected document content>
+<complete corrected document content — full file from first line to last>
 
 CRITICAL: Only fix genuine errors. Do not rewrite correct content.
-CRITICAL: If a contradiction cannot be resolved from the documents alone, flag it as HUMAN-DECISION-REQUIRED.
+CRITICAL: If a contradiction cannot be resolved from the documents alone, mark it HUMAN-DECISION-REQUIRED.
+CRITICAL: Do NOT begin any UPDATE block with conversational text. Start directly with the document content.
+CRITICAL: Every UPDATE block must contain the FULL document, not a diff or excerpt.
 
 ---
 """
+
+
+# ── Artifact stripping ────────────────────────────────────────────────────────
+
+# Exact strings that are AI generation artifacts — never valid document content.
+_ARTIFACT_LINE_PREFIXES = (
+    "Looking at the source content",
+    "Here is the updated snippet",
+    "Here is the updated document",
+    "Here is the complete updated",
+    "Updated snippet",
+    "Let me check",
+    "I'll now read",
+    "I need to",
+    "Let me look",
+    "I can see that",
+    "Based on the above",
+    "Based on the source",
+    "I've removed",
+    "I've added",
+    "I've updated",
+)
+
+import re as _re
+
+_ARTIFACT_HTML_COMMENT = _re.compile(r'<!--\s*GAP-FILLED SECTION\s*-->', _re.IGNORECASE)
+
+
+def _strip_artifacts(content: str) -> str:
+    """
+    Remove AI generation artifact text from a document.
+    Operates line-by-line so surrounding content is preserved exactly.
+    Also removes <!-- GAP-FILLED SECTION --> HTML comments.
+    """
+    lines = content.split('\n')
+    clean = []
+    for line in lines:
+        stripped = line.strip()
+        # Check line-prefix artifacts (case-insensitive)
+        if any(stripped.lower().startswith(p.lower()) for p in _ARTIFACT_LINE_PREFIXES):
+            continue
+        # Remove HTML comment artifact markers
+        line = _ARTIFACT_HTML_COMMENT.sub('', line)
+        # Skip lines that became empty after comment removal
+        if not line.strip():
+            # Only add blank line if previous line wasn't also blank
+            if clean and clean[-1] != '':
+                clean.append('')
+            continue
+        clean.append(line)
+    # Remove trailing blank lines
+    while clean and clean[-1] == '':
+        clean.pop()
+    return '\n'.join(clean)
+
+
+def _deduplicate_headings(content: str) -> str:
+    """
+    Remove duplicate ## or ### sections within a single document.
+    When a heading appears more than once, keeps the first occurrence only.
+    Removes all subsequent occurrences from that heading down to the next
+    heading at the same or higher level.
+    """
+    lines = content.split('\n')
+    seen_headings = set()
+    result = []
+    skip_until_level = None  # heading level we are skipping
+
+    for line in lines:
+        heading_match = _re.match(r'^(#{1,6})\s+(.+)', line)
+        if heading_match:
+            level = len(heading_match.group(1))
+            heading_text = heading_match.group(2).strip()
+
+            # If we are currently skipping, check if we should stop
+            if skip_until_level is not None:
+                if level <= skip_until_level:
+                    # Reached a heading at same or higher level — stop skipping
+                    skip_until_level = None
+                else:
+                    continue  # still inside the duplicate block
+
+            key = (level, heading_text.lower())
+            if key in seen_headings:
+                # Start skipping this duplicate block
+                skip_until_level = level
+                continue
+            else:
+                seen_headings.add(key)
+                result.append(line)
+        else:
+            if skip_until_level is not None:
+                continue  # inside duplicate block — skip content
+            result.append(line)
+
+    return '\n'.join(result)
 
 
 # ── Helpers ────────────────────────────────────────────────────────────────────
@@ -323,6 +492,15 @@ def _split_documents_updates(text: str) -> dict:
     return docs
 
 
+def _clean_document(filename: str, content: str) -> str:
+    """Strip artifact text and deduplicate headings. Skip JSON files."""
+    if filename.endswith('.json'):
+        return content
+    content = _strip_artifacts(content)
+    content = _deduplicate_headings(content)
+    return content
+
+
 def _save_docs(docs: dict, foundation_dir: Path, fwd_eng_dir: Path,
                output_dir: str = None) -> list:
     foundation_files = {
@@ -338,6 +516,8 @@ def _save_docs(docs: dict, foundation_dir: Path, fwd_eng_dir: Path,
         # before writing to disk. Falls back DEEP_SCAN → file_cache → source.
         if output_dir:
             content = _fill_document_gaps(filename, content, output_dir)
+        # Strip artifact text and deduplicate headings on every document
+        content = _clean_document(filename, content)
         if filename in foundation_files:
             path = foundation_dir / filename
         else:
@@ -425,7 +605,14 @@ def _fill_document_gaps(doc_name: str, doc_content: str, output_dir: str) -> str
             f"- Keep ALL existing content — do not remove or rewrite anything\n"
             f"- Only ADD new data that fills the identified gaps\n"
             f"- Mark newly added content with [SUPPLEMENTED] so it is visible\n"
-            f"- If a section was MISSING or INCOMPLETE, fill it in from the source files\n\n"
+            f"- If a section was MISSING or INCOMPLETE, fill it in from the source files\n"
+            f"- CRITICAL: Begin your response DIRECTLY with the document content.\n"
+            f"  Do NOT write any preamble, explanation, or commentary before the document.\n"
+            f"  Do NOT write 'Here is the updated document:' or similar.\n"
+            f"  The very first character of your response must be part of the document.\n"
+            f"- CRITICAL: Do NOT include any of these strings anywhere in your output:\n"
+            f"  'Looking at the source content', 'Here is the updated snippet',\n"
+            f"  'Updated snippet', 'Let me check', 'I need to', 'Based on the above'\n\n"
             f"# Additional Source Files (retrieved via fallback chain)\n\n{sections}\n\n"
             f"# Document to Supplement: {doc_name}\n\n{doc_content}"
         )
@@ -659,6 +846,7 @@ def run(output_dir: str) -> None:
             else:
                 path = fwd_eng_dir / filename
             if path.exists() and updated_content.strip():
+                updated_content = _clean_document(filename, updated_content)
                 path.write_text(updated_content, encoding="utf-8")
                 updated_count += 1
                 print(f"  Updated → {path}")
@@ -738,6 +926,7 @@ def run(output_dir: str) -> None:
             else:
                 path = fwd_eng_dir / filename
             if path.exists() and updated_content.strip():
+                updated_content = _clean_document(filename, updated_content)
                 path.write_text(updated_content, encoding="utf-8")
                 updated4_count += 1
                 print(f"  Updated → {path}")
