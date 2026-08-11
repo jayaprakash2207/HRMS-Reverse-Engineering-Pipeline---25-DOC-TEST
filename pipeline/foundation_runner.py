@@ -186,6 +186,10 @@ Specifically find:
 3. Business rules in BA agent output NOT reflected in 01_BRD.md or 03_USE_CASE_SPECIFICATION.md
 4. Security findings in TA agent output NOT in 13_SECURITY_ARCHITECTURE.md
 5. Form triggers or UI patterns NOT in 19_FRONTEND_ARCHITECTURE.md or 20_UI_UX_SPECIFICATION.md
+6. Contradictions between documents — same rule stated differently in two documents
+7. Structural problems — any document missing mandatory sections (preconditions, postconditions, business rules, alternate flows)
+8. Duplicate sections — same content appearing more than once in any single document
+9. Raw pipeline artifact text embedded in documents — analysis commentary, debug text, or generation notes that are not business content
 
 For each gap found, specify which document needs updating and what needs to be added.
 Then PRODUCE THE UPDATED DOCUMENT CONTENT for each affected document.
@@ -196,8 +200,69 @@ Output format — for each document that needs updating:
 
 Only output documents that actually need changes. If a document is already complete, skip it.
 Mark all added content with [VERIFIED-SUPPLEMENT] so changes are visible.
+Mark any removed artifact text with [ARTIFACT-REMOVED] at the point of removal.
 
 CRITICAL: Only add what is genuinely missing. Do not rewrite documents that are already complete.
+CRITICAL: Remove any duplicate sections — keep only the first clean occurrence.
+CRITICAL: Remove any raw pipeline commentary or debug text embedded in documents.
+
+---
+"""
+
+# ── Call 4 prompt: cross-document consistency check ───────────────────────────
+
+CALL4_PROMPT = """
+# Foundation Synthesis Agent — Cross-Document Consistency Check (Part 4 of 4)
+
+You are given all 25 generated Foundation documents.
+
+Your job: check that every ID reference in every document resolves correctly
+across all other documents. This is a cross-document link validation pass.
+
+Check the following:
+
+1. BUSINESS RULES — every BR-xxx ID mentioned in any document must exist in 10_BUSINESS_RULES_CATALOGUE.md
+   If a BR-xxx is referenced but not defined in the catalogue, flag it.
+
+2. USE CASES — every UC-xxx ID mentioned in any document must exist in 03_USE_CASE_SPECIFICATION.md
+   If a UC-xxx is referenced but not defined, flag it.
+
+3. TABLES — every table name mentioned in any document must appear in 07_DATA_MODEL_SPECIFICATION.md
+   If a table is referenced but not documented in the data model, flag it.
+
+4. PACKAGES AND PROCEDURES — every PKG_xxx.procedure_name mentioned must appear in 11_API_CONTRACT_SPECIFICATION.md
+   If a procedure is referenced but not documented in the API contract, flag it.
+
+5. CONTRADICTIONS — find cases where the same fact is stated differently in two documents:
+   - Same business rule with different values (e.g. timeout = 30min in one doc, 60min in another)
+   - Same table with different column lists
+   - Same procedure with different parameter signatures
+   - Same actor with different grade or permission levels
+
+6. ACTOR IDs — every ACT-xxx ID mentioned must exist in 03_USE_CASE_SPECIFICATION.md Actor Catalogue
+
+For each problem found, report it in this format:
+
+=== CONSISTENCY_REPORT ===
+## Broken References
+| ID | Type | Referenced In | Not Found In | Recommendation |
+|---|---|---|---|---|
+
+## Contradictions
+| ID | Fact | Document A says | Document B says | Recommendation |
+|---|---|---|---|---|
+
+## Summary
+Total broken references: N
+Total contradictions: N
+Documents needing update: list them
+
+Then for each document that needs fixing, produce the corrected version:
+=== UPDATE: <filename> ===
+<complete corrected document content>
+
+CRITICAL: Only fix genuine errors. Do not rewrite correct content.
+CRITICAL: If a contradiction cannot be resolved from the documents alone, flag it as HUMAN-DECISION-REQUIRED.
 
 ---
 """
@@ -599,9 +664,89 @@ def run(output_dir: str) -> None:
                 print(f"  Updated → {path}")
         print(f"  Call 3: {updated_count} document(s) updated with verified supplements.")
 
+    # ── Call 4: Cross-document consistency check ──────────────────────────────
+    part4_raw = Path(output_dir) / "Foundation_Raw_Output_Part4.md"
+    if part4_raw.exists() and part4_raw.stat().st_size > 0:
+        print("\n[Foundation] Call 4 — already done, loading saved output...")
+        call4_output = part4_raw.read_text(encoding="utf-8")
+        docs4 = _split_documents_updates(call4_output)
+        print(f"  Loaded {len(docs4)} document update(s) from previous run.")
+    else:
+        print("\n[Foundation] Call 4 — Cross-document consistency check...")
+
+        # Build context: all 25 final docs after Call 3 updates applied
+        all_final_docs = {}
+        all_final_docs.update(docs1_filled)
+        for filename, content in docs2.items():
+            all_final_docs[filename] = content
+        # Overlay any Call 3 updates
+        if 'docs3' in dir():
+            for filename, content in docs3.items():
+                if content.strip():
+                    all_final_docs[filename] = content
+
+        # Re-read from disk to get the latest saved versions
+        for filename in list(all_final_docs.keys()):
+            if filename in {"ENTERPRISE_KNOWLEDGE_GRAPH.json", "CANONICAL_ENTERPRISE_MODEL.md",
+                            "ARCHITECTURE_INVENTORY.md", "TRACEABILITY_MATRIX.md",
+                            "FORWARD_ENGINEERING_INPUT_MAP.md"}:
+                path = foundation_dir / filename
+            else:
+                path = fwd_eng_dir / filename
+            if path.exists() and path.stat().st_size > 0:
+                all_final_docs[filename] = path.read_text(encoding="utf-8")
+
+        final_docs_text = "\n\n---\n\n".join(
+            f"## {fname}\n\n{content[:10000]}"
+            for fname, content in all_final_docs.items()
+            if content
+        )
+
+        call4_prompt = (
+            f"{CALL4_PROMPT}\n\n"
+            f"# All 25 Final Documents (after verification pass)\n\n"
+            f"{final_docs_text}\n\n"
+            f"Begin cross-document consistency check now."
+        )
+
+        call4_output = call_claude(call4_prompt, label="Foundation Call 4 (consistency check)", timeout=5400, allow_tools=False)
+        save_output(output_dir, "Foundation_Raw_Output_Part4.md", call4_output)
+        docs4 = _split_documents_updates(call4_output)
+
+        # Save consistency report
+        import re as _re
+        consistency_match = _re.search(
+            r"=== CONSISTENCY_REPORT ===(.*?)(?====\s*UPDATE:|$)",
+            call4_output, _re.DOTALL
+        )
+        if consistency_match:
+            report_content = consistency_match.group(1).strip()
+            report_path = foundation_dir / "CONSISTENCY_REPORT.md"
+            report_path.write_text(
+                f"# Cross-Document Consistency Report\n\n{report_content}",
+                encoding="utf-8"
+            )
+            print(f"  Saved consistency report → {report_path}")
+
+        # Apply Call 4 updates to affected documents
+        updated4_count = 0
+        for filename, updated_content in docs4.items():
+            if filename in {"ENTERPRISE_KNOWLEDGE_GRAPH.json", "CANONICAL_ENTERPRISE_MODEL.md",
+                            "ARCHITECTURE_INVENTORY.md", "TRACEABILITY_MATRIX.md",
+                            "FORWARD_ENGINEERING_INPUT_MAP.md"}:
+                path = foundation_dir / filename
+            else:
+                path = fwd_eng_dir / filename
+            if path.exists() and updated_content.strip():
+                path.write_text(updated_content, encoding="utf-8")
+                updated4_count += 1
+                print(f"  Updated → {path}")
+        print(f"  Call 4: {updated4_count} document(s) updated after consistency check.")
+
     total = len(docs1) + len(docs2)
     verified = len(docs3) if 'docs3' in dir() else 0
-    print(f"\n[Foundation] Complete — {total} documents generated, {verified} updated by verification pass.")
+    consistency = len(docs4) if 'docs4' in dir() else 0
+    print(f"\n[Foundation] Complete — {total} documents generated, {verified} updated by verification pass, {consistency} updated by consistency check.")
     print(f"  Foundation_KnowledgeGraph: {foundation_dir}")
     print(f"  ForwardEngineering_Docs:   {fwd_eng_dir}")
 
