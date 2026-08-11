@@ -64,15 +64,52 @@ the first 10 forward-engineering documents.
 11. BUSINESS RULES: Extract EXACT values — thresholds, limits, formulas.
     "hire_date must be within 180 days of offer" is a business rule.
     "hire date validation" is not. Always prefer the specific over the general.
-12. BR-xxx ID ASSIGNMENT — assign sequential BR-xxx IDs starting from BR-001.
-    CRITICAL DEFECTS must be assigned prominent, low-numbered IDs so they appear
-    early in all lists. Known critical security defects found in the source code
-    (e.g. authentication bypass where password is never verified, hardcoded
-    encryption keys, session management bugs) must be assigned BR-xxx IDs in
-    the BRD's Security Requirements section with the SAME ID used throughout
-    ALL documents. Never assign the same BR-xxx number to two different
-    requirements — each BR-xxx ID must have exactly one meaning across all
-    25 output documents.
+12. BR-xxx ID ASSIGNMENT — use two separate ID series that never overlap:
+    - BR-xxx (three-digit, e.g. BR-001) = forward-engineering requirements in the BRD.
+    - BR-SEC-xxx = critical security defects found in source code
+      (e.g. authentication bypass, hardcoded keys, broken hashing).
+    NEVER assign a BR-xxx requirement number and a security defect the same ID.
+    Each ID must have exactly one meaning across all 25 documents.
+    Security defects go in the BRD Security Requirements section with BR-SEC-xxx IDs.
+    All other documents that reference those defects must use the same BR-SEC-xxx IDs.
+13. PAYROLL_RUNS STATUS — the source-confirmed initial status value written by
+    PKG_PAYROLL.create_payroll_run is "PENDING". Use "PENDING" as the initial
+    status everywhere. Do NOT use "DRAFT" — that is an unconfirmed assumed value.
+    The full confirmed lifecycle is: PENDING → CALCULATING → CALCULATED → APPROVED
+    → GL_GENERATED → COMPLETED. Use these exact values in all documents.
+14. COBRA NOTIFICATION — the correct legal statement is:
+    "The employer has 30 days to notify the plan administrator of a qualifying event.
+    The plan administrator then has 14 days to notify the qualified beneficiary."
+    Never simplify this to "14-day window" without distinguishing the two obligations.
+15. ORACLE FORMS VERSION — this system runs Oracle Forms 12c (version 12.2.1.4).
+    Never write "Oracle Forms 6i", "Oracle Forms 10g", or any other version.
+    Always write "Oracle Forms 12c (12.2.1.4)".
+16. TECHNOLOGY NEUTRALITY — do NOT choose or recommend any specific technology
+    stack, programming language, framework, cloud platform, or runtime in any
+    document. Documents describe WHAT the system must do and WHAT capabilities
+    are needed — not HOW to build it. Leave all technology decisions open.
+    Examples of what NOT to write: React, Node.js, Spring Boot, Kubernetes,
+    Docker, AWS, Azure, PostgreSQL (as replacement), Java, Python, .NET.
+    Instead write: "web-based UI layer", "service layer", "container-friendly
+    deployment", "relational database", "cloud or on-premise deployment".
+    Exception: the current/legacy Oracle technology (Oracle Forms 12c, Oracle DB
+    19c, PL/SQL, DBMS_CRYPTO) must be named accurately — these are source facts.
+17. DOCUMENT HEADERS — every document must start with:
+    Line 1: # [Full Document Title]
+    Line 2: blank
+    Line 3: **Version:** 1.0
+    Line 4: **System:** Oracle HRMS
+    Line 5: **Classification:** Forward Engineering Input — Technology Neutral
+    Line 6: blank
+    Line 7: ## Table of Contents
+    Then the ToC entries, then the document body.
+    No document may begin with analysis commentary or pipeline process text.
+18. UC-002 PAYROLL USE CASES — expand UC-002 (Process Monthly Payroll) into
+    8 numbered sub-use-cases covering: (1) initiate payroll run, (2) calculate
+    gross pay, (3) calculate tax deductions, (4) calculate benefit deductions,
+    (5) calculate net pay, (6) approve payroll run, (7) generate GL feed,
+    (8) disburse payments. Each sub-use-case must have its own Actor, Preconditions,
+    Main Flow, and Business Rules Applied sections.
 
 ## Required Output — Part 1
 
@@ -95,21 +132,23 @@ Produce ALL of the following in this exact order, separated by markers:
 (what is KNOWN, INFERRED, MISSING — input spec for AI-assisted code regeneration)
 
 === DOCUMENT: 01_BRD.md ===
-(Business Requirements Document)
+(Business Requirements Document — technology neutral)
 
 === DOCUMENT: 02_BUSINESS_CAPABILITY_MODEL.md ===
 
 === DOCUMENT: 03_USE_CASE_SPECIFICATION.md ===
+(UC-002 must contain 8 sub-use-cases as per Rule 18)
 
 === DOCUMENT: 04_BUSINESS_PROCESS_MODEL.md ===
 
 === DOCUMENT: 05_DOMAIN_MODEL.md ===
-(with DDD bounded contexts and Mermaid context maps)
+(bounded contexts and context maps — technology neutral)
 
 === DOCUMENT: 06_DATA_DICTIONARY.md ===
 
 === DOCUMENT: 07_DATA_MODEL_SPECIFICATION.md ===
-(including physical schema and SQL DDL)
+(physical schema and SQL DDL for the CURRENT Oracle system only —
+ do not prescribe a target database engine)
 
 === DOCUMENT: 08_ERD.md ===
 
@@ -134,38 +173,124 @@ CALL2_PROMPT = """
 You are given the Enterprise Knowledge Graph and foundation views already produced
 in Part 1. Your job is to generate forward-engineering documents 11–20.
 
-Each document must be:
-- Grounded in the Knowledge Graph — cite node IDs where relevant
-- Technology-neutral where the target stack is unresolved
-- Written at senior-architect level
-- Self-contained — a developer should be able to implement from each document alone
-- BR-xxx IDs must be used exactly as they were defined in 01_BRD.md from Part 1.
-  Never reassign a BR-xxx to a different requirement. Copy the exact IDs.
+## Rules for all documents in Part 2
+
+1. Grounded in the Knowledge Graph — cite node IDs where relevant.
+2. Written at senior-architect level.
+3. Self-contained — a developer should be able to understand requirements from
+   each document alone without reading other documents.
+4. BR-xxx and BR-SEC-xxx IDs must be used exactly as defined in 01_BRD.md from
+   Part 1. Never reassign an ID to a different requirement.
+5. TECHNOLOGY NEUTRALITY — do NOT choose or recommend any specific technology
+   stack, programming language, framework, cloud platform, or runtime.
+   Documents describe WHAT is needed — not HOW to build it.
+   Do not write: React, Angular, Vue, Node.js, Spring Boot, Django, Rails,
+   Kubernetes, Docker, AWS, Azure, GCP, PostgreSQL, MySQL, MongoDB, Java,
+   Python, Go, .NET, C#, TypeScript. Leave all such decisions open.
+   Instead write: "web-based UI layer", "service API layer", "containerised
+   or server-based deployment", "relational database", "stateless authentication".
+   Exception: Oracle Forms 12c, Oracle DB 19c, PL/SQL, DBMS_CRYPTO — these
+   are source system facts and must be named accurately.
+6. DOCUMENT HEADERS — every document must start with:
+   Line 1: # [Full Document Title]
+   Line 2: blank
+   Line 3: **Version:** 1.0
+   Line 4: **System:** Oracle HRMS
+   Line 5: **Classification:** Forward Engineering Input — Technology Neutral
+   Line 6: blank
+   Line 7: ## Table of Contents
+   Then ToC entries, then document body.
+7. ORACLE FORMS VERSION — always write "Oracle Forms 12c (12.2.1.4)".
+   Never write "Oracle Forms 6i" or "Oracle Forms 10g".
+8. PAYROLL_RUNS STATUS — use "PENDING" as initial status, not "DRAFT".
+9. COBRA — always state both obligations: employer has 30 days to notify
+   plan administrator; plan administrator has 14 days to notify beneficiary.
+10. BR-SEC-xxx SECURITY DEFECTS — when referencing security defects from the
+    source code analysis, always use the BR-SEC-xxx ID assigned in Part 1.
+    Never use a plain BR-xxx number for a security defect.
+
+## Document-specific guidance
+
+11_API_CONTRACT_SPECIFICATION.md:
+- Describe service contracts (inputs, outputs, error cases) in a technology-neutral way.
+- Do not assume REST, GraphQL, gRPC, or any protocol. Describe operations and
+  their data shapes. Use generic terms: "endpoint", "operation", "request payload",
+  "response payload". If the current system uses PL/SQL procedures, map each
+  procedure to a service operation.
+
+12_TECHNOLOGY_BLUEPRINT.md:
+- Document the CURRENT technology stack accurately (Oracle Forms 12c, Oracle DB 19c,
+  PL/SQL, DBMS_CRYPTO, Oracle Reports, etc.).
+- For the target/modernisation section: list CAPABILITY REQUIREMENTS only
+  (e.g. "web-accessible UI", "stateless session management", "encrypted PII storage").
+  Do NOT recommend specific products or frameworks. Mark all target decisions as
+  [DECISION REQUIRED — not yet chosen].
+
+13_SECURITY_ARCHITECTURE.md:
+- Document current security model accurately (RBAC via grade, PKG_SECURITY procedures,
+  AES-256 with hard-coded key, MD5 hashing, session management via USER_SESSIONS).
+- For modernisation recommendations: describe REQUIREMENTS not products
+  (e.g. "industry-standard password hashing algorithm" not "bcrypt").
+- Use BR-SEC-xxx IDs for all security defects.
+
+14_NFR_SPECIFICATION.md:
+- Performance, reliability, security, maintainability requirements.
+- Technology neutral — state targets as measurable criteria, not platform specs.
+
+15_FORWARD_ENGINEERING_SPECIFICATION.md:
+- Generation rules and validation gates.
+- Do not reference specific code generation tools, IDEs, or frameworks.
+
+16_GENERATION_MANIFEST.json:
+- Machine-readable JSON.
+- Leave "target_stack", "language", "framework", "platform" fields as empty
+  strings or null — these are decisions not yet made.
+
+17_FORWARD_ENGINEERING_READINESS_REPORT.md:
+- Honest scored assessment of readiness.
+- List all blockers including BR-SEC-xxx defects.
+- Include a section listing human decisions still required before each module
+  can be generated.
+
+18_DEPLOYMENT_ARCHITECTURE.md:
+- Describe deployment REQUIREMENTS (availability, scalability, isolation,
+  network topology) not specific infrastructure products.
+- Do not write: Kubernetes, Docker, AWS EC2, Nginx, etc.
+- Write: "containerised or server-based deployment", "load-balanced web tier",
+  "isolated application and database network zones".
+
+19_FRONTEND_ARCHITECTURE.md:
+- Map each Oracle Forms 12c module (HRMS_EMPLOYEE, HRMS_PAYROLL, HRMS_LEAVE,
+  HRMS_PERFORMANCE, HRMS_LOGIN, HRMS_MENU) to its equivalent screen/module
+  in the new system. Use the original Oracle Forms module names explicitly.
+- Describe UI requirements (screens, navigation, interactions) — not framework.
+- Do not write: React, Angular, Vue, SPA, component library names.
+- Write: "browser-based form", "navigation menu", "data entry screen".
+
+20_UI_UX_SPECIFICATION.md:
+- Screen layouts, interactions, field validations from Oracle Forms source.
+- Technology neutral — describe behaviour, not implementation.
 
 Produce ALL of the following in order, separated by markers:
 
 === DOCUMENT: 11_API_CONTRACT_SPECIFICATION.md ===
-(full REST contracts for all endpoints)
 
 === DOCUMENT: 12_TECHNOLOGY_BLUEPRINT.md ===
 
 === DOCUMENT: 13_SECURITY_ARCHITECTURE.md ===
-(including RBAC model and modernization plan)
 
 === DOCUMENT: 14_NFR_SPECIFICATION.md ===
 
 === DOCUMENT: 15_FORWARD_ENGINEERING_SPECIFICATION.md ===
-(generation rules and validation gates)
 
 === DOCUMENT: 16_GENERATION_MANIFEST.json ===
-(machine-readable JSON — leave target_stack empty)
 
 === DOCUMENT: 17_FORWARD_ENGINEERING_READINESS_REPORT.md ===
-(scored readiness assessment)
 
 === DOCUMENT: 18_DEPLOYMENT_ARCHITECTURE.md ===
 
 === DOCUMENT: 19_FRONTEND_ARCHITECTURE.md ===
+(must map all 6 Oracle Forms modules by their exact names)
 
 === DOCUMENT: 20_UI_UX_SPECIFICATION.md ===
 
@@ -214,7 +339,48 @@ For each document, check for any ## or ### heading that appears more than once.
 If found: keep the FIRST occurrence only. Delete all subsequent duplicate blocks
 (from the duplicate heading down to the next same-level heading).
 
-## TERTIARY TASK: Check for missing content from agent outputs
+## TERTIARY TASK: Fix document headers
+
+For every document that is missing a proper header, add one at the very top:
+```
+# [Full Document Title]
+
+**Version:** 1.0
+**System:** Oracle HRMS
+**Classification:** Forward Engineering Input — Technology Neutral
+
+## Table of Contents
+```
+Documents that must have this header checked:
+04_BUSINESS_PROCESS_MODEL.md, 09_DATA_FLOW_DIAGRAM.md, 10_SERVICE_CATALOG.md,
+12_TECHNOLOGY_BLUEPRINT.md, 02_BUSINESS_CAPABILITY_MODEL.md,
+CANONICAL_ENTERPRISE_MODEL.md, ARCHITECTURE_INVENTORY.md,
+TRACEABILITY_MATRIX.md, FORWARD_ENGINEERING_INPUT_MAP.md
+
+## QUATERNARY TASK: Technology neutrality check
+
+Scan all 20 ForwardEngineering documents for specific technology names that
+should NOT appear in forward-engineering specification documents.
+If found, replace with the generic equivalent listed below:
+
+| Replace this | With this |
+|---|---|
+| React, Angular, Vue, Next.js | web-based UI layer |
+| Node.js, Express | service layer runtime |
+| Spring Boot, Django, Rails, FastAPI | service layer framework |
+| Kubernetes, K8s | container orchestration platform |
+| Docker | containerisation |
+| AWS, Azure, GCP, cloud provider names | cloud or on-premise deployment |
+| PostgreSQL, MySQL, MongoDB (as target) | relational database |
+| JWT (as a prescription) | stateless authentication token |
+| bcrypt, Argon2, scrypt (as prescription) | industry-standard password hashing |
+| Nginx, Apache (as prescription) | web server / reverse proxy |
+| Kafka, RabbitMQ (as prescription) | message queue |
+
+Exception: Oracle Forms 12c, Oracle DB 19c, PL/SQL, DBMS_CRYPTO, Oracle Reports
+are CURRENT system facts — keep them exactly as-is.
+
+## QUINARY TASK: Check for missing content from agent outputs
 
 1. Tables documented in agent outputs but NOT in 06_DATA_DICTIONARY.md or 08_ERD.md
 2. Procedures documented in agent outputs but NOT in 10_SERVICE_CATALOG.md or 11_API_CONTRACT_SPECIFICATION.md
@@ -294,8 +460,49 @@ validation and ID collision detection pass.
    Every Oracle Forms module name (HRMS_EMPLOYEE, HRMS_PAYROLL, HRMS_LEAVE,
    HRMS_PERFORMANCE, HRMS_LOGIN, HRMS_MENU) must appear in at least one of:
    19_FRONTEND_ARCHITECTURE.md, 20_UI_UX_SPECIFICATION.md.
-   If a form module is absent, flag it — the frontend doc must reference each
-   source form by its original Oracle Forms name.
+   If a form module is absent, update 19_FRONTEND_ARCHITECTURE.md to add a
+   section mapping each original Oracle Forms module name to its equivalent
+   screen/feature in the new system.
+
+8. AES KEY LENGTH CHECK
+   If any document quotes the AES-256 encryption key string, count its characters.
+   AES-256 requires exactly 32 bytes (characters). If the quoted string is not
+   32 characters, flag it as HUMAN-INVESTIGATION-REQUIRED with the message:
+   "AES key string length does not match AES-256 requirement (32 bytes).
+   Verify exact key value in PKG_SECURITY.pkb source — quoted string may be
+   truncated. Run: SELECT LENGTH(UTL_RAW.CAST_TO_RAW('<key>')) FROM DUAL;"
+
+9. SCHEMA MIGRATION SCRIPTS
+   For every column, table, or constraint that the API Contract or Forward
+   Engineering Specification requires but does NOT exist in the current
+   07_DATA_MODEL_SPECIFICATION.md, produce a ready-to-run SQL ALTER TABLE
+   or CREATE TABLE statement.
+   Produce these as a new document:
+   === DOCUMENT: SCHEMA_MIGRATION_SCRIPTS.md ===
+   Format each script as:
+   -- Migration: [description]
+   -- Required by: [document and section]
+   -- BR: [BR-xxx if applicable]
+   ALTER TABLE ... ;
+
+10. DBA INVESTIGATION CHECKLIST
+    For every table whose DDL was not confirmed (inferred only), produce the
+    exact SQL query a DBA should run to confirm or deny its existence.
+    Produce these as a new document:
+    === DOCUMENT: DBA_CHECKLIST.md ===
+    For each unconfirmed table:
+    -- Check: does [TABLE_NAME] exist?
+    SELECT table_name, num_rows FROM user_tables WHERE table_name = '[TABLE_NAME]';
+    -- If exists, get DDL:
+    SELECT DBMS_METADATA.GET_DDL('TABLE','[TABLE_NAME]') FROM DUAL;
+
+11. BR CROSS-REFERENCE TABLE
+    Build a mapping table between the legacy BA analysis BR series (BR-01 through
+    BR-108+) and the BRD forward-engineering series (BR-001 through BR-050).
+    Where a legacy BR maps to a BRD BR, show both IDs side by side.
+    Where a legacy BR has no BRD equivalent, flag it as UNMAPPED.
+    Produce this as a new document:
+    === DOCUMENT: BR_CROSSREFERENCE.md ===
 
 ## Output format
 
@@ -304,7 +511,7 @@ validation and ID collision detection pass.
 | BR ID | Referenced In | Not Found In BRD | Recommendation |
 |---|---|---|---|
 
-## BR-xxx ID Collisions
+## BR-xxx / BR-SEC-xxx ID Collisions
 | BR ID | BRD Definition | Other Document + Definition | Resolution |
 |---|---|---|---|
 
@@ -320,21 +527,41 @@ validation and ID collision detection pass.
 | Form Module | Present In | Gap |
 |---|---|---|
 
+## AES Key Investigation
+| Key String | Length | Required | Status |
+|---|---|---|---|
+
 ## Summary
 Total BR collisions: N
 Total broken references: N
 Total contradictions: N
 Oracle Forms coverage gaps: N
+Schema migrations needed: N
+DBA investigation items: N
 Documents needing update: list them
 Overall assessment: CONSISTENT / ISSUES-FOUND
 
-Then for each document that needs fixing, produce the corrected version:
+Then produce in this order:
+1. All UPDATE blocks for documents that need fixing
+2. SCHEMA_MIGRATION_SCRIPTS.md as a new document
+3. DBA_CHECKLIST.md as a new document
+4. BR_CROSSREFERENCE.md as a new document
+
 === UPDATE: <filename> ===
 <complete corrected document content — full file from first line to last>
 
+=== DOCUMENT: SCHEMA_MIGRATION_SCRIPTS.md ===
+<complete content>
+
+=== DOCUMENT: DBA_CHECKLIST.md ===
+<complete content>
+
+=== DOCUMENT: BR_CROSSREFERENCE.md ===
+<complete content>
+
 CRITICAL: Only fix genuine errors. Do not rewrite correct content.
 CRITICAL: If a contradiction cannot be resolved from the documents alone, mark it HUMAN-DECISION-REQUIRED.
-CRITICAL: Do NOT begin any UPDATE block with conversational text. Start directly with the document content.
+CRITICAL: Do NOT begin any UPDATE or DOCUMENT block with conversational text. Start directly with content.
 CRITICAL: Every UPDATE block must contain the FULL document, not a diff or excerpt.
 
 ---
@@ -437,6 +664,21 @@ def _deduplicate_headings(content: str) -> str:
     return '\n'.join(result)
 
 
+# ── Shared constants ───────────────────────────────────────────────────────────
+
+# All files that belong in Foundation_KnowledgeGraph/ rather than ForwardEngineering_Docs/
+_FOUNDATION_FILES = {
+    "ENTERPRISE_KNOWLEDGE_GRAPH.json",
+    "CANONICAL_ENTERPRISE_MODEL.md",
+    "ARCHITECTURE_INVENTORY.md",
+    "TRACEABILITY_MATRIX.md",
+    "FORWARD_ENGINEERING_INPUT_MAP.md",
+    "CONSISTENCY_REPORT.md",
+    "SCHEMA_MIGRATION_SCRIPTS.md",
+    "DBA_CHECKLIST.md",
+    "BR_CROSSREFERENCE.md",
+}
+
 # ── Helpers ────────────────────────────────────────────────────────────────────
 
 def _load_layer_outputs(output_dir: str) -> dict:
@@ -478,10 +720,15 @@ def _split_documents(text: str) -> dict:
 
 
 def _split_documents_updates(text: str) -> dict:
-    """Parse Call 3 output which uses === UPDATE: <filename> === markers."""
+    """
+    Parse Call 3/4 output which uses === UPDATE: <filename> === markers.
+    Also handles === DOCUMENT: <filename> === markers for new documents
+    produced by Call 4 (SCHEMA_MIGRATION_SCRIPTS.md, DBA_CHECKLIST.md,
+    BR_CROSSREFERENCE.md).
+    """
     import re
     docs = {}
-    pattern = re.compile(r"=== UPDATE:\s*(.+?)\s*===", re.IGNORECASE)
+    pattern = re.compile(r"===\s*(?:UPDATE|DOCUMENT):\s*(.+?)\s*===", re.IGNORECASE)
     parts = pattern.split(text)
     i = 1
     while i < len(parts) - 1:
@@ -503,13 +750,6 @@ def _clean_document(filename: str, content: str) -> str:
 
 def _save_docs(docs: dict, foundation_dir: Path, fwd_eng_dir: Path,
                output_dir: str = None) -> list:
-    foundation_files = {
-        "ENTERPRISE_KNOWLEDGE_GRAPH.json",
-        "CANONICAL_ENTERPRISE_MODEL.md",
-        "ARCHITECTURE_INVENTORY.md",
-        "TRACEABILITY_MATRIX.md",
-        "FORWARD_ENGINEERING_INPUT_MAP.md",
-    }
     saved = []
     for filename, content in docs.items():
         # Per-document gap detection: independently fill gaps in each document
@@ -518,7 +758,7 @@ def _save_docs(docs: dict, foundation_dir: Path, fwd_eng_dir: Path,
             content = _fill_document_gaps(filename, content, output_dir)
         # Strip artifact text and deduplicate headings on every document
         content = _clean_document(filename, content)
-        if filename in foundation_files:
+        if filename in _FOUNDATION_FILES:
             path = foundation_dir / filename
         else:
             path = fwd_eng_dir / filename
@@ -839,9 +1079,7 @@ def run(output_dir: str) -> None:
         # Apply updates to the affected documents on disk
         updated_count = 0
         for filename, updated_content in docs3.items():
-            if filename in {"ENTERPRISE_KNOWLEDGE_GRAPH.json", "CANONICAL_ENTERPRISE_MODEL.md",
-                            "ARCHITECTURE_INVENTORY.md", "TRACEABILITY_MATRIX.md",
-                            "FORWARD_ENGINEERING_INPUT_MAP.md"}:
+            if filename in _FOUNDATION_FILES:
                 path = foundation_dir / filename
             else:
                 path = fwd_eng_dir / filename
@@ -875,9 +1113,7 @@ def run(output_dir: str) -> None:
 
         # Re-read from disk to get the latest saved versions
         for filename in list(all_final_docs.keys()):
-            if filename in {"ENTERPRISE_KNOWLEDGE_GRAPH.json", "CANONICAL_ENTERPRISE_MODEL.md",
-                            "ARCHITECTURE_INVENTORY.md", "TRACEABILITY_MATRIX.md",
-                            "FORWARD_ENGINEERING_INPUT_MAP.md"}:
+            if filename in _FOUNDATION_FILES:
                 path = foundation_dir / filename
             else:
                 path = fwd_eng_dir / filename
@@ -901,35 +1137,35 @@ def run(output_dir: str) -> None:
         save_output(output_dir, "Foundation_Raw_Output_Part4.md", call4_output)
         docs4 = _split_documents_updates(call4_output)
 
-        # Save consistency report
-        import re as _re
-        consistency_match = _re.search(
-            r"=== CONSISTENCY_REPORT ===(.*?)(?====\s*UPDATE:|$)",
-            call4_output, _re.DOTALL
-        )
-        if consistency_match:
-            report_content = consistency_match.group(1).strip()
-            report_path = foundation_dir / "CONSISTENCY_REPORT.md"
-            report_path.write_text(
-                f"# Cross-Document Consistency Report\n\n{report_content}",
-                encoding="utf-8"
+        # Extract and save consistency report (fallback if not captured as DOCUMENT block)
+        if "CONSISTENCY_REPORT.md" not in docs4:
+            import re as _re4
+            consistency_match = _re4.search(
+                r"=== CONSISTENCY_REPORT ===(.*?)(?====\s*(?:UPDATE|DOCUMENT):|$)",
+                call4_output, _re4.DOTALL
             )
-            print(f"  Saved consistency report → {report_path}")
+            if consistency_match:
+                report_content = consistency_match.group(1).strip()
+                report_path = foundation_dir / "CONSISTENCY_REPORT.md"
+                report_path.write_text(
+                    f"# Cross-Document Consistency Report\n\n{report_content}",
+                    encoding="utf-8"
+                )
+                print(f"  Saved consistency report → {report_path}")
 
         # Apply Call 4 updates to affected documents
         updated4_count = 0
         for filename, updated_content in docs4.items():
-            if filename in {"ENTERPRISE_KNOWLEDGE_GRAPH.json", "CANONICAL_ENTERPRISE_MODEL.md",
-                            "ARCHITECTURE_INVENTORY.md", "TRACEABILITY_MATRIX.md",
-                            "FORWARD_ENGINEERING_INPUT_MAP.md"}:
+            if filename in _FOUNDATION_FILES:
                 path = foundation_dir / filename
             else:
                 path = fwd_eng_dir / filename
-            if path.exists() and updated_content.strip():
+            # Write new and updated documents from Call 4 (may not exist yet)
+            if updated_content.strip():
                 updated_content = _clean_document(filename, updated_content)
                 path.write_text(updated_content, encoding="utf-8")
                 updated4_count += 1
-                print(f"  Updated → {path}")
+                print(f"  Saved/Updated → {path}")
         print(f"  Call 4: {updated4_count} document(s) updated after consistency check.")
 
     total = len(docs1) + len(docs2)
