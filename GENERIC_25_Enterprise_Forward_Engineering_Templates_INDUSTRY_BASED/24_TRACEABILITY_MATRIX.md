@@ -25,7 +25,7 @@ When a section cannot be populated from source evidence, record exactly:
 ```
 Status: NOT_AVAILABLE
 Evidence Class: UNKNOWN
-Confidence: 0.00
+Confidence: 0.00 — LOW (unknown, insufficient evidence — see escalation table)
 Validation Required: YES
 Escalate to: {OWNER} — see escalation table below
 ```
@@ -84,19 +84,30 @@ Every source reference should identify the artifact and stable location where po
 ### Confidence Calibration Guide
 Use this scale consistently across all 25 documents:
 
-| Evidence Source | Confidence Range |
-|---|---|
-| Directly observed in DDL / source file (exact match) | 0.90 – 0.95 |
-| Observed in procedure body / trigger / form logic | 0.80 – 0.90 |
-| Derived deterministically from two or more observed facts | 0.75 – 0.85 |
-| Inferred from naming convention, pattern, or context | 0.50 – 0.70 |
-| Assumed — no evidence, but standard practice | 0.30 – 0.50 |
-| Unknown — insufficient evidence | 0.00 – 0.30 |
-| Contradicted — conflicting evidence exists | 0.00 |
+| Evidence Source | Confidence Range | Label | Teammate Action |
+|---|---|---|---|
+| Directly observed in DDL / source file (exact match) | 0.90 – 0.95 | **HIGH** | Trust it — no review needed |
+| Observed in procedure body / trigger / form logic | 0.80 – 0.90 | **HIGH** | Trust it — no review needed |
+| Derived deterministically from two or more observed facts | 0.75 – 0.85 | **HIGH** | Trust it — no review needed |
+| Inferred from naming convention, pattern, or context | 0.50 – 0.70 | **MEDIUM** | Review before using |
+| Assumed — no evidence, but standard practice | 0.30 – 0.50 | **LOW** | Must validate — check escalation table |
+| Unknown — insufficient evidence | 0.00 – 0.30 | **LOW** | Must validate — check escalation table |
+| Contradicted — conflicting evidence exists | 0.00 | **LOW** | Must validate — check escalation table |
+
+**Label thresholds:**
+- **HIGH** (0.75–1.00) — Evidence is solid. Safe to use without review.
+- **MEDIUM** (0.50–0.74) — Inferred from context. A teammate should verify before using.
+- **LOW** (0.00–0.49) — Assumed or unknown. Must be validated with the named stakeholder in the escalation table.
 
 Never assign confidence > 0.70 to an INFERRED statement.
 Never assign confidence > 0.50 to an ASSUMED statement.
 Always assign confidence = 0.00 to UNKNOWN and CONTRADICTED.
+
+Write confidence scores in this format throughout the document:
+`0.90 — HIGH (observed in source DDL)`
+`0.65 — MEDIUM (inferred from naming convention, verify before use)`
+`0.35 — LOW (assumed, no source evidence — validate with Business Analyst)`
+`0.00 — LOW (unknown, insufficient evidence — see escalation table)`
 
 ## Document Dependencies [M]
 
@@ -149,11 +160,11 @@ Recommended metrics: source coverage, critical requirement coverage, bidirection
 ### Worked Example Rows (generic)
 | TRACE-ID | SOURCE-ID | SOURCE-TYPE | TARGET-ID | TARGET-TYPE | RELATIONSHIP | EVIDENCE | CONFIDENCE | STATUS |
 |---|---|---|---|---|---|---|---:|---|
-| `TR-001` | `BR-001` | Requirement | `UC-001` | UseCase | `implements` | `01_BRD section 7` | 0.90 | Validated |
-| `TR-002` | `UC-001` | UseCase | `SVC-001` | Service | `realized_by` | `10_SERVICE_CATALOG section 3` | 0.88 | Validated |
-| `TR-003` | `SVC-001` | Service | `OP-001` | APIOperation | `exposed_as` | `11_API_CONTRACT section 5` | 0.87 | Validated |
-| `TR-004` | `BR-001` | Requirement | `DE-001` | DataElement | `constrains` | `01_BRD BRL-001` | 0.85 | Validated |
-| `TR-005` | `BR-SEC-001` | SecurityRequirement | `NFR-003` | NFR | `related_to` | `13_SECURITY_ARCH section 19` | 0.90 | Validated |
+| `TR-001` | `BR-001` | Requirement | `UC-001` | UseCase | `implements` | `01_BRD section 7` | 0.90 — HIGH (observed in source DDL) | Validated |
+| `TR-002` | `UC-001` | UseCase | `SVC-001` | Service | `realized_by` | `10_SERVICE_CATALOG section 3` | 0.88 — HIGH (observed in procedure body) | Validated |
+| `TR-003` | `SVC-001` | Service | `OP-001` | APIOperation | `exposed_as` | `11_API_CONTRACT section 5` | 0.87 — HIGH (observed in procedure body) | Validated |
+| `TR-004` | `BR-001` | Requirement | `DE-001` | DataElement | `constrains` | `01_BRD BRL-001` | 0.85 — HIGH (derived from multiple sources) | Validated |
+| `TR-005` | `BR-SEC-001` | SecurityRequirement | `NFR-003` | NFR | `related_to` | `13_SECURITY_ARCH section 19` | 0.90 — HIGH (observed in source DDL) | Validated |
 
 ### Coverage Metrics Formula
 ```

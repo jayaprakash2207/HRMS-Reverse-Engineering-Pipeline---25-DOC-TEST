@@ -75,6 +75,11 @@ _POPULATION_RULES = """
    If no evidence, omit the section entirely (do not write NOT_AVAILABLE for [C]).
 6. Evidence classification — every material statement must carry one of:
    OBSERVED | DERIVED | INFERRED | ASSUMED | UNKNOWN | CONTRADICTED
+   Confidence format — always write: 0.XX — LABEL (reason)
+   Examples: 0.90 — HIGH (observed in source DDL)
+             0.65 — MEDIUM (inferred from naming, verify before use)
+             0.35 — LOW (assumed, validate with Business Analyst)
+             0.00 — LOW (unknown — see escalation table)
 7. Source references — every material claim must cite its Oracle source:
    SOURCE_FILE, OBJECT, LINE/RANGE, TABLE/COLUMN, PACKAGE.PROCEDURE, or FORM/TRIGGER.
 8. Stable IDs — use the ID series defined in each template (BR-, UC-, CAP-, SVC-,
@@ -791,6 +796,56 @@ Note: These are semantic estimates. Python post-processing will replace this
 section with exact programmatic counts after all calls complete.
 """
 
+# ── Call 5: Self-correction prompt ────────────────────────────────────────────
+
+_SELF_CORRECT_PROMPT = """
+# Self-Correction Agent — LOW Confidence Sections
+
+You are a self-correction agent. Below are sections from generated documents
+that were marked LOW confidence (score < 0.50). These sections are either
+ASSUMED (no evidence) or UNKNOWN (insufficient evidence).
+
+Your job:
+1. Re-examine each LOW section against the original source evidence provided.
+2. For each section, do ONE of the following:
+   a) UPGRADE — if you find evidence you missed before, rewrite the section
+      with the upgraded content and a higher confidence score + label.
+   b) CONFIRM NOT_AVAILABLE — if there is genuinely no evidence, confirm it
+      and add the exact escalation contact from this table:
+
+      | Section Type | Escalate To |
+      |---|---|
+      | Business rules / requirements | Business Analyst |
+      | Data schema / DDL / tables | DBA |
+      | Security controls / auth model | CISO / Security Lead |
+      | Process / workflow / approval | Process Owner / BA |
+      | Architecture / technology choice | Solution Architect |
+      | UI / UX / screen layout | UX Lead / Product Owner |
+      | Performance / availability targets | System Owner / Architect |
+      | Regulatory / compliance | Legal / Compliance Officer |
+
+CONFIDENCE FORMAT — always use: `0.XX — LABEL (reason)`
+Examples:
+  0.90 — HIGH (observed in source DDL, PKG_PAYROLL line 142)
+  0.65 — MEDIUM (inferred from naming convention, verify before use)
+  0.35 — LOW (assumed, no source evidence — validate with Business Analyst)
+  0.00 — LOW (unknown, insufficient evidence — see escalation table)
+
+OUTPUT FORMAT — for each corrected section, output:
+
+=== CORRECTION: <filename> | <section_heading> ===
+<corrected section content — full section, not a diff>
+=== END CORRECTION ===
+
+If a section cannot be improved at all, still output the block with the
+original content plus an explicit escalation contact added.
+
+POPULATION RULES — same as main generation:
+- Technology-neutral (no React, AWS, Spring Boot, etc.)
+- BR-xxx = requirements only. BR-SEC-xxx = security defects only.
+- Every claim needs evidence class + source reference + confidence label.
+"""
+
 _EVIDENCE_CLASSES = [
     "OBSERVED",
     "DERIVED",
@@ -801,12 +856,23 @@ _EVIDENCE_CLASSES = [
 ]
 
 _CONFIDENCE_PATTERN = _re_top.compile(
-    r'(?:confidence|confidence_score|Confidence)[:\s]+([0-9]\.[0-9]+)',
+    r'(?:confidence|confidence_score|Confidence)[:\s|]+([0-9]\.[0-9]+)',
+    _re_top.IGNORECASE
+)
+
+# Also matches inline format: "0.90 — HIGH" or "0.65 — MEDIUM" or "0.35 — LOW"
+_CONFIDENCE_LABEL_PATTERN = _re_top.compile(
+    r'([0-9]\.[0-9]+)\s*[—–-]+\s*(HIGH|MEDIUM|LOW)',
     _re_top.IGNORECASE
 )
 
 _NOT_AVAILABLE_PATTERN = _re_top.compile(
     r'Status:\s*NOT_AVAILABLE',
+    _re_top.IGNORECASE
+)
+
+_LOW_CONFIDENCE_SECTION_PATTERN = _re_top.compile(
+    r'([0-9]\.[0-9]+)\s*[—–-]+\s*LOW',
     _re_top.IGNORECASE
 )
 
@@ -832,6 +898,12 @@ def _compute_coverage(content: str) -> dict:
         float(m) for m in _CONFIDENCE_PATTERN.findall(content)
         if 0.0 <= float(m) <= 1.0
     ]
+    # Also extract from label format: "0.90 — HIGH"
+    label_values = [
+        float(m[0]) for m in _CONFIDENCE_LABEL_PATTERN.findall(content)
+        if 0.0 <= float(m[0]) <= 1.0
+    ]
+    confidence_values = list(set(confidence_values + label_values))
     avg_confidence = round(sum(confidence_values) / len(confidence_values), 3) \
         if confidence_values else 0.0
 
@@ -869,7 +941,7 @@ def _build_coverage_section(filename: str, cov: dict) -> str:
         f"{rows}"
         f"| NOT_AVAILABLE sections | {cov['not_available']} | — |\n"
         f"| **Source Match % (OBS+DER)** | — | **{cov['source_match_pct']}%** |\n"
-        f"| **Avg Confidence Score** | — | **{cov['avg_confidence']}** |\n"
+        f"| **Avg Confidence Score** | — | **{cov['avg_confidence']} — {'HIGH' if cov['avg_confidence'] >= 0.75 else 'MEDIUM' if cov['avg_confidence'] >= 0.50 else 'LOW'}** |\n"
         f"| **Total Evidence Tags** | {total} | 100% |\n\n"
         f"**Readiness signal:** {readiness}\n\n"
         f"_Counts are programmatically verified from the saved document file._\n"
@@ -1019,6 +1091,123 @@ def _run_coverage_pass(foundation_dir: Path, fwd_eng_dir: Path, output_dir: str)
     print(f"  Overall average source match: {avg_overall}%")
     print(f"  HIGH: {high_count}  MEDIUM: {medium_count}  LOW: {low_count}")
     print(f"  Coverage summary → {summary_path}")
+
+
+def _run_self_correction_pass(
+    foundation_dir: Path,
+    fwd_eng_dir: Path,
+    output_dir: str,
+    layers: dict,
+) -> int:
+    """
+    Call 5 — Self-correction pass.
+    Scans all documents for LOW confidence sections, re-runs Claude on them,
+    saves corrections, returns count of sections corrected.
+    """
+    import re as _re5
+
+    print("\n[Self-Correction] Scanning all documents for LOW confidence sections...")
+
+    # Collect LOW sections across all documents
+    low_sections = []
+    for directory in [foundation_dir, fwd_eng_dir]:
+        for path in sorted(directory.glob("*.md")):
+            content = path.read_text(encoding="utf-8")
+            # Find all LOW confidence occurrences
+            low_matches = _LOW_CONFIDENCE_SECTION_PATTERN.findall(content)
+            if low_matches:
+                low_sections.append({
+                    "filename": path.name,
+                    "path": path,
+                    "content": content,
+                    "low_count": len(low_matches),
+                })
+                print(f"  {path.name} — {len(low_matches)} LOW confidence section(s)")
+
+    if not low_sections:
+        print("[Self-Correction] No LOW confidence sections found — all documents meet threshold.")
+        return 0
+
+    print(f"\n[Self-Correction] Found {sum(d['low_count'] for d in low_sections)} LOW section(s) across {len(low_sections)} document(s).")
+    print("[Self-Correction] Running Call 5 — targeted re-examination...")
+
+    # Build the LOW sections block for Claude
+    low_sections_text = ""
+    for doc in low_sections:
+        low_sections_text += f"\n\n## Document: {doc['filename']}\n\n"
+        # Extract just the paragraphs/rows containing LOW
+        lines = doc["content"].split("\n")
+        context_lines = []
+        for i, line in enumerate(lines):
+            if _LOW_CONFIDENCE_SECTION_PATTERN.search(line):
+                # Include surrounding context (heading + content)
+                start = max(0, i - 10)
+                end = min(len(lines), i + 5)
+                context_lines.append(f"[Lines {start}–{end}]")
+                context_lines.extend(lines[start:end])
+                context_lines.append("---")
+        low_sections_text += "\n".join(context_lines)
+
+    # Build source evidence summary
+    source_evidence = "\n\n".join(
+        f"## {key}\n\n{content[:4000]}"
+        for key, content in layers.items()
+        if content
+    )
+
+    call5_prompt = (
+        f"{_SELF_CORRECT_PROMPT}\n\n"
+        f"# LOW Confidence Sections to Re-examine\n\n"
+        f"{low_sections_text}\n\n"
+        f"# Original Source Evidence\n\n"
+        f"{source_evidence}\n\n"
+        f"Begin self-correction now. Output one === CORRECTION === block per section."
+    )
+
+    call5_output = call_claude(
+        call5_prompt,
+        label="Foundation Template Call 5 (self-correction of LOW sections)",
+        timeout=3600,
+        allow_tools=False,
+    )
+    save_output(output_dir, "Foundation_Raw_Output_Part5.md", call5_output)
+
+    # Parse and apply corrections
+    correction_pattern = _re5.compile(
+        r'=== CORRECTION:\s*([^|]+)\|\s*([^=]+)\s*===(.*?)=== END CORRECTION ===',
+        _re5.DOTALL
+    )
+    corrections = correction_pattern.findall(call5_output)
+    applied = 0
+
+    for filename_raw, section_heading, corrected_content in corrections:
+        filename = filename_raw.strip()
+        section_heading = section_heading.strip()
+        corrected_content = corrected_content.strip()
+
+        # Find the file
+        if filename in [d["filename"] for d in low_sections if d["filename"] == filename]:
+            path = next((d["path"] for d in low_sections if d["filename"] == filename), None)
+            if path and path.exists():
+                original = path.read_text(encoding="utf-8")
+                # Find and replace the section
+                heading_escaped = _re5.escape(section_heading)
+                section_re = _re5.compile(
+                    rf'(#+\s*{heading_escaped}[^\n]*\n)(.*?)(?=\n#+\s|\Z)',
+                    _re5.DOTALL
+                )
+                new_content = section_re.sub(
+                    lambda m: m.group(1) + corrected_content + "\n\n",
+                    original,
+                    count=1
+                )
+                if new_content != original:
+                    path.write_text(new_content, encoding="utf-8")
+                    applied += 1
+                    print(f"  Corrected: {filename} — {section_heading}")
+
+    print(f"\n[Self-Correction] Complete — {applied} section(s) corrected out of {len(corrections)} correction(s) returned.")
+    return applied
 
 
 # ── Main ───────────────────────────────────────────────────────────────────────
@@ -1286,12 +1475,28 @@ def run(output_dir: str) -> None:
     print(f"  Foundation_KnowledgeGraph: {foundation_dir}")
     print(f"  ForwardEngineering_Docs:   {fwd_eng_dir}")
 
-    # ── Hybrid Coverage Pass ───────────────────────────────────────────────────
+    # ── Hybrid Coverage Pass (Option 2 — Python exact counts) ─────────────────
     # Option 1 (Claude estimate) was injected into Call 3 prompt above.
     # Option 2 (Python exact counts) runs now — overwrites Claude's estimates
     # with programmatically verified figures and writes COVERAGE_SUMMARY.md.
     _run_coverage_pass(foundation_dir, fwd_eng_dir, output_dir)
     print(f"\n  COVERAGE_SUMMARY.md → {Path(output_dir) / 'COVERAGE_SUMMARY.md'}")
+
+    # ── Call 5: Self-Correction Pass ───────────────────────────────────────────
+    # Scans all documents for LOW confidence sections (score < 0.50),
+    # re-runs Claude on those specific sections to upgrade or confirm NOT_AVAILABLE,
+    # then re-runs the coverage pass to update COVERAGE_SUMMARY.md with final scores.
+    part5_raw = Path(output_dir) / "Foundation_Raw_Output_Part5.md"
+    if part5_raw.exists() and part5_raw.stat().st_size > 0:
+        print("\n[Self-Correction] Call 5 — already done, skipping (delete Part5 to re-run).")
+    else:
+        corrected = _run_self_correction_pass(foundation_dir, fwd_eng_dir, output_dir, layers)
+        if corrected > 0:
+            print("\n[Coverage Pass] Re-running after self-correction to update final scores...")
+            _run_coverage_pass(foundation_dir, fwd_eng_dir, output_dir)
+            print(f"  Final COVERAGE_SUMMARY.md → {Path(output_dir) / 'COVERAGE_SUMMARY.md'}")
+        else:
+            print("\n[Self-Correction] No corrections applied — COVERAGE_SUMMARY.md unchanged.")
 
 
 if __name__ == "__main__":
