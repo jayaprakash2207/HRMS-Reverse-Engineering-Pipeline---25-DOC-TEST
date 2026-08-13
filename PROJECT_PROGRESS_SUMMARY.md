@@ -54,8 +54,11 @@ In one sentence: **the old pipeline generated documents; the new pipeline genera
 | ID consistency | Cross-reference hints at every section where IDs are created. | BR-001 in BRD = BR-001 in all 24 other documents. |
 | Quality gate | Section-level acceptance criteria — inline pass/fail per section. | QA review is mechanical, not judgment-based. |
 | Anti-patterns | 4–6 "DO NOT" warnings per document, tailored to each document type. | Claude avoids the most common failure modes before generating. |
-| Interrupted run | Resume capability — skips already-completed calls. | No wasted cost or time on reruns. |
+| Interrupted run | Resume capability — skips already-completed calls (Calls 1–6). | No wasted cost or time on reruns. |
 | Domain scope | Generic — any domain, any project. | Reusable investment across all future projects. |
+| Citation check | OBSERVED claims checked for source reference automatically. | Catches lazy HIGH labels with no evidence trail. |
+| File existence check | Cited source files verified against disk. | Catches hallucinated source file references. |
+| Second-opinion scoring | Independent Claude re-scores HIGH claims (Call 6). | Catches self-reporting bias — generator cannot score its own work reliably. |
 
 ### Key Numbers — Before vs Now
 | Metric | Before | Now |
@@ -71,9 +74,12 @@ In one sentence: **the old pipeline generated documents; the new pipeline genera
 | Cross-reference enforcement | None | Present in every section that creates IDs |
 | Anti-pattern warnings | None | 4–6 per document |
 | Section acceptance criteria | None | Present on every key section |
-| Interrupted run recovery | Restart from zero | Resume from last completed call |
-| AI pipeline calls | 4 | 5 (Call 5 = self-correction of LOW sections) |
+| Interrupted run recovery | Restart from zero | Resume from last completed call (Calls 1–6) |
+| AI pipeline calls | 4 | 6 (Call 5 = self-correction, Call 6 = second-opinion scoring) |
 | Self-correction | None | Automatic — LOW sections re-examined and upgraded |
+| Citation integrity check | None | OBSERVED claims verified for source reference |
+| File existence check | None | Cited source files verified against disk |
+| Second-opinion scoring | None | Independent Claude re-scores HIGH claims |
 | Entry points | 1 (freeform only) | 2 (freeform + template-driven) |
 
 ---
@@ -86,19 +92,20 @@ In one sentence: **the old pipeline generated documents; the new pipeline genera
 
 **What changed from old:** Old runner (`foundation_runner.py`) gave Claude free rein to decide structure. The new runner feeds Claude the exact template skeleton for each document and instructs it to populate every `[M]` mandatory section — nothing is left to Claude's discretion regarding structure.
 
-**5 calls it runs:**
+**6 calls it runs:**
 
-| Call | What It Generates |
+| Call | What It Does |
 |---|---|
 | Call 1 | Enterprise Knowledge Graph (JSON) + Documents 01–10 |
 | Call 2 | Documents 11–20 |
 | Call 3 | Verification pass + Claude semantic coverage estimate |
 | Call 4 | Cross-document consistency pass |
-| Post-run | Python exact coverage counts → `COVERAGE_SUMMARY.md` |
-| **Call 5** | **Self-correction pass — re-examines all LOW confidence sections** |
-| Final | Coverage pass re-runs to produce updated final scores |
+| Post-run | Python exact counts + Integrity checks (Improvements 1 & 2) → `COVERAGE_SUMMARY.md` |
+| **Call 5** | **Self-correction — re-examines all LOW confidence sections, upgrades or escalates** |
+| **Call 6** | **Second-opinion — independent Claude re-scores HIGH confidence claims** |
+| Final | Coverage pass re-runs with all results → final `COVERAGE_SUMMARY.md` |
 
-**Resume capability:** Checks for existing Part 1/2/3/4/5 raw output files. If a call already completed, it skips it entirely. No wasted API cost on reruns.
+**Resume capability:** Checks for existing Part 1/2/3/4/5/6 raw output files. If a call already completed, it skips it entirely. No wasted API cost on reruns.
 
 ---
 
@@ -240,7 +247,34 @@ Replaced vague "validate with stakeholders" with a named escalation table in eve
 
 ---
 
-### 5. Call 5 — Self-Correction Pass (AI Self-Healing Loop)
+### 5. Three Confidence Score Integrity Improvements
+
+**What changed from old:** Old pipeline had zero integrity checking — Claude scored its own work with no verification. These 3 improvements independently verify the scores.
+
+#### Improvement 1 — Citation Completeness Check (Python, automatic)
+Every claim marked `OBSERVED` is automatically checked for a source file reference on nearby lines. If Claude wrote `OBSERVED` without citing where (e.g. `PKG_PAYROLL.sql / line 142`), it is flagged as a potentially lazy or unsupported label.
+
+**Why better:** Catches Claude labelling something HIGH confidence without actually providing the evidence trail.
+
+#### Improvement 2 — Source File Existence Check (Python, automatic)
+Every source file cited in a document (e.g. `PKG_PAYROLL.sql`, `FORM_LEAVE.fmb`) is verified against the actual source files on disk. If the file does not exist, it is flagged as a potentially hallucinated reference.
+
+**Why better:** Catches Claude inventing source file names that do not actually exist in the project.
+
+#### Improvement 3 — Second-Opinion Scoring (Call 6, independent Claude)
+A completely separate Claude call reads a sample of HIGH confidence claims and independently asks: "Does the cited evidence actually support this claim?" If it disagrees, it flags a potential downgrade. Results appear in `COVERAGE_SUMMARY.md`.
+
+**Why better:** Directly addresses self-reporting bias — the same AI that generates cannot reliably score its own output. An independent reviewer catches what the generator missed.
+
+**What `COVERAGE_SUMMARY.md` now shows:**
+- Integrity issues count per document in the main table
+- `Integrity Check Warnings` section — citation and file issues
+- `Second-Opinion Score Review` section — potential downgrades
+- Overall integrity + downgrade counts at the top
+
+---
+
+### 6. Call 5 — Self-Correction Pass (AI Self-Healing Loop)
 
 **What changed from old:** Old pipeline had no self-correction. Once generated, documents were final regardless of how many LOW confidence sections they had.
 
@@ -320,8 +354,12 @@ Option 2 overwrites Option 1 with exact numbers.
 | Component | Status |
 |---|---|
 | Pipeline engine — `foundation_runner_template.py` | COMPLETE |
-| 4-call generation (Calls 1–4) | COMPLETE |
+| 6-call generation (Calls 1–6) | COMPLETE |
 | Call 5 — self-correction pass (AI self-healing loop) | COMPLETE |
+| Call 6 — second-opinion scoring (independent re-scoring of HIGH claims) | COMPLETE |
+| Improvement 1 — citation completeness check (Python) | COMPLETE |
+| Improvement 2 — source file existence check (Python) | COMPLETE |
+| Improvement 3 — second-opinion scoring (Call 6) | COMPLETE |
 | 25 generic industry templates | COMPLETE |
 | 6 accuracy improvements on all 25 templates | COMPLETE |
 | Confidence labels (HIGH / MEDIUM / LOW) on all templates | COMPLETE |
