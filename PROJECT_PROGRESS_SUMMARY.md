@@ -63,7 +63,8 @@ In one sentence: **the old pipeline generated documents; the new pipeline genera
 | Templates | 25 (HRMS-specific, no examples) | 25 (generic, with examples + rubrics + 6 accuracy layers) |
 | Reusable for other projects | No | Yes — any domain |
 | Evidence classification | Not enforced | Mandatory on every claim |
-| Confidence scoring | Not present | Standardised 0.00–0.95 scale across all 25 docs |
+| Confidence scoring | Not present | Standardised scale with HIGH / MEDIUM / LOW labels |
+| Confidence readability | Raw numbers only | `0.90 — HIGH (observed)` — readable by anyone |
 | Coverage measurement | None | Hybrid (semantic + exact Python count) per document |
 | Human review guidance | Vague | Named stakeholder + specific question per section type |
 | Worked examples per template | 0 | 1–2 per major section |
@@ -71,6 +72,8 @@ In one sentence: **the old pipeline generated documents; the new pipeline genera
 | Anti-pattern warnings | None | 4–6 per document |
 | Section acceptance criteria | None | Present on every key section |
 | Interrupted run recovery | Restart from zero | Resume from last completed call |
+| AI pipeline calls | 4 | 5 (Call 5 = self-correction of LOW sections) |
+| Self-correction | None | Automatic — LOW sections re-examined and upgraded |
 | Entry points | 1 (freeform only) | 2 (freeform + template-driven) |
 
 ---
@@ -83,7 +86,7 @@ In one sentence: **the old pipeline generated documents; the new pipeline genera
 
 **What changed from old:** Old runner (`foundation_runner.py`) gave Claude free rein to decide structure. The new runner feeds Claude the exact template skeleton for each document and instructs it to populate every `[M]` mandatory section — nothing is left to Claude's discretion regarding structure.
 
-**4 calls it runs:**
+**5 calls it runs:**
 
 | Call | What It Generates |
 |---|---|
@@ -92,8 +95,10 @@ In one sentence: **the old pipeline generated documents; the new pipeline genera
 | Call 3 | Verification pass + Claude semantic coverage estimate |
 | Call 4 | Cross-document consistency pass |
 | Post-run | Python exact coverage counts → `COVERAGE_SUMMARY.md` |
+| **Call 5** | **Self-correction pass — re-examines all LOW confidence sections** |
+| Final | Coverage pass re-runs to produce updated final scores |
 
-**Resume capability:** Checks for existing Part 1/2/3/4 raw output files. If a call already completed, it skips it entirely. No wasted API cost on reruns.
+**Resume capability:** Checks for existing Part 1/2/3/4/5 raw output files. If a call already completed, it skips it entirely. No wasted API cost on reruns.
 
 ---
 
@@ -187,22 +192,29 @@ At every section where IDs are created, an explicit note names which other docum
 
 **Why better:** ID consistency across 25 documents is enforced by instruction, not by hope.
 
-#### Improvement 4 — Confidence Calibration Guide
-Every template has the same fixed scale:
+#### Improvement 4 — Confidence Calibration Guide with Plain-English Labels
+Every template has the same fixed scale. Scores are written in a format any teammate can read instantly — no lookup needed:
 
-| Evidence Source | Confidence Range |
-|---|---|
-| DDL / source file exact match | 0.90 – 0.95 |
-| Procedure body / trigger / form logic | 0.80 – 0.90 |
-| Derived from two or more observed facts | 0.75 – 0.85 |
-| Inferred from naming / pattern / context | 0.50 – 0.70 |
-| Assumed — no evidence, standard practice | 0.30 – 0.50 |
-| Unknown — insufficient evidence | 0.00 – 0.30 |
-| Contradicted — conflicting evidence | 0.00 |
+```
+0.90 — HIGH (observed in source DDL)
+0.65 — MEDIUM (inferred from naming, verify before use)
+0.35 — LOW (assumed, validate with Business Analyst)
+0.00 — LOW (unknown — see escalation table)
+```
+
+| Evidence Source | Confidence Range | Label | Teammate Action |
+|---|---|---|---|
+| DDL / source file exact match | 0.90 – 0.95 | HIGH | Trust it — no review needed |
+| Procedure body / trigger / form logic | 0.80 – 0.90 | HIGH | Trust it — no review needed |
+| Derived from two or more observed facts | 0.75 – 0.85 | HIGH | Trust it — no review needed |
+| Inferred from naming / pattern / context | 0.50 – 0.70 | MEDIUM | Review before using |
+| Assumed — no evidence, standard practice | 0.30 – 0.50 | LOW | Must validate — check escalation table |
+| Unknown — insufficient evidence | 0.00 – 0.30 | LOW | Must validate — check escalation table |
+| Contradicted — conflicting evidence | 0.00 | LOW | Must validate — check escalation table |
 
 Hard rules: Never > 0.70 for INFERRED. Never > 0.50 for ASSUMED. Always 0.00 for UNKNOWN and CONTRADICTED.
 
-**Why better:** Confidence scores mean the same thing in every document — comparable and trustworthy.
+**Why better:** A number alone (0.65) means nothing to a teammate reading quickly. HIGH / MEDIUM / LOW tells them exactly what to do without opening any guide.
 
 #### Improvement 5 — Section-Level Acceptance Criteria
 Every major section ends with an inline pass/fail test. Example:
@@ -228,7 +240,28 @@ Replaced vague "validate with stakeholders" with a named escalation table in eve
 
 ---
 
-### 5. Hybrid Coverage Engine
+### 5. Call 5 — Self-Correction Pass (AI Self-Healing Loop)
+
+**What changed from old:** Old pipeline had no self-correction. Once generated, documents were final regardless of how many LOW confidence sections they had.
+
+**How it works:**
+
+After Calls 1–4 complete, the pipeline automatically:
+1. Scans all 25 documents for every section marked `LOW` confidence (score < 0.50)
+2. Sends those specific sections back to Claude together with the original source evidence
+3. Claude either:
+   - **UPGRADES** the section — if it finds evidence it missed the first time, rewrites with a higher score
+   - **CONFIRMS NOT_AVAILABLE** — if genuinely no evidence exists, adds the exact escalation contact
+4. Saves corrections back into the documents
+5. Re-runs the coverage pass to produce final updated scores in `COVERAGE_SUMMARY.md`
+
+**Why this matters:** This is a self-healing loop. The pipeline keeps correcting itself until no LOW sections remain or all are confirmed as genuinely NOT_AVAILABLE with a named owner. It is the same principle used in enterprise AI quality systems — generate → measure → correct → re-measure.
+
+**Resume-safe:** If Call 5 already completed (file `Foundation_Raw_Output_Part5.md` exists), it is skipped on rerun — just like Calls 1–4.
+
+---
+
+### 6. Hybrid Coverage Engine
 
 **What changed from old:** Old pipeline had zero coverage measurement.
 
@@ -286,12 +319,16 @@ Option 2 overwrites Option 1 with exact numbers.
 
 | Component | Status |
 |---|---|
-| Pipeline engine (`foundation_runner_template.py`) | COMPLETE |
+| Pipeline engine — `foundation_runner_template.py` | COMPLETE |
+| 4-call generation (Calls 1–4) | COMPLETE |
+| Call 5 — self-correction pass (AI self-healing loop) | COMPLETE |
 | 25 generic industry templates | COMPLETE |
 | 6 accuracy improvements on all 25 templates | COMPLETE |
+| Confidence labels (HIGH / MEDIUM / LOW) on all templates | COMPLETE |
 | Hybrid coverage engine + `COVERAGE_SUMMARY.md` | COMPLETE |
-| Entry point (`fresh_run_template.py`) | COMPLETE |
-| Manager summary (`PROJECT_PROGRESS_SUMMARY.md`) | COMPLETE |
+| Entry point — `fresh_run_template.py` | COMPLETE |
+| Manager summary — `PROJECT_PROGRESS_SUMMARY.md` | COMPLETE |
+| GitHub — all code pushed and up to date | COMPLETE |
 | Source input files (8 agent reports from teammates) | WAITING — teammates to supply |
 
 **Next step:** Teammates send the 8 agent input files into `results_fresh/` subfolders, then run:
@@ -306,10 +343,12 @@ python fresh_run_template.py
 - **Complete engineering specification** — 25 documents covering business, data, security, architecture, and UX
 - **Technology-neutral** — team chooses the target stack; pipeline does not lock anyone in
 - **Reusable for any future project** — Finance, Logistics, Healthcare, Manufacturing — not just HRMS
-- **Auditable quality** — every claim has evidence class, source reference, and confidence score
-- **Clear escalation** — missing evidence names the exact stakeholder to contact
+- **Auditable quality** — every claim has evidence class, source reference, and confidence score with HIGH / MEDIUM / LOW label
+- **Readable by anyone** — confidence shown as `0.90 — HIGH (observed in source)` — no training needed to understand it
+- **Self-correcting AI** — LOW confidence sections are automatically re-examined and upgraded before final output
+- **Clear escalation** — missing evidence names the exact stakeholder to contact (BA / DBA / CISO / Architect)
 - **Readiness gate** — GO / CONDITIONAL / BLOCKED decision before forward engineering begins
-- **Cost-safe reruns** — interrupted runs resume from last completed call
+- **Cost-safe reruns** — interrupted runs resume from last completed call (Calls 1–5 all resume-safe)
 
 ---
 
