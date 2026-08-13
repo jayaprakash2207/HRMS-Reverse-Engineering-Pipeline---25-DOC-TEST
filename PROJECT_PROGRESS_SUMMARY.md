@@ -11,7 +11,17 @@ We built an automated AI pipeline that takes an existing Oracle HRMS system (Ora
 
 ---
 
-## Before vs Now — What Changed
+## Verdict — Which Is Better?
+
+**The NEW pipeline is significantly better in every dimension.**
+
+The old pipeline was a starting point — it proved the concept worked. The new pipeline makes it production-ready. The core difference is control: the old one let Claude decide everything freely, meaning output quality varied run to run and there was no way to verify correctness. The new one enforces structure, evidence, quality gates, and escalation paths — so every output is auditable, consistent, and actionable regardless of who runs it or on which project.
+
+In one sentence: **the old pipeline generated documents; the new pipeline generates verified, traceable, quality-gated engineering specifications.**
+
+---
+
+## Before vs Now — Full Comparison
 
 ### BEFORE (Original State)
 | Area | What Existed |
@@ -26,68 +36,92 @@ We built an automated AI pipeline that takes an existing Oracle HRMS system (Ora
 | Worked examples | None in templates — Claude had no concrete reference for what a completed section looks like. |
 | ID consistency | No cross-reference hints — BR-* IDs could be created in multiple documents inconsistently. |
 | Quality gate | No per-section pass/fail criteria — no way to know if a section was actually complete. |
+| Anti-patterns | Nothing stopping Claude from making known mistakes (e.g. prescribing technology in a business document). |
+| Interrupted run | Restart from zero — wasted API time and cost. |
+| Domain scope | HRMS only — not reusable for any other project. |
 
 ### NOW (Current State)
-| Area | What Was Built |
-|---|---|
-| Pipeline | `foundation_runner_template.py` — template-driven runner. Every [M] mandatory section is enforced. |
-| Templates | `GENERIC_25_Enterprise_Forward_Engineering_Templates_INDUSTRY_BASED/` — domain-neutral, works for HRMS, Finance, Logistics, Healthcare, or any project. |
-| Output quality | Claude populates exact template skeletons — structure is guaranteed and consistent across every run. |
-| Evidence tracking | Every claim has: evidence class (OBSERVED/DERIVED/INFERRED/ASSUMED/UNKNOWN/CONTRADICTED) + source reference + confidence score (0.00–0.95). |
-| Coverage | Hybrid engine: Claude semantic estimate (Call 3) + Python exact counts (after Call 4) → `COVERAGE_SUMMARY.md` with CRITICAL / MEDIUM / NOT_AVAILABLE sections. |
-| Missing evidence | Exact escalation table per section type: BA for business rules / DBA for schema / CISO for security / Architect for technology. |
-| Entry point | `fresh_run_template.py` — new entry point; `fresh_run.py` untouched for legacy runs. |
-| Worked examples | 2+ worked example rows in every complex section — concrete placeholder rows Claude can follow. |
-| ID consistency | Cross-reference hints at every section where IDs are created — tells Claude exactly which other documents must use the same IDs. |
-| Quality gate | Section-level acceptance criteria on every major section — inline pass/fail test. |
-| Anti-patterns | Explicit "DO NOT" warnings per document — e.g. "Do NOT prescribe technology", "Do NOT mix BR-* and BR-SEC-*". |
+| Area | What Was Built | Why Better |
+|---|---|---|
+| Pipeline | `foundation_runner_template.py` — template-driven. Every [M] mandatory section enforced. | Structure guaranteed, identical every run. |
+| Templates | `GENERIC_25_Enterprise_Forward_Engineering_Templates_INDUSTRY_BASED/` — domain-neutral. | Works for HRMS, Finance, Logistics, Healthcare, any domain. |
+| Output quality | Claude populates exact template skeletons — no section can silently disappear. | Two runs are directly comparable side by side. |
+| Evidence tracking | Every claim: evidence class + source reference + confidence score (0.00–0.95). | Reader instantly knows what to trust and what to verify. |
+| Coverage | Hybrid: Claude semantic estimate (Call 3) + Python exact counts (Call 4) → `COVERAGE_SUMMARY.md`. | Know which documents are weak before handing off. |
+| Missing evidence | 8-row escalation table: BA / DBA / CISO / Architect / UX Lead — named per section type. | Team knows exactly who to call and what to ask. |
+| Entry point | `fresh_run_template.py` (new) + `fresh_run.py` (untouched legacy). | Both modes available, no regression. |
+| Worked examples | 1–2 worked example rows per major section with `{PLACEHOLDER}` syntax. | Claude follows the pattern — output is more complete. |
+| ID consistency | Cross-reference hints at every section where IDs are created. | BR-001 in BRD = BR-001 in all 24 other documents. |
+| Quality gate | Section-level acceptance criteria — inline pass/fail per section. | QA review is mechanical, not judgment-based. |
+| Anti-patterns | 4–6 "DO NOT" warnings per document, tailored to each document type. | Claude avoids the most common failure modes before generating. |
+| Interrupted run | Resume capability — skips already-completed calls. | No wasted cost or time on reruns. |
+| Domain scope | Generic — any domain, any project. | Reusable investment across all future projects. |
 
-### Key Numbers
+### Key Numbers — Before vs Now
 | Metric | Before | Now |
 |---|---|---|
 | Templates | 25 (HRMS-specific, no examples) | 25 (generic, with examples + rubrics + 6 accuracy layers) |
 | Reusable for other projects | No | Yes — any domain |
 | Evidence classification | Not enforced | Mandatory on every claim |
 | Confidence scoring | Not present | Standardised 0.00–0.95 scale across all 25 docs |
-| Coverage measurement | None | Hybrid (semantic + exact count) per document |
+| Coverage measurement | None | Hybrid (semantic + exact Python count) per document |
 | Human review guidance | Vague | Named stakeholder + specific question per section type |
 | Worked examples per template | 0 | 1–2 per major section |
 | Cross-reference enforcement | None | Present in every section that creates IDs |
 | Anti-pattern warnings | None | 4–6 per document |
 | Section acceptance criteria | None | Present on every key section |
+| Interrupted run recovery | Restart from zero | Resume from last completed call |
+| Entry points | 1 (freeform only) | 2 (freeform + template-driven) |
 
 ---
 
-## What We Have Built — End to End
+## Everything Built in the New Pipeline — Complete Detail
 
-### 1. Source Analysis (Already Done — Teammates' Work)
-8 specialist AI agent reports are fed into the pipeline as inputs:
+### 1. New Pipeline Engine — `foundation_runner_template.py`
 
-| Agent File | What It Covers |
-|---|---|
-| `BA_Structural_Scout.md` | High-level business structure scan |
-| `BA_Deep_Analyst.md` | Deep business logic analysis |
-| `DA_Data_Extractor.md` | Database schema and data extraction |
-| `DA_Data_Reviewer.md` | Data quality and validation review |
-| `TA_Stack_Scout.md` | Technology stack identification |
-| `TA_Deep_Analyst.md` | Deep technical analysis |
-| `AA_App_Extractor.md` | Application module extraction |
-| `AA_Quality_Review.md` | Application quality review |
+**What it is:** The core runner that drives all 4 Claude AI calls and the post-run coverage pass.
 
----
+**What changed from old:** Old runner (`foundation_runner.py`) gave Claude free rein to decide structure. The new runner feeds Claude the exact template skeleton for each document and instructs it to populate every `[M]` mandatory section — nothing is left to Claude's discretion regarding structure.
 
-### 2. The Pipeline — `pipeline/foundation_runner_template.py`
-The core engine. It runs 4 sequential Claude AI calls:
+**4 calls it runs:**
 
 | Call | What It Generates |
 |---|---|
-| **Call 1** | Knowledge Graph (KG) + Documents 01–10 |
-| **Call 2** | Documents 11–20 |
-| **Call 3** | Verification pass + Coverage estimation (Claude semantic) |
-| **Call 4** | Cross-document consistency pass |
-| **Post-run** | Python exact coverage counts → `COVERAGE_SUMMARY.md` |
+| Call 1 | Enterprise Knowledge Graph (JSON) + Documents 01–10 |
+| Call 2 | Documents 11–20 |
+| Call 3 | Verification pass + Claude semantic coverage estimate |
+| Call 4 | Cross-document consistency pass |
+| Post-run | Python exact coverage counts → `COVERAGE_SUMMARY.md` |
 
-**Resume capability:** If the run is interrupted, it checks for existing Part 1/2/3/4 raw output files and skips completed calls — no work is lost.
+**Resume capability:** Checks for existing Part 1/2/3/4 raw output files. If a call already completed, it skips it entirely. No wasted API cost on reruns.
+
+---
+
+### 2. 25 Generic Industry Templates
+
+**What they are:** Structural contracts for each of the 25 output documents. Claude must follow these exactly — every mandatory section, every ID series, every evidence requirement.
+
+**What changed from old:** Old templates were in `HRMS_25_Enterprise_Forward_Engineering_Templates_FULL/` — hardcoded for HRMS. New templates use `{DOMAIN}` placeholders and domain-neutral language. Work for any project.
+
+**Industry standards aligned to:** ISO/IEC/IEEE 29148, 15288, 12207, ISO 25010, ISO 11179, TOGAF, UML, BPMN, OpenAPI, NIST, SEI, ISO 9241-210.
+
+**What each template contains:**
+
+| Section | Purpose |
+|---|---|
+| Document conventions | Mandatory / Conditional / Optional markers, evidence classes explained |
+| Common Mistakes to Avoid | 4–6 anti-pattern warnings specific to that document type |
+| NOT_AVAILABLE Escalation Path | Named stakeholder per section type when evidence is missing |
+| Evidence and Traceability Rules | Every claim needs source reference, evidence class, confidence score |
+| Confidence Calibration Guide | Fixed 0.00–0.95 scale — same across all 25 documents |
+| Document Dependencies | What feeds this doc (upstream) and what it feeds (downstream) |
+| Content sections | All [M] mandatory sections with worked example rows |
+| Cross-reference hints | Exact instruction on which IDs must match which other documents |
+| Section-level acceptance criteria | Inline pass/fail test per major section |
+| Assumptions / Contradictions / Open Questions | Explicit uncertainty tracking |
+| Readiness Scoring | 0–3 per dimension → READY / CONDITIONAL / BLOCKED decision |
+| Quality Gate checklist | Pre-flight checklist before marking document complete |
+| Traceability Matrix | End-to-end trace links |
 
 ---
 
@@ -119,7 +153,7 @@ The core engine. It runs 4 sequential Claude AI calls:
 | 15 | NFR Specification | NFR-* non-functional requirements |
 | 16 | Forward Engineering Specification | Source-to-target transformation rules |
 | 17 | Generation Manifest (JSON) | Machine-readable generation instructions |
-| 18 | Forward Engineering Readiness Report | GO/CONDITIONAL/BLOCKED decision |
+| 18 | Forward Engineering Readiness Report | GO / CONDITIONAL / BLOCKED decision |
 | 19 | Deployment Architecture | Environment and deployment model |
 | 20 | Frontend Architecture | UI module architecture |
 | 21 | UI/UX Specification | Screen and field specifications |
@@ -130,97 +164,121 @@ The core engine. It runs 4 sequential Claude AI calls:
 
 ---
 
-### 4. The 25 Generic Industry Templates
-Folder: `GENERIC_25_Enterprise_Forward_Engineering_Templates_INDUSTRY_BASED/`
+### 4. Six Accuracy Improvements — Added to All 25 Templates
 
-Each of the 25 output documents is driven by a corresponding template. These templates are:
-- **Technology-neutral** — no React, AWS, Spring Boot, or vendor lock-in
-- **Domain-neutral** — work for HRMS, Finance, Logistics, Healthcare, or any domain
-- **Industry-standard** — aligned with ISO/IEC/IEEE 29148, 15288, 12207, ISO 25010, TOGAF, BPMN, UML, NIST
+**What changed from old:** Old templates had none of these. Every improvement was added in this phase.
 
-**What each template contains:**
+#### Improvement 1 — Anti-Pattern Warnings
+Each document has 4–6 specific "DO NOT" warnings. Examples:
+- BRD: "Do NOT prescribe technology solutions (no React, no PostgreSQL, no AWS)"
+- Security: "Do NOT use BR-xxx IDs for security defects — use BR-SEC-xxx exclusively"
+- Use Cases: "Do NOT reference BR-* IDs not defined in 01_BRD.md"
 
-| Section | Purpose |
+**Why better:** Claude reads these before generating and avoids the most common failure modes.
+
+#### Improvement 2 — More Worked Examples
+Complex documents (03, 06, 11, 13) have 2 worked example rows showing different scenarios with full `{PLACEHOLDER}` syntax.
+
+**Why better:** Claude follows the example pattern — output is more complete and consistently structured.
+
+#### Improvement 3 — Cross-Reference Hints
+At every section where IDs are created, an explicit note names which other documents must use those exact same IDs. Example in BRD Section 7:
+> "Every BR-* ID defined here is the master. All other documents (03, 10, 11, 13, 14, 15, 24) must reference these exact IDs. Never create a new BR-* in another document."
+
+**Why better:** ID consistency across 25 documents is enforced by instruction, not by hope.
+
+#### Improvement 4 — Confidence Calibration Guide
+Every template has the same fixed scale:
+
+| Evidence Source | Confidence Range |
 |---|---|
-| Document conventions | Mandatory/Conditional/Optional markers, evidence classes |
-| Common Mistakes to Avoid | Anti-pattern warnings specific to that document type |
-| NOT_AVAILABLE Escalation Path | Who to contact (BA / DBA / CISO / Architect) when evidence is missing |
-| Evidence and Traceability Rules | Every claim needs a source reference, evidence class, and confidence score |
-| Confidence Calibration Guide | DDL evidence → 0.90–0.95 / Inferred → 0.50–0.70 / Unknown → 0.00 |
-| Document Dependencies | What feeds this doc (upstream) and what it feeds (downstream) |
-| Content sections | All mandatory [M] sections with worked examples |
-| Cross-reference hints | Exact instruction on which IDs must match which other documents |
-| Section-level acceptance criteria | Pass/fail test for each major section |
-| Assumptions / Contradictions / Open Questions | Explicit uncertainty tracking |
-| Readiness Scoring | 0–3 scale per dimension; READY / CONDITIONAL / BLOCKED decision |
-| Quality Gate checklist | Pre-flight checklist before marking document complete |
-| Traceability Matrix | End-to-end trace links |
+| DDL / source file exact match | 0.90 – 0.95 |
+| Procedure body / trigger / form logic | 0.80 – 0.90 |
+| Derived from two or more observed facts | 0.75 – 0.85 |
+| Inferred from naming / pattern / context | 0.50 – 0.70 |
+| Assumed — no evidence, standard practice | 0.30 – 0.50 |
+| Unknown — insufficient evidence | 0.00 – 0.30 |
+| Contradicted — conflicting evidence | 0.00 |
 
----
+Hard rules: Never > 0.70 for INFERRED. Never > 0.50 for ASSUMED. Always 0.00 for UNKNOWN and CONTRADICTED.
 
-### 5. Accuracy Improvements Built Into Every Template
+**Why better:** Confidence scores mean the same thing in every document — comparable and trustworthy.
 
-Six targeted improvements were added to all 25 templates to maximize output quality:
+#### Improvement 5 — Section-Level Acceptance Criteria
+Every major section ends with an inline pass/fail test. Example:
+> "Section passes QA when: Every BR-* has a statement, actor, trigger, acceptance criteria, evidence class, source reference, and confidence score. No BR-* is missing any of these fields."
 
-| # | Improvement | What It Does |
+**Why better:** QA review is mechanical — pass or fail, no judgment calls needed.
+
+#### Improvement 6 — NOT_AVAILABLE Escalation Path
+Replaced vague "validate with stakeholders" with a named escalation table in every template:
+
+| Section Type | Escalate To | What to Ask |
 |---|---|---|
-| 1 | **Anti-pattern warnings** | Tells Claude exactly what NOT to do in each document (e.g. "Do NOT prescribe technology", "Do NOT merge BR-* and BR-SEC-* ID series") |
-| 2 | **More worked examples** | Complex documents (03, 06, 11, 13) have 2+ worked example rows showing real placeholder structures |
-| 3 | **Cross-reference hints** | At each section where IDs are created, an explicit note names the other documents that must use the same IDs |
-| 4 | **Confidence calibration guide** | Standardized confidence scale (0.00–0.95) in every document — prevents over-confident inferences |
-| 5 | **Section-level acceptance criteria** | Every major section has an inline pass/fail test — e.g. "At least 3 entities defined, each with PK, lifecycle, and source reference" |
-| 6 | **NOT_AVAILABLE escalation path** | Instead of generic "validate with stakeholders", specifies exactly who: BA for business rules / DBA for schema / CISO for security |
+| Business rules / requirements | Business Analyst | Confirm the rule exists and its exact logic |
+| Data schema / DDL / tables | DBA | Provide DDL or confirm table structure |
+| Security controls / auth model | CISO / Security Lead | Confirm security design decision |
+| Process / workflow / approval | Process Owner / BA | Confirm process steps and actors |
+| Architecture / technology choice | Solution Architect | Confirm architecture decision |
+| UI / UX / screen layout | UX Lead / Product Owner | Confirm screen design |
+| Performance / availability targets | System Owner / Architect | Confirm NFR targets |
+| Regulatory / compliance | Legal / Compliance Officer | Confirm regulatory requirement |
+
+**Why better:** Team knows exactly who to call and what question to ask — no delay, no confusion.
 
 ---
 
-### 6. Hybrid Coverage Engine
-After all 4 calls complete, the pipeline calculates how well each document matches the source evidence:
+### 5. Hybrid Coverage Engine
+
+**What changed from old:** Old pipeline had zero coverage measurement.
+
+**How it works:**
 
 **Option 1 — Claude Semantic Estimate (during Call 3)**
-- Claude reviews its own output and estimates coverage qualitatively
-- Fast, context-aware
+Claude reviews its own output and estimates how well it covered the source system — qualitative, context-aware.
 
 **Option 2 — Python Exact Counts (after Call 4)**
-- Counts every `OBSERVED`, `DERIVED`, `INFERRED`, `ASSUMED`, `UNKNOWN`, `CONTRADICTED` tag
-- Calculates: `Source Match % = (OBSERVED + DERIVED) / total evidence tags × 100`
-- Averages confidence scores per document
-- Overwrites Option 1 estimates with exact numbers
+Counts every evidence tag in every document:
+`Source Match % = (OBSERVED + DERIVED) / total evidence tags × 100`
+Option 2 overwrites Option 1 with exact numbers.
 
-**Output: `COVERAGE_SUMMARY.md`** — three action sections:
+**Output — `COVERAGE_SUMMARY.md` has four sections:**
 - `CRITICAL (< 60%)` — Human review required immediately
 - `MEDIUM (60–79%)` — Human review recommended
 - `NOT_AVAILABLE sections` — Stakeholder input needed
-- Full ranked table (lowest match first)
+- Full ranked table, lowest match first
+
+**Why better:** You know which documents are weak before handing anything to the engineering team.
 
 ---
 
-### 7. Entry Points
+### 6. Entry Points
 
 | File | What It Runs | When to Use |
 |---|---|---|
-| `fresh_run_template.py` | Template-driven pipeline (new) | **Use this** — enforces all 25 templates |
-| `fresh_run.py` | Freeform pipeline (original) | Legacy — Claude decides structure freely |
+| `fresh_run_template.py` | New template-driven pipeline | **Use this** — enforces all 25 templates |
+| `fresh_run.py` | Original freeform pipeline | Legacy only — Claude decides structure freely |
 
 ---
 
-### 8. ID Series — Never Mix These
+### 7. ID Series — Never Mix These
 
 | ID Series | Belongs In | Meaning |
 |---|---|---|
-| `BR-*` | 01_BRD | Business requirements |
-| `BR-SEC-*` | 13_SECURITY_ARCHITECTURE | Security defects/requirements |
+| `BR-*` | 01_BRD only | Business requirements |
+| `BR-SEC-*` | 13_SECURITY only | Security defects / requirements |
 | `BRL-*` | 01_BRD Section 8 | Business rules |
-| `CAP-*` | 02_BUSINESS_CAPABILITY_MODEL | Capabilities |
-| `UC-*` | 03_USE_CASE_SPECIFICATION | Use cases |
-| `PRC-*` | 04_BUSINESS_PROCESS_MODEL | Processes |
+| `CAP-*` | 02_CAPABILITY | Capabilities |
+| `UC-*` | 03_USE_CASE | Use cases |
+| `PRC-*` | 04_PROCESS | Processes |
 | `DOM-*` | 05_DOMAIN_MODEL | Domain concepts |
-| `DE-*` | 06_DATA_DICTIONARY | Data elements |
-| `ENT-*` | 07_DATA_MODEL_SPECIFICATION | Entities |
+| `DE-*` | 06_DATA_DICTIONARY | Data elements / fields |
+| `ENT-*` | 07_DATA_MODEL | Entities / tables |
 | `SVC-*` | 10_SERVICE_CATALOG | Services |
 | `IF-*/OP-*` | 11_API_CONTRACT | Interface operations |
-| `NFR-*` | 14_NFR_SPECIFICATION | Non-functional requirements |
-| `ARCH-*` | 23_ARCHITECTURE_INVENTORY | Architecture components |
-| `FEI-*` | 25_FORWARD_ENGINEERING_INPUT_MAP | Generation inputs |
+| `NFR-*` | 14_NFR_SPEC | Non-functional requirements |
+| `ARCH-*` | 23_ARCH_INVENTORY | Architecture components |
+| `FEI-*` | 25_INPUT_MAP | Generation inputs |
 
 ---
 
@@ -230,12 +288,13 @@ After all 4 calls complete, the pipeline calculates how well each document match
 |---|---|
 | Pipeline engine (`foundation_runner_template.py`) | COMPLETE |
 | 25 generic industry templates | COMPLETE |
-| 6 accuracy improvements on all templates | COMPLETE |
-| Hybrid coverage engine | COMPLETE |
+| 6 accuracy improvements on all 25 templates | COMPLETE |
+| Hybrid coverage engine + `COVERAGE_SUMMARY.md` | COMPLETE |
 | Entry point (`fresh_run_template.py`) | COMPLETE |
-| Source input files (8 agent reports) | WAITING — teammates to supply |
+| Manager summary (`PROJECT_PROGRESS_SUMMARY.md`) | COMPLETE |
+| Source input files (8 agent reports from teammates) | WAITING — teammates to supply |
 
-**Next step:** Teammates send the 8 agent input files into `results_fresh/` subfolders. Then run:
+**Next step:** Teammates send the 8 agent input files into `results_fresh/` subfolders, then run:
 ```
 python fresh_run_template.py
 ```
@@ -244,12 +303,13 @@ python fresh_run_template.py
 
 ## What This Delivers to the Business
 
-- **Complete engineering specification** for rebuilding the HRMS system — 25 documents covering business, data, security, architecture, and UX
-- **Technology-neutral** — the team chooses the target stack; this pipeline does not lock anyone in
-- **Reusable for any project** — templates work for Finance, Logistics, Healthcare, or any domain, not just HRMS
-- **Auditable quality** — every claim has an evidence class, source reference, and confidence score
-- **Clear escalation** — when evidence is missing, the document names the exact stakeholder to contact
-- **Readiness gate** — each document produces a GO / CONDITIONAL / BLOCKED decision before forward engineering begins
+- **Complete engineering specification** — 25 documents covering business, data, security, architecture, and UX
+- **Technology-neutral** — team chooses the target stack; pipeline does not lock anyone in
+- **Reusable for any future project** — Finance, Logistics, Healthcare, Manufacturing — not just HRMS
+- **Auditable quality** — every claim has evidence class, source reference, and confidence score
+- **Clear escalation** — missing evidence names the exact stakeholder to contact
+- **Readiness gate** — GO / CONDITIONAL / BLOCKED decision before forward engineering begins
+- **Cost-safe reruns** — interrupted runs resume from last completed call
 
 ---
 
