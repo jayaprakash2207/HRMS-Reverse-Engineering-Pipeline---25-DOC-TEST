@@ -634,7 +634,7 @@ _PART2_TEMPLATES = [
 def _build_template_appendix(template_list: list) -> str:
     """Build the template appendix injected at the end of Call 1 and Call 2 prompts."""
     parts = []
-    for _output_name, template_file in template_list:
+    for _, template_file in template_list:
         parts.append(_template_block(template_file))
     return "\n\n".join(parts)
 
@@ -881,6 +881,25 @@ _SOURCE_COVERAGE_SECTION = _re_top.compile(
     _re_top.DOTALL | _re_top.IGNORECASE
 )
 
+# ── Improvement 1: Citation completeness — OBSERVED must have a source ref ───
+# Matches OBSERVED evidence class tag anywhere in a line
+_OBSERVED_TAG_PATTERN = _re_top.compile(
+    r'\bOBSERVED\b',
+    _re_top.IGNORECASE
+)
+# Matches a source reference pattern: file.ext / object / line or similar
+_SOURCE_REF_PATTERN = _re_top.compile(
+    r'(?:\.sql|\.fmb|\.pkb|\.pks|\.pck|\.trg|\.vw|\.prc|\.fnc|\.pkg'
+    r'|SOURCE_FILE|SOURCE_REF|source_ref|PKG_|FORM_|TBL_|line\s+\d+)',
+    _re_top.IGNORECASE
+)
+
+# ── Improvement 2: Source file existence — cited files must exist in source ──
+_CITED_FILE_PATTERN = _re_top.compile(
+    r'\b([\w]+\.(?:sql|fmb|pkb|pks|pck|trg|vw|prc|fnc|pkg))\b',
+    _re_top.IGNORECASE
+)
+
 
 def _compute_coverage(content: str) -> dict:
     """Count evidence class occurrences and confidence scores in a document."""
@@ -918,8 +937,181 @@ def _compute_coverage(content: str) -> dict:
     }
 
 
-def _build_coverage_section(filename: str, cov: dict) -> str:
-    """Build the ## Source Coverage Report markdown table."""
+# ── Improvement 1: Citation completeness check ────────────────────────────────
+
+def _check_citation_completeness(content: str, filename: str) -> list:
+    """
+    Improvement 1 — Citation completeness check.
+    Every OBSERVED claim must have a source file reference on the same or
+    adjacent line. If OBSERVED appears without a source ref nearby,
+    flag it as a lazy/unsupported OBSERVED label.
+    Returns a list of flagged issue strings.
+    """
+    issues = []
+    lines = content.split("\n")
+    for i, line in enumerate(lines):
+        if _OBSERVED_TAG_PATTERN.search(line):
+            # Check this line and ±2 lines for a source reference
+            window_start = max(0, i - 2)
+            window_end   = min(len(lines), i + 3)
+            window_text  = "\n".join(lines[window_start:window_end])
+            if not _SOURCE_REF_PATTERN.search(window_text):
+                issues.append(
+                    f"  Line {i+1}: OBSERVED claim has no source reference nearby — "
+                    f"may need downgrade to INFERRED. Content: {line.strip()[:120]}"
+                )
+    return issues
+
+
+# ── Improvement 2: Source file existence check ────────────────────────────────
+
+def _check_source_file_existence(content: str, filename: str, source_dir: Path) -> list:
+    """
+    Improvement 2 — Source file existence check.
+    Extracts all source file names cited in the document (e.g. PKG_PAYROLL.sql)
+    and checks whether each file actually exists in the source directory.
+    Returns a list of flagged issue strings for files that cannot be found.
+    """
+    if not source_dir or not source_dir.exists():
+        return []
+
+    # Build a flat set of all filenames in source_dir (case-insensitive)
+    source_files = {f.name.lower() for f in source_dir.rglob("*") if f.is_file()}
+    cited = set(_CITED_FILE_PATTERN.findall(content))
+    issues = []
+    for cited_file in sorted(cited):
+        if cited_file.lower() not in source_files:
+            issues.append(
+                f"  Cited source file not found in source directory: "
+                f"`{cited_file}` — reference may be hallucinated or misnamed."
+            )
+    return issues
+
+
+# ── Improvement 3: Second-opinion scoring prompt ──────────────────────────────
+
+_SECOND_OPINION_PROMPT = """
+# Second-Opinion Scoring Agent
+
+You are an independent reviewer. You did NOT generate the documents below.
+Your job is to re-score a sample of HIGH confidence claims to verify they
+are genuinely supported by the source evidence.
+
+For each HIGH confidence claim you review:
+1. Find the cited source reference (file / line / object).
+2. Check whether the source evidence actually supports the claim.
+3. If YES — confirm: `CONFIRMED HIGH`.
+4. If NO or UNCERTAIN — downgrade: `DOWNGRADE TO MEDIUM` or `DOWNGRADE TO LOW`
+   with a short reason.
+
+OUTPUT FORMAT — one block per finding:
+
+=== SCORE_REVIEW: <filename> | <claim_id_or_line> ===
+Claim: <the original claim text>
+Original score: <original score and label>
+Verdict: CONFIRMED HIGH | DOWNGRADE TO MEDIUM | DOWNGRADE TO LOW
+Reason: <why — cite the source evidence or lack of it>
+=== END SCORE_REVIEW ===
+
+Review at least 5 HIGH confidence claims per document, focusing on:
+- Claims marked OBSERVED with a specific source file reference
+- Claims with confidence >= 0.85
+
+Be sceptical. Your job is to catch self-reporting bias — where the
+generating agent labelled something HIGH without adequate evidence.
+"""
+
+
+def _run_second_opinion_pass(
+    foundation_dir: Path,
+    fwd_eng_dir: Path,
+    output_dir: str,
+    layers: dict,
+) -> dict:
+    """
+    Improvement 3 — Second-opinion scoring pass.
+    An independent Claude call re-scores a sample of HIGH confidence claims.
+    Returns a dict of {filename: [downgrade_issues]} for COVERAGE_SUMMARY.
+    """
+    import re as _re6
+
+    print("\n[Second Opinion] Sampling HIGH confidence claims for independent re-scoring...")
+
+    # Collect HIGH confidence claims from all documents
+    high_claims_text = ""
+    doc_count = 0
+    for directory in [foundation_dir, fwd_eng_dir]:
+        for path in sorted(directory.glob("*.md")):
+            content = path.read_text(encoding="utf-8")
+            # Find lines with HIGH confidence scores
+            high_lines = [
+                (i + 1, line.strip())
+                for i, line in enumerate(content.split("\n"))
+                if _CONFIDENCE_LABEL_PATTERN.search(line)
+                and "HIGH" in line.upper()
+            ]
+            if high_lines:
+                # Take up to 5 per document
+                sample = high_lines[:5]
+                high_claims_text += f"\n\n## Document: {path.name}\n"
+                for lineno, line in sample:
+                    high_claims_text += f"Line {lineno}: {line}\n"
+                doc_count += 1
+
+    if not high_claims_text.strip():
+        print("[Second Opinion] No HIGH confidence claims found — skipping.")
+        return {}
+
+    print(f"  Reviewing HIGH claims from {doc_count} document(s)...")
+
+    source_evidence = "\n\n".join(
+        f"## {key}\n\n{content[:3000]}"
+        for key, content in layers.items()
+        if content
+    )
+
+    call6_prompt = (
+        f"{_SECOND_OPINION_PROMPT}\n\n"
+        f"# HIGH Confidence Claims to Review\n\n"
+        f"{high_claims_text}\n\n"
+        f"# Source Evidence\n\n"
+        f"{source_evidence}\n\n"
+        f"Begin independent review now."
+    )
+
+    call6_output = call_claude(
+        call6_prompt,
+        label="Foundation Template Call 6 (second-opinion scoring)",
+        timeout=2400,
+        allow_tools=False,
+    )
+    save_output(output_dir, "Foundation_Raw_Output_Part6.md", call6_output)
+
+    # Parse downgrades
+    review_pattern = _re6.compile(
+        r'=== SCORE_REVIEW:\s*([^|]+)\|([^=]+)===(.*?)=== END SCORE_REVIEW ===',
+        _re6.DOTALL
+    )
+    downgrades = {}
+    for filename_raw, claim_raw, body in review_pattern.findall(call6_output):
+        filename = filename_raw.strip()
+        verdict_match = _re6.search(r'Verdict:\s*(DOWNGRADE.*)', body)
+        reason_match  = _re6.search(r'Reason:\s*(.+)', body, _re6.DOTALL)
+        if verdict_match and "DOWNGRADE" in verdict_match.group(1).upper():
+            entry = (
+                f"  Claim: {claim_raw.strip()[:100]} | "
+                f"Verdict: {verdict_match.group(1).strip()} | "
+                f"Reason: {reason_match.group(1).strip()[:150] if reason_match else 'see Part6 raw output'}"
+            )
+            downgrades.setdefault(filename, []).append(entry)
+
+    total_downgrades = sum(len(v) for v in downgrades.values())
+    print(f"[Second Opinion] Complete — {total_downgrades} potential downgrade(s) flagged.")
+    return downgrades
+
+
+def _build_coverage_section(filename: str, cov: dict, integrity_issues: list = None) -> str:
+    """Build the ## Source Coverage Report markdown table including integrity check results."""
     counts = cov["counts"]
     total = cov["total"]
     rows = ""
@@ -934,6 +1126,17 @@ def _build_coverage_section(filename: str, cov: dict) -> str:
         "LOW — human review required"
     )
 
+    integrity_issues = integrity_issues or []
+    if integrity_issues:
+        issues_block = (
+            f"\n### Integrity Check Warnings\n\n"
+            f"The following issues were detected by automated integrity checks:\n\n"
+            + "\n".join(f"- {issue.strip()}" for issue in integrity_issues)
+            + "\n\n> These warnings do not block use but should be reviewed before forward engineering.\n"
+        )
+    else:
+        issues_block = "\n### Integrity Check: PASSED — No citation or source file issues detected.\n"
+
     return (
         f"\n\n## Source Coverage Report [VERIFIED]\n\n"
         f"| Evidence Class | Count | % of Total |\n"
@@ -942,20 +1145,31 @@ def _build_coverage_section(filename: str, cov: dict) -> str:
         f"| NOT_AVAILABLE sections | {cov['not_available']} | — |\n"
         f"| **Source Match % (OBS+DER)** | — | **{cov['source_match_pct']}%** |\n"
         f"| **Avg Confidence Score** | — | **{cov['avg_confidence']} — {'HIGH' if cov['avg_confidence'] >= 0.75 else 'MEDIUM' if cov['avg_confidence'] >= 0.50 else 'LOW'}** |\n"
-        f"| **Total Evidence Tags** | {total} | 100% |\n\n"
-        f"**Readiness signal:** {readiness}\n\n"
+        f"| **Total Evidence Tags** | {total} | 100% |\n"
+        f"| **Integrity Issues** | {len(integrity_issues)} | {'⚠ See warnings below' if integrity_issues else '✓ None'} |\n\n"
+        f"**Readiness signal:** {readiness}\n"
+        f"{issues_block}\n"
         f"_Counts are programmatically verified from the saved document file._\n"
     )
 
 
-def _append_coverage_to_doc(path: Path) -> dict:
-    """Read a document, compute coverage, append/replace the report section."""
+def _append_coverage_to_doc(path: Path, source_dir: Path = None) -> dict:
+    """Read a document, compute coverage, run integrity checks, append/replace report section."""
     content = path.read_text(encoding="utf-8")
     if path.suffix == ".json":
         return {"filename": path.name, "skipped": True}
 
     cov = _compute_coverage(content)
-    coverage_section = _build_coverage_section(path.name, cov)
+
+    # Improvement 1 — Citation completeness check
+    citation_issues = _check_citation_completeness(content, path.name)
+
+    # Improvement 2 — Source file existence check
+    file_issues = _check_source_file_existence(content, path.name, source_dir)
+
+    all_issues = citation_issues + file_issues
+
+    coverage_section = _build_coverage_section(path.name, cov, all_issues)
 
     # Remove any prior Claude estimate or Python report, then append fresh
     content_clean = _SOURCE_COVERAGE_SECTION.sub("", content).rstrip()
@@ -968,6 +1182,8 @@ def _append_coverage_to_doc(path: Path) -> dict:
         "avg_confidence": cov["avg_confidence"],
         "not_available": cov["not_available"],
         "total_tags": cov["total"],
+        "citation_issues": len(citation_issues),
+        "file_issues": len(file_issues),
         "readiness": (
             "HIGH" if cov["source_match_pct"] >= 80 else
             "MEDIUM" if cov["source_match_pct"] >= 60 else
@@ -976,23 +1192,35 @@ def _append_coverage_to_doc(path: Path) -> dict:
     }
 
 
-def _run_coverage_pass(foundation_dir: Path, fwd_eng_dir: Path, output_dir: str) -> None:
+def _run_coverage_pass(
+    foundation_dir: Path,
+    fwd_eng_dir: Path,
+    output_dir: str,
+    source_dir: Path = None,
+    second_opinion_downgrades: dict = None,
+) -> None:
     """
     Option 2 — Python coverage pass.
     Reads every saved .md file, computes exact evidence counts,
+    runs Improvement 1 (citation completeness) and Improvement 2 (source file existence),
     overwrites the Source Coverage section, and writes COVERAGE_SUMMARY.md.
+    Optionally includes Improvement 3 (second-opinion downgrade flags).
     """
     print("\n[Coverage Pass] Computing source coverage for all documents...")
 
+    second_opinion_downgrades = second_opinion_downgrades or {}
     results = []
     for directory in [foundation_dir, fwd_eng_dir]:
         for path in sorted(directory.glob("*.md")):
-            result = _append_coverage_to_doc(path)
+            result = _append_coverage_to_doc(path, source_dir=source_dir)
             if not result.get("skipped"):
                 results.append(result)
                 signal = result["readiness"]
                 pct = result["source_match_pct"]
-                print(f"  {path.name:<55} {pct:>6.1f}%  [{signal}]")
+                ci  = result.get("citation_issues", 0)
+                fi  = result.get("file_issues", 0)
+                warn = f" ⚠ {ci+fi} integrity issue(s)" if (ci + fi) > 0 else ""
+                print(f"  {path.name:<55} {pct:>6.1f}%  [{signal}]{warn}")
 
     if not results:
         print("  [Coverage Pass] No documents found.")
@@ -1012,10 +1240,13 @@ def _run_coverage_pass(foundation_dir: Path, fwd_eng_dir: Path, output_dir: str)
     rows = ""
     for r in results:
         signal_icon = {"HIGH": "✓", "MEDIUM": "~", "LOW": "!"}.get(r["readiness"], "?")
+        integrity_count = r.get("citation_issues", 0) + r.get("file_issues", 0)
+        integrity_flag = f"⚠ {integrity_count}" if integrity_count > 0 else "✓ 0"
         rows += (
             f"| {r['filename']:<55} | {r['source_match_pct']:>6.1f}% "
             f"| {r['avg_confidence']:>5.3f} "
             f"| {r['not_available']:>3} "
+            f"| {integrity_flag} "
             f"| {r['total_tags']:>5} "
             f"| {signal_icon} {r['readiness']} |\n"
         )
@@ -1057,11 +1288,57 @@ def _run_coverage_pass(foundation_dir: Path, fwd_eng_dir: Path, output_dir: str)
         f"{_review_rows(not_avail_docs, 'Supply missing information — see NOT_AVAILABLE sections')}\n"
     )
 
+    # Integrity issues summary
+    integrity_docs = [r for r in results if r.get("citation_issues", 0) + r.get("file_issues", 0) > 0]
+    integrity_section = ""
+    if integrity_docs:
+        integrity_section = (
+            f"## ⚠ Integrity Check Warnings — OBSERVED Claims Without Source References\n\n"
+            f"These documents have OBSERVED labels that may lack proper source citations "
+            f"or reference non-existent source files. Review before using.\n\n"
+            f"| # | Document | Citation Issues | File Issues | Action |\n"
+            f"|---|---|---:|---:|---|\n"
+        )
+        for i, r in enumerate(integrity_docs, 1):
+            integrity_section += (
+                f"| {i} | `{r['filename']}` "
+                f"| {r.get('citation_issues', 0)} "
+                f"| {r.get('file_issues', 0)} "
+                f"| Check Source Coverage Report section in document |\n"
+            )
+        integrity_section += "\n"
+
+    # Second-opinion downgrade summary
+    second_opinion_section = ""
+    if second_opinion_downgrades:
+        second_opinion_section = (
+            f"## ⚠ Second-Opinion Score Review — Potential Downgrades\n\n"
+            f"An independent Claude pass re-scored HIGH confidence claims. "
+            f"The following may need downgrading after human review:\n\n"
+        )
+        for fname, issues in second_opinion_downgrades.items():
+            second_opinion_section += f"**{fname}**\n"
+            for issue in issues:
+                second_opinion_section += f"- {issue}\n"
+            second_opinion_section += "\n"
+    else:
+        second_opinion_section = (
+            f"## ✓ Second-Opinion Score Review — No Downgrades Flagged\n\n"
+            f"Independent re-scoring of HIGH confidence claims found no issues.\n\n"
+        )
+
+    total_integrity = sum(r.get("citation_issues", 0) + r.get("file_issues", 0) for r in results)
+    total_second_opinion = sum(len(v) for v in second_opinion_downgrades.values())
+
     summary = (
         f"# Source Coverage Summary\n\n"
-        f"Generated by hybrid coverage engine "
-        f"(Option 1: Claude semantic estimate → Option 2: Python exact counts).\n"
-        f"Documents sorted by Source Match % ascending — **lowest confidence first**.\n\n"
+        f"Generated by hybrid coverage engine with 3 integrity improvements:\n"
+        f"- Option 1: Claude semantic estimate (Call 3)\n"
+        f"- Option 2: Python exact counts (post Call 4)\n"
+        f"- Improvement 1: Citation completeness check (OBSERVED without source ref)\n"
+        f"- Improvement 2: Source file existence check (cited files must exist)\n"
+        f"- Improvement 3: Second-opinion re-scoring of HIGH confidence claims\n\n"
+        f"Documents sorted by Source Match % ascending — **lowest first**.\n\n"
         f"## Overall\n\n"
         f"| Metric | Value |\n"
         f"|---|---|\n"
@@ -1069,11 +1346,15 @@ def _run_coverage_pass(foundation_dir: Path, fwd_eng_dir: Path, output_dir: str)
         f"| Average source match % | {avg_overall}% |\n"
         f"| ✓ HIGH — safe for forward engineering (≥ 80%) | {high_count} |\n"
         f"| ~ MEDIUM — review recommended (60–79%) | {medium_count} |\n"
-        f"| ! LOW — human review REQUIRED (< 60%) | {low_count} |\n\n"
+        f"| ! LOW — human review REQUIRED (< 60%) | {low_count} |\n"
+        f"| ⚠ Integrity issues (citation + file checks) | {total_integrity} |\n"
+        f"| ⚠ Second-opinion potential downgrades | {total_second_opinion} |\n\n"
         f"{human_review_section}"
+        f"{integrity_section}"
+        f"{second_opinion_section}"
         f"## Full Document Report (lowest match first)\n\n"
-        f"| Document | Source Match % | Avg Confidence | NOT_AVAILABLE | Total Tags | Readiness |\n"
-        f"|---|---:|---:|---:|---:|---|\n"
+        f"| Document | Source Match % | Avg Confidence | NOT_AVAILABLE | Integrity Issues | Total Tags | Readiness |\n"
+        f"|---|---:|---:|---:|---:|---:|---|\n"
         f"{rows}\n"
         f"## Readiness Legend\n\n"
         f"| Signal | Meaning |\n"
@@ -1475,11 +1756,24 @@ def run(output_dir: str) -> None:
     print(f"  Foundation_KnowledgeGraph: {foundation_dir}")
     print(f"  ForwardEngineering_Docs:   {fwd_eng_dir}")
 
-    # ── Hybrid Coverage Pass (Option 2 — Python exact counts) ─────────────────
+    # Source directory — used by Improvement 2 (source file existence check)
+    source_dir = Path(output_dir).parent / "source"
+    if not source_dir.exists():
+        # Try common locations
+        for candidate in ["source", "Source", "src", "oracle_source"]:
+            candidate_path = Path(output_dir).parent / candidate
+            if candidate_path.exists():
+                source_dir = candidate_path
+                break
+        else:
+            source_dir = None
+
+    # ── Hybrid Coverage Pass (Option 2 + Improvements 1 & 2) ──────────────────
     # Option 1 (Claude estimate) was injected into Call 3 prompt above.
-    # Option 2 (Python exact counts) runs now — overwrites Claude's estimates
-    # with programmatically verified figures and writes COVERAGE_SUMMARY.md.
-    _run_coverage_pass(foundation_dir, fwd_eng_dir, output_dir)
+    # Option 2 (Python exact counts) runs now — overwrites Claude's estimates.
+    # Improvement 1: citation completeness check runs per document.
+    # Improvement 2: source file existence check runs per document.
+    _run_coverage_pass(foundation_dir, fwd_eng_dir, output_dir, source_dir=source_dir)
     print(f"\n  COVERAGE_SUMMARY.md → {Path(output_dir) / 'COVERAGE_SUMMARY.md'}")
 
     # ── Call 5: Self-Correction Pass ───────────────────────────────────────────
@@ -1493,10 +1787,28 @@ def run(output_dir: str) -> None:
         corrected = _run_self_correction_pass(foundation_dir, fwd_eng_dir, output_dir, layers)
         if corrected > 0:
             print("\n[Coverage Pass] Re-running after self-correction to update final scores...")
-            _run_coverage_pass(foundation_dir, fwd_eng_dir, output_dir)
+            _run_coverage_pass(foundation_dir, fwd_eng_dir, output_dir, source_dir=source_dir)
             print(f"  Final COVERAGE_SUMMARY.md → {Path(output_dir) / 'COVERAGE_SUMMARY.md'}")
         else:
             print("\n[Self-Correction] No corrections applied — COVERAGE_SUMMARY.md unchanged.")
+
+    # ── Call 6: Second-Opinion Scoring Pass (Improvement 3) ───────────────────
+    # Independent Claude call re-scores a sample of HIGH confidence claims.
+    # Results are included in the final COVERAGE_SUMMARY.md.
+    part6_raw = Path(output_dir) / "Foundation_Raw_Output_Part6.md"
+    if part6_raw.exists() and part6_raw.stat().st_size > 0:
+        print("\n[Second Opinion] Call 6 — already done, skipping (delete Part6 to re-run).")
+    else:
+        second_opinion_downgrades = _run_second_opinion_pass(
+            foundation_dir, fwd_eng_dir, output_dir, layers
+        )
+        print("\n[Coverage Pass] Re-running with second-opinion results to produce final summary...")
+        _run_coverage_pass(
+            foundation_dir, fwd_eng_dir, output_dir,
+            source_dir=source_dir,
+            second_opinion_downgrades=second_opinion_downgrades,
+        )
+        print(f"  Final COVERAGE_SUMMARY.md → {Path(output_dir) / 'COVERAGE_SUMMARY.md'}")
 
 
 if __name__ == "__main__":
