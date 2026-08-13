@@ -1,0 +1,117 @@
+{
+  "manifest_version": "1.0",
+  "status": "DRAFT",
+  "project": {
+    "project_id": "{{PROJECT_ID}}",
+    "name": "{{PROJECT_NAME}}",
+    "domain": "{{DOMAIN}}",
+    "description": "{{DESCRIPTION}}"
+  },
+  "source_system": {
+    "system_id": "{{SOURCE_ID}}",
+    "name": "{{SOURCE_NAME}}",
+    "version": "{{VERSION}}",
+    "artifacts": []
+  },
+  "target_system": {
+    "name": "{{TARGET_NAME}}",
+    "scope": "{{TARGET_SCOPE}}",
+    "technology_constraints": []
+  },
+  "templates": [],
+  "inputs": [],
+  "generation_units": [],
+  "generation_rules": [],
+  "mapping_rules": [],
+  "naming_rules": [],
+  "validation_rules": [],
+  "traceability_rules": [],
+  "quality_gates": [
+    {
+      "gate_id": "EVIDENCE",
+      "description": "Material claims have evidence or explicit uncertainty classification.",
+      "blocking": true
+    },
+    {
+      "gate_id": "CONSISTENCY",
+      "description": "Cross-artifact contradictions are resolved or explicitly carried forward.",
+      "blocking": true
+    },
+    {
+      "gate_id": "TRACEABILITY",
+      "description": "Critical source and target elements have bidirectional traceability.",
+      "blocking": true
+    },
+    {
+      "gate_id": "COMPLETENESS",
+      "description": "Critical project scope has sufficient engineering information.",
+      "blocking": true
+    },
+    {
+      "gate_id": "READINESS",
+      "description": "Forward engineering readiness criteria are satisfied.",
+      "blocking": true
+    }
+  ],
+  "confidence_thresholds": {
+    "high": 0.85,
+    "medium": 0.60,
+    "low": 0.00
+  },
+  "assumptions": [],
+  "unresolved_items": [],
+  "contradictions": [],
+  "validation": {
+    "schema_valid": false,
+    "semantic_valid": false,
+    "traceability_valid": false,
+    "readiness_valid": false
+  },
+  "dependency_order": [
+    {"phase": 1, "documents": ["01_BRD", "source_artifacts"], "note": "Primary evidence inputs"},
+    {"phase": 2, "documents": ["02_CAPABILITY_MODEL", "05_DOMAIN_MODEL", "06_DATA_DICTIONARY"], "note": "Domain and capability foundation"},
+    {"phase": 3, "documents": ["03_USE_CASE_SPEC", "04_PROCESS_MODEL", "07_DATA_MODEL", "08_ERD"], "note": "Behavioural and structural models"},
+    {"phase": 4, "documents": ["09_DFD", "10_SERVICE_CATALOG", "13_SECURITY_ARCH", "14_NFR_SPEC"], "note": "Flow, service, and quality"},
+    {"phase": 5, "documents": ["11_API_CONTRACT", "12_TECH_BLUEPRINT", "18_DEPLOYMENT_ARCH", "19_FRONTEND_ARCH", "20_UI_UX"], "note": "Architecture and interface"},
+    {"phase": 6, "documents": ["21_KNOWLEDGE_GRAPH", "22_CANONICAL_MODEL", "23_ARCH_INVENTORY", "24_TRACEABILITY"], "note": "Knowledge and traceability synthesis"},
+    {"phase": 7, "documents": ["15_FWD_ENG_SPEC", "25_INPUT_MAP"], "note": "Forward engineering contracts"},
+    {"phase": 8, "documents": ["16_GENERATION_MANIFEST", "17_READINESS_REPORT"], "note": "Readiness and generation gate"}
+  ],
+  "readiness_scoring_model": {
+    "minimum_weighted_score": 0.70,
+    "dimensions": [
+      {"id": "EVIDENCE", "weight": 0.20, "description": "Evidence quality — OBSERVED+DERIVED share ≥ 70%"},
+      {"id": "COMPLETENESS", "weight": 0.20, "description": "All mandatory sections populated across 25 documents"},
+      {"id": "TRACEABILITY", "weight": 0.15, "description": "Bidirectional traceability for critical items ≥ 80%"},
+      {"id": "CONSISTENCY", "weight": 0.15, "description": "Zero unresolved cross-document contradictions on critical facts"},
+      {"id": "BUSINESS_COVERAGE", "weight": 0.15, "description": "All BR-* requirements traceable to source evidence"},
+      {"id": "SECURITY", "weight": 0.10, "description": "All OBSERVED security defects have BR-SEC-* entries"},
+      {"id": "NFR_MEASURABILITY", "weight": 0.05, "description": "All NFRs have measurable targets and thresholds"}
+    ],
+    "decision_thresholds": {
+      "GO": "weighted_score ≥ 0.80 AND zero blocking issues",
+      "CONDITIONAL_GO": "weighted_score ≥ 0.65 AND no critical blocking issues",
+      "NO_GO": "weighted_score < 0.65 OR any critical blocking issue unresolved"
+    }
+  },
+  "anti_patterns": [
+    "Do not prescribe target technology in generation_units — leave technology as team decision",
+    "Do not create generation units without linking to source artifacts",
+    "Do not mark quality gates as passed without evidence",
+    "Do not set technology_constraints unless project has explicitly chosen a stack"
+  ],
+  "cross_reference_rules": [
+    {"rule": "Every generation_unit must reference a SVC-* from 10_SERVICE_CATALOG or an ENT-* from 07_DATA_MODEL_SPECIFICATION"},
+    {"rule": "Every quality gate in this manifest must match the readiness gates in 17_FORWARD_ENGINEERING_READINESS_REPORT"},
+    {"rule": "dependency_order phases must match the sequence validated in 25_FORWARD_ENGINEERING_INPUT_MAP"}
+  ],
+  "confidence_calibration": {
+    "DDL_observed": "0.90-0.95",
+    "procedure_body_observed": "0.80-0.90",
+    "derived_from_multiple_sources": "0.75-0.85",
+    "inferred_from_naming": "0.50-0.70",
+    "assumed_standard_practice": "0.30-0.50",
+    "unknown": "0.00-0.30",
+    "contradicted": "0.00"
+  }
+}

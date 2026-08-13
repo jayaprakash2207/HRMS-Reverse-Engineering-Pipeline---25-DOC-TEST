@@ -132,7 +132,7 @@ Produce ALL of the following in this exact order, separated by markers:
 (what is KNOWN, INFERRED, MISSING — input spec for AI-assisted code regeneration)
 
 === DOCUMENT: 01_BRD.md ===
-(Business Requirements Document — technology neutral)
+(Business Requirements Document — technology neutral)  
 
 === DOCUMENT: 02_BUSINESS_CAPABILITY_MODEL.md ===
 

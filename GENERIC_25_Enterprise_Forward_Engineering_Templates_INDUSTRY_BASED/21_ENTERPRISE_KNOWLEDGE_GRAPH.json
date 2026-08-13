@@ -1,0 +1,83 @@
+{
+  "graph_version": "1.0",
+  "status": "DRAFT",
+  "project": {
+    "project_id": "{{PROJECT_ID}}",
+    "domain": "{{DOMAIN}}"
+  },
+  "nodes": [
+    {
+      "id": "{{NODE_ID}}",
+      "type": "Requirement|Capability|Process|UseCase|DomainConcept|Entity|DataElement|Rule|Service|Interface|Actor|System|UIElement|SecurityControl|NFR|ArchitectureComponent|DeploymentUnit",
+      "name": "{{NAME}}",
+      "description": "{{DESCRIPTION}}",
+      "properties": {},
+      "source_refs": [],
+      "evidence_class": "OBSERVED|DERIVED|INFERRED|ASSUMED|UNKNOWN|CONTRADICTED",
+      "confidence": 0.0,
+      "status": "ACTIVE|DEPRECATED|UNKNOWN"
+    }
+  ],
+  "edges": [
+    {
+      "id": "{{EDGE_ID}}",
+      "source": "{{SOURCE_NODE_ID}}",
+      "relationship": "supports|implements|depends_on|contains|uses|produces|consumes|maps_to|constrains|derived_from|owned_by|governed_by|traces_to",
+      "target": "{{TARGET_NODE_ID}}",
+      "properties": {},
+      "source_refs": [],
+      "evidence_class": "OBSERVED|DERIVED|INFERRED|ASSUMED|UNKNOWN|CONTRADICTED",
+      "confidence": 0.0
+    }
+  ],
+  "evidence": [],
+  "conflicts": [],
+  "inferences": [],
+  "validation": {
+    "schema_valid": false,
+    "orphan_nodes": [],
+    "dangling_edges": [],
+    "unresolved_conflicts": [],
+    "low_confidence_critical_nodes": []
+  },
+  "population_guidance": {
+    "node_types_required": ["Requirement", "Capability", "Process", "UseCase", "DomainConcept", "Entity", "DataElement", "Rule", "Service", "Interface", "Actor", "UIElement", "SecurityControl", "NFR", "ArchitectureComponent"],
+    "minimum_node_count": 50,
+    "minimum_edge_count": 75,
+    "required_relationship_types": ["supports", "implements", "depends_on", "contains", "uses", "produces", "consumes", "maps_to", "constrains", "traces_to"],
+    "evidence_quality_target": {"OBSERVED_plus_DERIVED_share": 0.70},
+    "worked_example_node": {
+      "id": "REQ-BR-001",
+      "type": "Requirement",
+      "name": "{REQUIREMENT_NAME}",
+      "description": "{REQUIREMENT_STATEMENT}",
+      "properties": {"priority": "Must Have", "br_id": "BR-001"},
+      "source_refs": ["{SOURCE_FILE} / {OBJECT} / line {LINE}"],
+      "evidence_class": "OBSERVED",
+      "confidence": 0.90,
+      "status": "ACTIVE"
+    },
+    "worked_example_edge": {
+      "id": "EDGE-001",
+      "source": "REQ-BR-001",
+      "relationship": "traces_to",
+      "target": "CAP-CAP-001",
+      "properties": {},
+      "source_refs": [],
+      "evidence_class": "DERIVED",
+      "confidence": 0.85
+    }
+  },
+  "anti_patterns": [
+    "Do not create orphan nodes — every node must have at least one edge",
+    "Do not assign confidence > 0.70 to INFERRED nodes",
+    "Do not create duplicate nodes for the same concept — use a single canonical node",
+    "Do not use technology-specific node names unless they are source facts"
+  ],
+  "cross_reference_rules": [
+    {"rule": "Every Requirement node must correspond to a BR-* in 01_BRD"},
+    {"rule": "Every Capability node must correspond to a CAP-* in 02_BUSINESS_CAPABILITY_MODEL"},
+    {"rule": "Every Service node must correspond to a SVC-* in 10_SERVICE_CATALOG"},
+    {"rule": "Every Entity node must correspond to an ENT-* in 07_DATA_MODEL_SPECIFICATION"}
+  ]
+}
