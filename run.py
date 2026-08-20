@@ -21,7 +21,7 @@ Steps:
   Step 11  — AA Agent 1        (Claude T1+T2 — produce AA_App_Extractor.md)
   Step 12  — AA Agent 2        (Claude T1+T2+edge — produce AA_Quality_Review.md)
   Step 13  — Cross Validator   (Claude — cross-track consistency check, fills gaps)
-  Step 14  — Foundation        (Claude, 4 calls — KG + all 25 docs + verification + consistency check)
+  Step 14  — Foundation        (Claude, multi-agent — parallel generation + self-healing loop + quality gate)
   Step 15  — Gap Hunter        (Claude — self-healing loop, fills remaining weaknesses)
 
 TA Agent 2 is split into two processes (steps 9-10) instead of one giant
@@ -275,8 +275,8 @@ def step_cross_validator(output_dir: Path) -> dict:
 
 def step_foundation(output_dir: Path) -> dict:
     return _run_or_exit(
-        [py, str(PIPELINE_DIR / "foundation_runner.py"), "--output", str(output_dir)],
-        label="[STEP 14] Foundation — Knowledge Graph + 25 Documents + Verification",
+        [py, str(PIPELINE_DIR / "foundation_runner_multiagent.py"), "--output", str(output_dir)],
+        label="[STEP 14] Foundation — Knowledge Graph + 25 Documents + Multi-Agent Self-Healing",
         timeout=7200,
     )
 
