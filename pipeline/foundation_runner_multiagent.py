@@ -67,9 +67,8 @@ from foundation_runner_template import (
     _clean_document,
     _build_fallback_supplement,
     _run_coverage_pass,
-    _run_self_correction,
-    _run_second_opinion,
-    _write_coverage_summary,
+    _run_self_correction_pass,
+    _run_second_opinion_pass,
 )
 
 # ── Gap Hunter prompt ─────────────────────────────────────────────────────────
@@ -762,10 +761,10 @@ def run(output_dir: str) -> None:
 
     # ── Call 5 — Self-correction of LOW confidence sections ───────────────────
     all_docs_post = _reload_all_from_disk(foundation_dir, fwd_eng_dir)
-    _run_self_correction(output_dir, layers, foundation_dir, fwd_eng_dir)
+    _run_self_correction_pass(output_dir, layers, foundation_dir, fwd_eng_dir)
 
     # ── Call 6 — Second-opinion scoring of HIGH confidence claims ─────────────
-    downgrades = _run_second_opinion(output_dir, layers, foundation_dir, fwd_eng_dir)
+    downgrades = _run_second_opinion_pass(output_dir, layers, foundation_dir, fwd_eng_dir)
 
     # ── Coverage pass — Python-verified evidence counts ───────────────────────
     source_dir = None
