@@ -1,0 +1,135 @@
+{
+  "chunk_index": 3,
+  "total_chunks": 19,
+  "type_group": "forms",
+  "budget": 30000,
+  "expected_files": [
+    {
+      "path": "ts-plsql-oracle-forms-hrms-main/forms/xml-exports/HRMS_PERFORMANCE.xml",
+      "type": "forms"
+    }
+  ],
+  "total_source_chars": 6055,
+  "entries": {
+    "ts-plsql-oracle-forms-hrms-main/forms/xml-exports/HRMS_PERFORMANCE.xml": {
+      "type": "forms",
+      "pass": "correction",
+      "attempt": 2,
+      "content": "**IDENTITY:**\n  KIND: form\n  PURPOSE: performance review management — review cycles, self-assessments, manager reviews, goal tracking, and rating calibration\n\n**STRUCTURES:**\n  **Form-level:**\n  HRMS_PERFORMANCE — KIND: Forms module; TYPE: N/A (FirstNavigationBlock=REVIEW_CYCLE, MenuModule=HRMS_MENU, MenuSource=File)\n  HRMS_COMMON_LIB — KIND: attached library; TYPE: N/A\n\n  **REVIEW_CYCLE block** (source HRMS.REVIEW_CYCLES; RecordsDisplayed=5; InsertAllowed=No; UpdateAllowed=No; DeleteAllowed=No) — KIND: Forms block; TYPE: N/A\n  CYCLE_ID — KIND: Forms item; TYPE: N/A (hidden, PrimaryKey)\n  CYCLE_NAME — KIND: Forms item; TYPE: Char (Width=200)\n  CYCLE_YEAR — KIND: Forms item; TYPE: Number (Width=50)\n  START_DATE — KIND: Forms item; TYPE: Date (FormatMask=MM/DD/YYYY, Width=100)\n  END_DATE — KIND: Forms item; TYPE: Date (FormatMask=MM/DD/YYYY, Width=100)\n  STATUS (REVIEW_CYCLE) — KIND: Forms item; TYPE: Char (Width=80)\n\n  **PERFORMANCE_REVIEW block** (source HRMS.PERFORMANCE_REVIEWS; RecordsDisplayed=8; InsertAllowed=No; UpdateAllowed=Yes; DeleteAllowed=No) — KIND: Forms block; TYPE: N/A\n  REVIEW_ID — KIND: Forms item; TYPE: N/A (hidden, PrimaryKey)\n  CYCLE_ID (PERFORMANCE_REVIEW) — KIND: Forms item; TYPE: N/A (hidden)\n  EMP_ID — KIND: Forms item; TYPE: N/A (hidden)\n  EMP_NAME_DISP — KIND: Forms item (Display Item); TYPE: Char (Width=180)\n  STATUS (PERFORMANCE_REVIEW) — KIND: Forms item; TYPE: Char (Width=120, UpdateAllowed=No)\n  OVERALL_RATING — KIND: Forms item; TYPE: Number (FormatMask=9.0, Width=50)\n  RATING_LABEL — KIND: Forms item (Display Item); TYPE: Char (Width=150)\n  SELF_ASSESSMENT — KIND: Forms item; TYPE: Char (Width=300, Height=80, MultiLine=Yes)\n  MANAGER_ASSESSMENT — KIND: Forms item; TYPE: Char (Width=300, Height=80, MultiLine=Yes)\n  CYCLE_REVIEW_REL — KIND: Forms relation; TYPE: N/A (master REVIEW_CYCLE → detail PERFORMANCE_REVIEW, JoinCondition PERFORMANCE_REVIEW.CYCLE_ID = REVIEW_CYCLE.CYCLE_ID, AutoQuery=Yes)\n\n  **PERFORMANCE_GOAL block** (source HRMS.PERFORMANCE_GOALS; RecordsDisplayed=5; InsertAllowed=Yes; UpdateAllowed=Yes; DeleteAllowed=No) — KIND: Forms block; TYPE: N/A\n  GOAL_ID — KIND: Forms item; TYPE: N/A (hidden, PrimaryKey)\n  REVIEW_ID (PERFORMANCE_GOAL) — KIND: Forms item; TYPE: N/A (hidden)\n  GOAL_TITLE — KIND: Forms item; TYPE: Char (Width=250)\n  GOAL_CATEGORY — KIND: Forms item (List Item, Poplist); TYPE: Char (Width=100); values: Business=BUSINESS, Development=DEVELOPMENT, Leadership=LEADERSHIP\n  WEIGHT_PCT — KIND: Forms item; TYPE: Number (FormatMask=990, Width=50)\n  PROGRESS_PCT — KIND: Forms item; TYPE: Number (FormatMask=990, Width=50)\n  STATUS (PERFORMANCE_GOAL) — KIND: Forms item; TYPE: Char (Width=100)\n  REVIEW_GOAL_REL — KIND: Forms relation; TYPE: N/A (master PERFORMANCE_REVIEW → detail PERFORMANCE_GOAL, JoinCondition PERFORMANCE_GOAL.REVIEW_ID = PERFORMANCE_REVIEW.REVIEW_ID, AutoQuery=Yes)\n\n  **Layout:**\n  CVS_MAIN — KIND: Canvas (Tab); TYPE: N/A (Width=750, Height=520); tab pages: TP_CYCLES \"Review Cycles\", TP_REVIEWS \"My Reviews\", TP_GOALS \"Goals\"\n  WIN_PERFORMANCE — KIND: Forms window; TYPE: N/A (WindowStyle=Document, Width=770, Height=560, PrimaryCanvas=CVS_MAIN, Title=\"Performance Management\")\n\n**METHODS:**\n  **TRIGGER WHEN-NEW-FORM-INSTANCE** [SOURCE: L20-38]\n  - What it does: Fires once when the form instance opens. Validates the current session via PKG_SECURITY.is_session_valid using the numeric application username; if invalid, shows \"Session expired.\" and raises FORM_TRIGGER_FAILURE, aborting form startup. Otherwise sets the MDI window title to include :GLOBAL.current_user, navigates to REVIEW_CYCLE, sets that block's DEFAULT_WHERE to restrict rows to STATUS IN ('OPEN','DRAFT') ordered by CYCLE_YEAR DESC, and executes the query.\n  - Business rules: Form requires a valid session (PKG_SECURITY.is_session_valid) to open. REVIEW_CYCLE block only ever displays cycles with STATUS 'OPEN' or 'DRAFT', ordered by CYCLE_YEAR descending.\n  - Numbers & thresholds: None (WHERE clause values are the strings 'OPEN'/'DRAFT', not numeric).\n  - Security & error handling: Session validity check via PKG_SECURITY.is_session_valid(TO_NUMBER(GET_APPLICATION_PROPERTY(USERNAME))); on failure raises FORM_TRIGGER_FAILURE after messaging the user, blocking form use.\n  - Data in/out: Input — application USERNAME property, :GLOBAL.current_user. Output — window title set; REVIEW_CYCLE block queried and populated (side effect via EXECUTE_QUERY).\n\n  **TRIGGER POST-QUERY (on PERFORMANCE_REVIEW)** [SOURCE: L79-88]\n  - What it does: Fires per fetched PERFORMANCE_REVIEW row. Looks up the employee's FIRST_NAME || ' ' || LAST_NAME from EMPLOYEES by EMP_ID and stores it in the display-only EMP_NAME_DISP item; if no matching employee is found, sets EMP_NAME_DISP to 'Unknown'.\n  - Business rules: Every queried review row must display a resolved employee name, falling back to \"Unknown\" rather than failing the query.\n  - Numbers & thresholds: None.\n  - Security & error handling: Handles NO_DATA_FOUND explicitly (sets 'Unknown'); no other exception handling.\n  - Data in/out: Input — :PERFORMANCE_REVIEW.EMP_ID. Output — :PERFORMANCE_REVIEW.EMP_NAME_DISP (display item, not persisted to DB).\n\n**DEPENDENCIES:**\n  Data touched:\n  - Reads: HRMS.REVIEW_CYCLES — REVIEW_CYCLE block query, filtered to STATUS IN ('OPEN','DRAFT') ordered by CYCLE_YEAR DESC\n  - Reads: HRMS.PERFORMANCE_REVIEWS — PERFORMANCE_REVIEW block query, detail of REVIEW_CYCLE via CYCLE_REVIEW_REL\n  - Reads: HRMS.PERFORMANCE_GOALS — PERFORMANCE_GOAL block query, detail of PERFORMANCE_REVIEW via REVIEW_GOAL_REL\n  - Reads: EMPLOYEES — FIRST_NAME/LAST_NAME lookup by EMP_ID in POST-QUERY trigger\n  - Writes: HRMS.PERFORMANCE_REVIEWS — PERFORMANCE_REVIEW block allows UpdateAllowed=Yes (STATUS is UpdateAllowed=No)\n  - Writes: HRMS.PERFORMANCE_GOALS — PERFORMANCE_GOAL block allows InsertAllowed=Yes and UpdateAllowed=Yes\n\n  CALLS: PKG_SECURITY.is_session_valid | EVIDENCE: OBSERVED | SOURCE: L23\n  IMPORTS: HRMS_COMMON_LIB | EVIDENCE: OBSERVED | SOURCE: L18\n  IMPORTS: HRMS_MENU | EVIDENCE: OBSERVED | SOURCE: L15\n\n  Config/env: :GLOBAL.current_user (global variable used in window title)\n  External integrations: None\n\n**GAPS:**\n  UNKNOWN — PKG_SECURITY.is_session_valid implementation is external to this file (EXTERNAL). RATING_LABEL and OVERALL_RATING derivation logic (how RATING_LABEL is computed from OVERALL_RATING) is not present in this file — NOT_ANALYZED / likely computed elsewhere (trigger, view, or package not included here).",
+      "raw_chars": 6055,
+      "extracted_chars": 6509,
+      "expected_inventory": {
+        "numbers": [
+          "100",
+          "120",
+          "150",
+          "180",
+          "200",
+          "250",
+          "300",
+          "50",
+          "520",
+          "560",
+          "750",
+          "770",
+          "80",
+          "990"
+        ],
+        "fields": [
+          "CYCLE_ID",
+          "CYCLE_NAME",
+          "CYCLE_YEAR",
+          "EMP_ID",
+          "EMP_NAME_DISP",
+          "END_DATE",
+          "GOAL_CATEGORY",
+          "GOAL_ID",
+          "GOAL_TITLE",
+          "MANAGER_ASSESSMENT",
+          "OVERALL_RATING",
+          "PROGRESS_PCT",
+          "RATING_LABEL",
+          "REVIEW_ID",
+          "SELF_ASSESSMENT",
+          "START_DATE",
+          "STATUS",
+          "WEIGHT_PCT"
+        ],
+        "required_fields": [],
+        "units": [
+          {
+            "name": "WHEN-NEW-FORM-INSTANCE",
+            "line": 20
+          },
+          {
+            "name": "POST-QUERY",
+            "line": 79
+          }
+        ]
+      },
+      "coverage": {
+        "numbers": {
+          "expected": 14,
+          "captured": 14,
+          "missing": []
+        },
+        "fields": {
+          "expected": 18,
+          "captured": 18,
+          "missing": []
+        },
+        "required_fields": {
+          "expected": 0,
+          "captured": 0,
+          "missing": []
+        },
+        "units": {
+          "expected": 2,
+          "captured": 2,
+          "missing": []
+        },
+        "structure": {
+          "expected": 5,
+          "captured": 5,
+          "missing": []
+        }
+      },
+      "dependencies": {
+        "calls": [
+          {
+            "target": "PKG_SECURITY.is_session_valid",
+            "evidence": "OBSERVED",
+            "source": "L23"
+          }
+        ],
+        "imports": [
+          {
+            "target": "HRMS_COMMON_LIB",
+            "evidence": "OBSERVED",
+            "source": "L18"
+          },
+          {
+            "target": "HRMS_MENU",
+            "evidence": "OBSERVED",
+            "source": "L15"
+          }
+        ],
+        "extends": [],
+        "implements": [],
+        "publishes_to": [],
+        "subscribes_to": []
+      }
+    }
+  },
+  "status": {
+    "expected": 1,
+    "delivered": 1,
+    "missing": [],
+    "clean_first_pass": 0,
+    "corrected": [
+      "ts-plsql-oracle-forms-hrms-main/forms/xml-exports/HRMS_PERFORMANCE.xml"
+    ],
+    "still_incomplete": [],
+    "duplicate_count": 0
+  }
+}

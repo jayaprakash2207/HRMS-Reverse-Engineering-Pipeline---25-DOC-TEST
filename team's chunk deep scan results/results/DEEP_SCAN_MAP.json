@@ -1,0 +1,2551 @@
+{
+  "summary": {
+    "total_files": 42,
+    "connections_resolved": 276,
+    "connections_unresolved": 43
+  },
+  "files": {
+    "ts-plsql-oracle-forms-hrms-main/data/seed/01_reference_data.sql": {
+      "identity": {
+        "type": "seed",
+        "purpose": "reference data load for locations, job grades, departments, job titles, leave types, pay elements, holidays, and system parameters (run order 01, before employee data)"
+      },
+      "chunk": 18,
+      "shape": [],
+      "connections": {
+        "calls": [],
+        "called_by": [],
+        "unresolved": []
+      },
+      "coverage_ok": true
+    },
+    "ts-plsql-oracle-forms-hrms-main/data/seed/02_employee_data.sql": {
+      "identity": {
+        "type": "seed",
+        "purpose": "loads 24 sample HRMS employees (executives, HR, Finance, IT, Sales, plus one terminated employee) with their current salary records, and updates department manager assignments"
+      },
+      "chunk": 19,
+      "shape": [],
+      "connections": {
+        "calls": [],
+        "called_by": [],
+        "unresolved": []
+      },
+      "coverage_ok": true
+    },
+    "ts-plsql-oracle-forms-hrms-main/forms/libraries/HRMS_COMMON_LIB.pll.sql": {
+      "identity": {
+        "type": "schema",
+        "purpose": "Shared toolbar button handlers, global error handling, date formatting, and session/LOV helper routines attached to every HRMS form via ATTACH_LIBRARY."
+      },
+      "chunk": 15,
+      "shape": [],
+      "connections": {
+        "calls": [
+          {
+            "target": "PKG_COMMON.log_error",
+            "evidence": "OBSERVED",
+            "source": "L26"
+          },
+          {
+            "target": "PKG_SECURITY.is_session_valid",
+            "evidence": "OBSERVED",
+            "source": "L140"
+          }
+        ],
+        "called_by": [],
+        "unresolved": []
+      },
+      "coverage_ok": true
+    },
+    "ts-plsql-oracle-forms-hrms-main/forms/libraries/HRMS_VALIDATION_LIB.pll.sql": {
+      "identity": {
+        "type": "schema",
+        "purpose": "client-side validation functions (email, phone, SSN, date, salary range) shared across Oracle Forms, used for immediate on-form feedback ahead of/alongside server-side validation"
+      },
+      "chunk": 15,
+      "shape": [],
+      "connections": {
+        "calls": [],
+        "called_by": [],
+        "unresolved": []
+      },
+      "coverage_ok": false
+    },
+    "ts-plsql-oracle-forms-hrms-main/forms/menus/HRMS_MENU.mmb.sql": {
+      "identity": {
+        "type": "schema",
+        "purpose": "Documents the main application menu bar structure (File, Edit, Query, Navigate, Modules, Admin, Help) and the Forms built-in or module action bound to each item"
+      },
+      "chunk": 15,
+      "shape": [
+        "CONTENTS",
+        "EXIT",
+        "MAIN_MENUBAR",
+        "PRINT",
+        "SAVE",
+        "SUPPORT"
+      ],
+      "connections": {
+        "calls": [
+          {
+            "target": "HRMS_EMPLOYEE (OPEN_FORM)",
+            "evidence": "INFERRED",
+            "source": "L42"
+          },
+          {
+            "target": "HRMS_PAYROLL (OPEN_FORM)",
+            "evidence": "INFERRED",
+            "source": "L43"
+          },
+          {
+            "target": "HRMS_LEAVE (OPEN_FORM)",
+            "evidence": "INFERRED",
+            "source": "L44"
+          },
+          {
+            "target": "HRMS_PERFORMANCE (OPEN_FORM)",
+            "evidence": "INFERRED",
+            "source": "L45"
+          },
+          {
+            "target": "HRMS_REPORTS (OPEN_FORM)",
+            "evidence": "INFERRED",
+            "source": "L46"
+          },
+          {
+            "target": "HRMS_ADMIN (OPEN_FORM)",
+            "evidence": "INFERRED",
+            "source": "L47"
+          },
+          {
+            "target": "PKG_SECURITY.has_permission",
+            "evidence": "INFERRED",
+            "source": "L60"
+          }
+        ],
+        "called_by": [],
+        "unresolved": [
+          {
+            "target": "HRMS_EMPLOYEE (OPEN_FORM)",
+            "reason": "no declaring file found"
+          },
+          {
+            "target": "HRMS_PAYROLL (OPEN_FORM)",
+            "reason": "no declaring file found"
+          },
+          {
+            "target": "HRMS_LEAVE (OPEN_FORM)",
+            "reason": "no declaring file found"
+          },
+          {
+            "target": "HRMS_PERFORMANCE (OPEN_FORM)",
+            "reason": "no declaring file found"
+          },
+          {
+            "target": "HRMS_REPORTS (OPEN_FORM)",
+            "reason": "no declaring file found"
+          },
+          {
+            "target": "HRMS_ADMIN (OPEN_FORM)",
+            "reason": "no declaring file found"
+          }
+        ]
+      },
+      "coverage_ok": true
+    },
+    "ts-plsql-oracle-forms-hrms-main/forms/xml-exports/HRMS_EMPLOYEE.xml": {
+      "identity": {
+        "type": "forms",
+        "purpose": "Employee maintenance form — master-detail form for personal info, job assignment, and compensation history (per header comment; header also claims dependent management, but no such block is present in this export — see GAPS)."
+      },
+      "chunk": 1,
+      "shape": [
+        "ACTIVE_FLAG",
+        "ADDRESS_LINE1",
+        "ADDRESS_LINE2",
+        "ALT_CONFIRM_DELETE",
+        "ALT_CONFIRM_EXIT",
+        "BASE_SALARY",
+        "CHANGE_PCT",
+        "CHANGE_REASON",
+        "CITY",
+        "CREATED_BY",
+        "CREATED_DATE",
+        "CVS_MAIN",
+        "CVS_TOOLBAR",
+        "DATE_OF_BIRTH",
+        "DEPT_ID",
+        "DEPT_NAME_DISP",
+        "EFFECTIVE_DATE",
+        "EMAIL",
+        "EMPLOYEE",
+        "EMPLOYMENT_STATUS",
+        "EMPLOYMENT_TYPE",
+        "EMP_ID",
+        "EMP_NUMBER",
+        "EMP_SALARY_REL",
+        "END_DATE",
+        "FIRST_NAME",
+        "GENDER",
+        "HIRE_DATE",
+        "HRMS_COMMON_LIB",
+        "HRMS_MENU",
+        "HRMS_VALIDATION_LIB",
+        "JOB_ID",
+        "JOB_TITLE_DISP",
+        "LAST_NAME",
+        "LOCATION_CODE",
+        "MANAGER_EMP_ID",
+        "MANAGER_NAME_DISP",
+        "MARITAL_STATUS",
+        "MODIFIED_BY",
+        "MODIFIED_DATE",
+        "PHONE_MOBILE",
+        "PHONE_WORK",
+        "POSTAL_CODE",
+        "SALARY",
+        "SALARY_ID",
+        "STATE_PROVINCE",
+        "TERMINATION_DATE",
+        "WIN_EMPLOYEE"
+      ],
+      "connections": {
+        "calls": [
+          {
+            "target": "PKG_SECURITY.is_session_valid",
+            "evidence": "OBSERVED",
+            "source": "L35"
+          },
+          {
+            "target": "PKG_SECURITY.has_permission",
+            "evidence": "OBSERVED",
+            "source": "L45"
+          },
+          {
+            "target": "PKG_EMPLOYEE.generate_emp_number",
+            "evidence": "OBSERVED",
+            "source": "L327"
+          },
+          {
+            "target": "PKG_VALIDATION.validate_email_format",
+            "evidence": "OBSERVED",
+            "source": "L377"
+          }
+        ],
+        "called_by": [],
+        "unresolved": [
+          {
+            "target": "HRMS_COMMON_LIB",
+            "reason": "ambiguous — multiple files matched"
+          }
+        ]
+      },
+      "coverage_ok": false
+    },
+    "ts-plsql-oracle-forms-hrms-main/forms/xml-exports/HRMS_LEAVE.xml": {
+      "identity": {
+        "type": "forms",
+        "purpose": "Employee leave management — submit leave requests, cancel pending/approved requests, view leave balances, and (per header comment) approve requests and view a team calendar."
+      },
+      "chunk": 2,
+      "shape": [
+        "ACCRUED",
+        "ALT_CONFIRM_CANCEL",
+        "AVAILABLE",
+        "BTN_CANCEL_REQUEST",
+        "BTN_SUBMIT",
+        "CVS_MAIN",
+        "EMP_ID",
+        "END_DATE",
+        "LEAVE_BALANCE",
+        "LEAVE_REQUEST",
+        "LEAVE_TYPE_NAME_DISP",
+        "LOV_LEAVE_TYPES",
+        "NEW_REQUEST",
+        "NR_BALANCE_DISP",
+        "NR_CALC_DAYS",
+        "NR_END_DATE",
+        "NR_HALF_DAY",
+        "NR_LEAVE_TYPE_DISP",
+        "NR_LEAVE_TYPE_ID",
+        "NR_REASON",
+        "NR_START_DATE",
+        "OPENING_BALANCE",
+        "PENDING",
+        "REASON",
+        "REQUEST_ID",
+        "RG_LEAVE_TYPES",
+        "START_DATE",
+        "STATUS",
+        "TOTAL_DAYS",
+        "USED",
+        "WIN_LEAVE"
+      ],
+      "connections": {
+        "calls": [
+          {
+            "target": "PKG_SECURITY.is_session_valid",
+            "evidence": "OBSERVED",
+            "source": "L25"
+          },
+          {
+            "target": "PKG_LEAVE.cancel_leave_request",
+            "evidence": "OBSERVED",
+            "source": "L84"
+          },
+          {
+            "target": "PKG_LEAVE.submit_leave_request",
+            "evidence": "OBSERVED",
+            "source": "L152"
+          }
+        ],
+        "called_by": [],
+        "unresolved": [
+          {
+            "target": "HRMS_COMMON_LIB",
+            "reason": "ambiguous — multiple files matched"
+          }
+        ]
+      },
+      "coverage_ok": false
+    },
+    "ts-plsql-oracle-forms-hrms-main/forms/xml-exports/HRMS_LOGIN.xml": {
+      "identity": {
+        "type": "forms",
+        "purpose": "Login form — authenticates a user against PKG_SECURITY and opens the main HRMS menu on success."
+      },
+      "chunk": 2,
+      "shape": [
+        "BTN_LOGIN",
+        "COMPANY_LOGO",
+        "CVS_LOGIN",
+        "ERROR_MSG",
+        "LOGIN",
+        "PASSWORD",
+        "USERNAME",
+        "WIN_LOGIN"
+      ],
+      "connections": {
+        "calls": [
+          {
+            "target": "PKG_SECURITY.authenticate",
+            "evidence": "OBSERVED",
+            "source": "L75"
+          },
+          {
+            "target": "HRMS_MENU (OPEN_FORM)",
+            "evidence": "OBSERVED",
+            "source": "L93"
+          }
+        ],
+        "called_by": [],
+        "unresolved": [
+          {
+            "target": "HRMS_MENU (OPEN_FORM)",
+            "reason": "no declaring file found"
+          }
+        ]
+      },
+      "coverage_ok": false
+    },
+    "ts-plsql-oracle-forms-hrms-main/forms/xml-exports/HRMS_MENU.xml": {
+      "identity": {
+        "type": "forms",
+        "purpose": "MDI parent/main-menu form — application shell after login; sets permission-based menu item visibility and launches all HRMS child modules."
+      },
+      "chunk": 2,
+      "shape": [
+        "BTN_EMPLOYEES",
+        "BTN_LEAVE",
+        "BTN_LOGOUT",
+        "BTN_PAYROLL",
+        "BTN_PERFORMANCE",
+        "BTN_REPORTS",
+        "CVS_MAIN",
+        "MENU_CONTROL",
+        "MENU_MAIN",
+        "USER_INFO",
+        "WELCOME_TEXT",
+        "WIN_MAIN"
+      ],
+      "connections": {
+        "calls": [
+          {
+            "target": "PKG_SECURITY.has_permission",
+            "evidence": "OBSERVED",
+            "source": "L26"
+          },
+          {
+            "target": "PKG_SECURITY.has_permission",
+            "evidence": "OBSERVED",
+            "source": "L30"
+          },
+          {
+            "target": "PKG_SECURITY.has_permission",
+            "evidence": "OBSERVED",
+            "source": "L34"
+          },
+          {
+            "target": "PKG_SECURITY.has_permission",
+            "evidence": "OBSERVED",
+            "source": "L75"
+          },
+          {
+            "target": "PKG_SECURITY.has_permission",
+            "evidence": "OBSERVED",
+            "source": "L115"
+          },
+          {
+            "target": "PKG_SECURITY.logout",
+            "evidence": "OBSERVED",
+            "source": "L131"
+          },
+          {
+            "target": "PKG_SECURITY.logout",
+            "evidence": "OBSERVED",
+            "source": "L149"
+          },
+          {
+            "target": "HRMS_EMPLOYEE (OPEN_FORM)",
+            "evidence": "OBSERVED",
+            "source": "L63"
+          },
+          {
+            "target": "HRMS_PAYROLL (OPEN_FORM)",
+            "evidence": "OBSERVED",
+            "source": "L79"
+          },
+          {
+            "target": "HRMS_LEAVE (OPEN_FORM)",
+            "evidence": "OBSERVED",
+            "source": "L91"
+          },
+          {
+            "target": "HRMS_PERFORMANCE (OPEN_FORM)",
+            "evidence": "OBSERVED",
+            "source": "L103"
+          },
+          {
+            "target": "HRMS_REPORTS (OPEN_FORM)",
+            "evidence": "OBSERVED",
+            "source": "L119"
+          },
+          {
+            "target": "HRMS_ADMIN (OPEN_FORM)",
+            "evidence": "OBSERVED",
+            "source": "L165"
+          }
+        ],
+        "called_by": [],
+        "unresolved": [
+          {
+            "target": "HRMS_EMPLOYEE (OPEN_FORM)",
+            "reason": "no declaring file found"
+          },
+          {
+            "target": "HRMS_PAYROLL (OPEN_FORM)",
+            "reason": "no declaring file found"
+          },
+          {
+            "target": "HRMS_LEAVE (OPEN_FORM)",
+            "reason": "no declaring file found"
+          },
+          {
+            "target": "HRMS_PERFORMANCE (OPEN_FORM)",
+            "reason": "no declaring file found"
+          },
+          {
+            "target": "HRMS_REPORTS (OPEN_FORM)",
+            "reason": "no declaring file found"
+          },
+          {
+            "target": "HRMS_ADMIN (OPEN_FORM)",
+            "reason": "no declaring file found"
+          },
+          {
+            "target": "HRMS_COMMON_LIB",
+            "reason": "ambiguous — multiple files matched"
+          }
+        ]
+      },
+      "coverage_ok": false
+    },
+    "ts-plsql-oracle-forms-hrms-main/forms/xml-exports/HRMS_PAYROLL.xml": {
+      "identity": {
+        "type": "forms",
+        "purpose": "Payroll processing form — pay-period listing, payroll run creation/calculation/approval, and (per header comment) pay-detail/payslip viewing."
+      },
+      "chunk": 2,
+      "shape": [
+        "BTN_APPROVE",
+        "BTN_CALCULATE",
+        "BTN_CREATE_RUN",
+        "CVS_MAIN",
+        "EMPLOYEE_COUNT",
+        "PAYROLL_RUN",
+        "PAY_DATE",
+        "PAY_PERIOD",
+        "PERIOD_END_DATE",
+        "PERIOD_ID",
+        "PERIOD_NAME",
+        "PERIOD_RUN_REL",
+        "PERIOD_START_DATE",
+        "RUN_DATE",
+        "RUN_ID",
+        "RUN_TYPE",
+        "STATUS",
+        "TOTAL_GROSS",
+        "TOTAL_NET",
+        "WIN_PAYROLL"
+      ],
+      "connections": {
+        "calls": [
+          {
+            "target": "PKG_SECURITY.is_session_valid",
+            "evidence": "OBSERVED",
+            "source": "L28"
+          },
+          {
+            "target": "PKG_SECURITY.has_permission",
+            "evidence": "OBSERVED",
+            "source": "L34"
+          },
+          {
+            "target": "PKG_SECURITY.has_permission",
+            "evidence": "OBSERVED",
+            "source": "L137"
+          },
+          {
+            "target": "PKG_PAYROLL.create_payroll_run",
+            "evidence": "OBSERVED",
+            "source": "L98"
+          },
+          {
+            "target": "PKG_PAYROLL.calculate_payroll",
+            "evidence": "OBSERVED",
+            "source": "L122"
+          },
+          {
+            "target": "PKG_PAYROLL.approve_payroll",
+            "evidence": "OBSERVED",
+            "source": "L142"
+          }
+        ],
+        "called_by": [],
+        "unresolved": [
+          {
+            "target": "HRMS_COMMON_LIB",
+            "reason": "ambiguous — multiple files matched"
+          }
+        ]
+      },
+      "coverage_ok": false
+    },
+    "ts-plsql-oracle-forms-hrms-main/forms/xml-exports/HRMS_PERFORMANCE.xml": {
+      "identity": {
+        "type": "forms",
+        "purpose": "performance review management — review cycles, self-assessments, manager reviews, goal tracking, and rating calibration"
+      },
+      "chunk": 3,
+      "shape": [
+        "CVS_MAIN",
+        "CYCLE_ID",
+        "CYCLE_NAME",
+        "CYCLE_REVIEW_REL",
+        "CYCLE_YEAR",
+        "EMP_ID",
+        "EMP_NAME_DISP",
+        "END_DATE",
+        "GOAL_CATEGORY",
+        "GOAL_ID",
+        "GOAL_TITLE",
+        "HRMS_COMMON_LIB",
+        "HRMS_PERFORMANCE",
+        "MANAGER_ASSESSMENT",
+        "OVERALL_RATING",
+        "PROGRESS_PCT",
+        "RATING_LABEL",
+        "REVIEW_GOAL_REL",
+        "REVIEW_ID",
+        "SELF_ASSESSMENT",
+        "START_DATE",
+        "WEIGHT_PCT",
+        "WIN_PERFORMANCE"
+      ],
+      "connections": {
+        "calls": [
+          {
+            "target": "PKG_SECURITY.is_session_valid",
+            "evidence": "OBSERVED",
+            "source": "L23"
+          }
+        ],
+        "called_by": [],
+        "unresolved": [
+          {
+            "target": "HRMS_COMMON_LIB",
+            "reason": "ambiguous — multiple files matched"
+          }
+        ]
+      },
+      "coverage_ok": true
+    },
+    "ts-plsql-oracle-forms-hrms-main/plsql/packages/PKG_AUDIT.pkb": {
+      "identity": {
+        "type": "plsql-body",
+        "purpose": "writes audit trail records, purges old audit history, and retrieves change history for a given table/record"
+      },
+      "chunk": 5,
+      "shape": [],
+      "connections": {
+        "calls": [
+          {
+            "target": "DBMS_OUTPUT.PUT_LINE",
+            "evidence": "OBSERVED",
+            "source": "L45"
+          }
+        ],
+        "called_by": [
+          {
+            "target": "ts-plsql-oracle-forms-hrms-main/plsql/packages/PKG_EMPLOYEE.pks",
+            "evidence": "INFERRED",
+            "source": "L6"
+          },
+          {
+            "target": "ts-plsql-oracle-forms-hrms-main/plsql/packages/PKG_LEAVE.pks",
+            "evidence": "INFERRED",
+            "source": "L6"
+          },
+          {
+            "target": "ts-plsql-oracle-forms-hrms-main/plsql/packages/PKG_PAYROLL.pks",
+            "evidence": "INFERRED",
+            "source": "L6"
+          },
+          {
+            "target": "ts-plsql-oracle-forms-hrms-main/plsql/packages/PKG_PERFORMANCE.pks",
+            "evidence": "INFERRED",
+            "source": "L6"
+          },
+          {
+            "target": "ts-plsql-oracle-forms-hrms-main/plsql/packages/PKG_SECURITY.pks",
+            "evidence": "INFERRED",
+            "source": "L6"
+          }
+        ],
+        "unresolved": [
+          {
+            "target": "DBMS_OUTPUT.PUT_LINE",
+            "reason": "no declaring file found"
+          }
+        ]
+      },
+      "coverage_ok": true
+    },
+    "ts-plsql-oracle-forms-hrms-main/plsql/packages/PKG_AUDIT.pks": {
+      "identity": {
+        "type": "plsql-spec",
+        "purpose": "Declares the public interface for centralized audit-trail logging of DML changes, used by all other packages and database triggers."
+      },
+      "chunk": 13,
+      "shape": [],
+      "connections": {
+        "calls": [],
+        "called_by": [
+          {
+            "target": "ts-plsql-oracle-forms-hrms-main/plsql/packages/PKG_EMPLOYEE.pkb",
+            "evidence": "OBSERVED",
+            "source": "L316"
+          },
+          {
+            "target": "ts-plsql-oracle-forms-hrms-main/plsql/packages/PKG_EMPLOYEE.pkb",
+            "evidence": "OBSERVED",
+            "source": "L412"
+          },
+          {
+            "target": "ts-plsql-oracle-forms-hrms-main/plsql/packages/PKG_EMPLOYEE.pkb",
+            "evidence": "OBSERVED",
+            "source": "L602"
+          },
+          {
+            "target": "ts-plsql-oracle-forms-hrms-main/plsql/packages/PKG_EMPLOYEE.pkb",
+            "evidence": "OBSERVED",
+            "source": "L675"
+          },
+          {
+            "target": "ts-plsql-oracle-forms-hrms-main/plsql/packages/PKG_EMPLOYEE.pkb",
+            "evidence": "OBSERVED",
+            "source": "L763"
+          },
+          {
+            "target": "ts-plsql-oracle-forms-hrms-main/plsql/packages/PKG_EMPLOYEE.pkb",
+            "evidence": "OBSERVED",
+            "source": "L835"
+          },
+          {
+            "target": "ts-plsql-oracle-forms-hrms-main/plsql/packages/PKG_LEAVE.pkb",
+            "evidence": "OBSERVED",
+            "source": "L251"
+          },
+          {
+            "target": "ts-plsql-oracle-forms-hrms-main/plsql/packages/PKG_LEAVE.pkb",
+            "evidence": "OBSERVED",
+            "source": "L312"
+          },
+          {
+            "target": "ts-plsql-oracle-forms-hrms-main/plsql/packages/PKG_LEAVE.pkb",
+            "evidence": "OBSERVED",
+            "source": "L366"
+          },
+          {
+            "target": "ts-plsql-oracle-forms-hrms-main/plsql/packages/PKG_LEAVE.pkb",
+            "evidence": "OBSERVED",
+            "source": "L424"
+          },
+          {
+            "target": "ts-plsql-oracle-forms-hrms-main/plsql/packages/PKG_LEAVE.pkb",
+            "evidence": "OBSERVED",
+            "source": "L484"
+          },
+          {
+            "target": "ts-plsql-oracle-forms-hrms-main/plsql/packages/PKG_PAYROLL.pkb",
+            "evidence": "OBSERVED",
+            "source": "L69"
+          },
+          {
+            "target": "ts-plsql-oracle-forms-hrms-main/plsql/packages/PKG_PAYROLL.pkb",
+            "evidence": "OBSERVED",
+            "source": "L672"
+          },
+          {
+            "target": "ts-plsql-oracle-forms-hrms-main/plsql/packages/PKG_PERFORMANCE.pkb",
+            "evidence": "OBSERVED",
+            "source": "L29"
+          },
+          {
+            "target": "ts-plsql-oracle-forms-hrms-main/plsql/packages/PKG_SECURITY.pkb",
+            "evidence": "OBSERVED",
+            "source": "L81"
+          },
+          {
+            "target": "ts-plsql-oracle-forms-hrms-main/plsql/packages/PKG_SECURITY.pkb",
+            "evidence": "OBSERVED",
+            "source": "L252"
+          },
+          {
+            "target": "ts-plsql-oracle-forms-hrms-main/plsql/triggers/trg_audit.sql",
+            "evidence": "OBSERVED",
+            "source": "L35"
+          },
+          {
+            "target": "ts-plsql-oracle-forms-hrms-main/plsql/triggers/trg_audit.sql",
+            "evidence": "OBSERVED",
+            "source": "L57"
+          },
+          {
+            "target": "ts-plsql-oracle-forms-hrms-main/plsql/triggers/trg_audit.sql",
+            "evidence": "OBSERVED",
+            "source": "L85"
+          }
+        ],
+        "unresolved": []
+      },
+      "coverage_ok": true
+    },
+    "ts-plsql-oracle-forms-hrms-main/plsql/packages/PKG_COMMON.pkb": {
+      "identity": {
+        "type": "plsql-body",
+        "purpose": "shared utility functions for HRMS — audit logging, system parameter access, business-day date math, fiscal period calculation, and formatting/validation of phone, SSN, currency, name, and email values"
+      },
+      "chunk": 5,
+      "shape": [],
+      "connections": {
+        "calls": [
+          {
+            "target": "PKG_COMMON.get_param",
+            "evidence": "OBSERVED",
+            "source": "L88"
+          },
+          {
+            "target": "PKG_COMMON.get_param",
+            "evidence": "OBSERVED",
+            "source": "L99"
+          },
+          {
+            "target": "DBMS_OUTPUT.PUT_LINE",
+            "evidence": "OBSERVED",
+            "source": "L32"
+          }
+        ],
+        "called_by": [
+          {
+            "target": "ts-plsql-oracle-forms-hrms-main/plsql/packages/PKG_EMPLOYEE.pks",
+            "evidence": "INFERRED",
+            "source": "L6"
+          },
+          {
+            "target": "ts-plsql-oracle-forms-hrms-main/plsql/packages/PKG_INTEGRATION.pks",
+            "evidence": "INFERRED",
+            "source": "L6"
+          },
+          {
+            "target": "ts-plsql-oracle-forms-hrms-main/plsql/packages/PKG_LEAVE.pks",
+            "evidence": "INFERRED",
+            "source": "L6"
+          },
+          {
+            "target": "ts-plsql-oracle-forms-hrms-main/plsql/packages/PKG_NOTIFICATION.pks",
+            "evidence": "INFERRED",
+            "source": "L6"
+          },
+          {
+            "target": "ts-plsql-oracle-forms-hrms-main/plsql/packages/PKG_PAYROLL.pks",
+            "evidence": "INFERRED",
+            "source": "L6"
+          },
+          {
+            "target": "ts-plsql-oracle-forms-hrms-main/plsql/packages/PKG_PERFORMANCE.pks",
+            "evidence": "INFERRED",
+            "source": "L6"
+          },
+          {
+            "target": "ts-plsql-oracle-forms-hrms-main/plsql/packages/PKG_REPORTING.pks",
+            "evidence": "INFERRED",
+            "source": "L6"
+          },
+          {
+            "target": "ts-plsql-oracle-forms-hrms-main/plsql/packages/PKG_SECURITY.pks",
+            "evidence": "INFERRED",
+            "source": "L6"
+          },
+          {
+            "target": "ts-plsql-oracle-forms-hrms-main/plsql/packages/PKG_VALIDATION.pks",
+            "evidence": "INFERRED",
+            "source": "L6"
+          }
+        ],
+        "unresolved": [
+          {
+            "target": "DBMS_OUTPUT.PUT_LINE",
+            "reason": "no declaring file found"
+          }
+        ]
+      },
+      "coverage_ok": false
+    },
+    "ts-plsql-oracle-forms-hrms-main/plsql/packages/PKG_COMMON.pks": {
+      "identity": {
+        "type": "plsql-spec",
+        "purpose": "Declares the shared utility interface — error/info logging, configuration-parameter access, date/business-day utilities, formatting, and validation — used by all other packages and forms."
+      },
+      "chunk": 13,
+      "shape": [
+        "T_ERROR_REC"
+      ],
+      "connections": {
+        "calls": [],
+        "called_by": [
+          {
+            "target": "ts-plsql-oracle-forms-hrms-main/forms/libraries/HRMS_COMMON_LIB.pll.sql",
+            "evidence": "OBSERVED",
+            "source": "L26"
+          },
+          {
+            "target": "ts-plsql-oracle-forms-hrms-main/plsql/packages/PKG_COMMON.pkb",
+            "evidence": "OBSERVED",
+            "source": "L88"
+          },
+          {
+            "target": "ts-plsql-oracle-forms-hrms-main/plsql/packages/PKG_COMMON.pkb",
+            "evidence": "OBSERVED",
+            "source": "L99"
+          },
+          {
+            "target": "ts-plsql-oracle-forms-hrms-main/plsql/packages/PKG_EMPLOYEE.pkb",
+            "evidence": "OBSERVED",
+            "source": "L354"
+          },
+          {
+            "target": "ts-plsql-oracle-forms-hrms-main/plsql/packages/PKG_EMPLOYEE.pkb",
+            "evidence": "OBSERVED",
+            "source": "L606"
+          },
+          {
+            "target": "ts-plsql-oracle-forms-hrms-main/plsql/packages/PKG_EMPLOYEE.pkb",
+            "evidence": "OBSERVED",
+            "source": "L784"
+          },
+          {
+            "target": "ts-plsql-oracle-forms-hrms-main/plsql/packages/PKG_INTEGRATION.pkb",
+            "evidence": "OBSERVED",
+            "source": "L74"
+          },
+          {
+            "target": "ts-plsql-oracle-forms-hrms-main/plsql/packages/PKG_INTEGRATION.pkb",
+            "evidence": "OBSERVED",
+            "source": "L81"
+          },
+          {
+            "target": "ts-plsql-oracle-forms-hrms-main/plsql/packages/PKG_INTEGRATION.pkb",
+            "evidence": "OBSERVED",
+            "source": "L138"
+          },
+          {
+            "target": "ts-plsql-oracle-forms-hrms-main/plsql/packages/PKG_INTEGRATION.pkb",
+            "evidence": "OBSERVED",
+            "source": "L145"
+          },
+          {
+            "target": "ts-plsql-oracle-forms-hrms-main/plsql/packages/PKG_INTEGRATION.pkb",
+            "evidence": "OBSERVED",
+            "source": "L178"
+          },
+          {
+            "target": "ts-plsql-oracle-forms-hrms-main/plsql/packages/PKG_INTEGRATION.pkb",
+            "evidence": "OBSERVED",
+            "source": "L185"
+          },
+          {
+            "target": "ts-plsql-oracle-forms-hrms-main/plsql/packages/PKG_INTEGRATION.pkb",
+            "evidence": "OBSERVED",
+            "source": "L192"
+          },
+          {
+            "target": "ts-plsql-oracle-forms-hrms-main/plsql/packages/PKG_INTEGRATION.pkb",
+            "evidence": "OBSERVED",
+            "source": "L201"
+          },
+          {
+            "target": "ts-plsql-oracle-forms-hrms-main/plsql/packages/PKG_INTEGRATION.pkb",
+            "evidence": "OBSERVED",
+            "source": "L209"
+          },
+          {
+            "target": "ts-plsql-oracle-forms-hrms-main/plsql/packages/PKG_NOTIFICATION.pkb",
+            "evidence": "OBSERVED",
+            "source": "L61-62"
+          },
+          {
+            "target": "ts-plsql-oracle-forms-hrms-main/plsql/packages/PKG_NOTIFICATION.pkb",
+            "evidence": "OBSERVED",
+            "source": "L140-141"
+          },
+          {
+            "target": "ts-plsql-oracle-forms-hrms-main/plsql/packages/PKG_PAYROLL.pkb",
+            "evidence": "OBSERVED",
+            "source": "L617"
+          },
+          {
+            "target": "ts-plsql-oracle-forms-hrms-main/plsql/packages/PKG_PAYROLL.pkb",
+            "evidence": "OBSERVED",
+            "source": "L1006"
+          },
+          {
+            "target": "ts-plsql-oracle-forms-hrms-main/plsql/packages/PKG_REPORTING.pkb",
+            "evidence": "OBSERVED",
+            "source": "L235"
+          },
+          {
+            "target": "ts-plsql-oracle-forms-hrms-main/plsql/packages/PKG_VALIDATION.pkb",
+            "evidence": "OBSERVED",
+            "source": "L60"
+          },
+          {
+            "target": "ts-plsql-oracle-forms-hrms-main/plsql/packages/PKG_VALIDATION.pkb",
+            "evidence": "OBSERVED",
+            "source": "L67"
+          }
+        ],
+        "unresolved": []
+      },
+      "coverage_ok": true
+    },
+    "ts-plsql-oracle-forms-hrms-main/plsql/packages/PKG_EMPLOYEE.pkb": {
+      "identity": {
+        "type": "plsql-body",
+        "purpose": "employee lifecycle management (hire, update, transfer, promote, terminate, rehire) and employee/org-chart lookups for the HRMS schema"
+      },
+      "chunk": 6,
+      "shape": [
+        "C_EMP_NUMBER_PREFIX",
+        "C_MAX_HIERARCHY_DEPTH"
+      ],
+      "connections": {
+        "calls": [
+          {
+            "target": "PKG_PAYROLL.create_salary_record",
+            "evidence": "OBSERVED",
+            "source": "L293"
+          },
+          {
+            "target": "PKG_PAYROLL.create_salary_record",
+            "evidence": "OBSERVED",
+            "source": "L650"
+          },
+          {
+            "target": "PKG_PAYROLL.create_salary_record",
+            "evidence": "OBSERVED",
+            "source": "L821"
+          },
+          {
+            "target": "PKG_AUDIT.log_action",
+            "evidence": "OBSERVED",
+            "source": "L316"
+          },
+          {
+            "target": "PKG_AUDIT.log_action",
+            "evidence": "OBSERVED",
+            "source": "L412"
+          },
+          {
+            "target": "PKG_AUDIT.log_action",
+            "evidence": "OBSERVED",
+            "source": "L602"
+          },
+          {
+            "target": "PKG_AUDIT.log_action",
+            "evidence": "OBSERVED",
+            "source": "L675"
+          },
+          {
+            "target": "PKG_AUDIT.log_action",
+            "evidence": "OBSERVED",
+            "source": "L763"
+          },
+          {
+            "target": "PKG_AUDIT.log_action",
+            "evidence": "OBSERVED",
+            "source": "L835"
+          },
+          {
+            "target": "PKG_NOTIFICATION.send_notification",
+            "evidence": "OBSERVED",
+            "source": "L324"
+          },
+          {
+            "target": "PKG_NOTIFICATION.send_notification",
+            "evidence": "OBSERVED",
+            "source": "L335"
+          },
+          {
+            "target": "PKG_NOTIFICATION.send_notification",
+            "evidence": "OBSERVED",
+            "source": "L768"
+          },
+          {
+            "target": "PKG_COMMON.log_error",
+            "evidence": "OBSERVED",
+            "source": "L354"
+          },
+          {
+            "target": "PKG_COMMON.log_error",
+            "evidence": "OBSERVED",
+            "source": "L606"
+          },
+          {
+            "target": "PKG_COMMON.log_error",
+            "evidence": "OBSERVED",
+            "source": "L784"
+          }
+        ],
+        "called_by": [
+          {
+            "target": "ts-plsql-oracle-forms-hrms-main/plsql/packages/PKG_INTEGRATION.pks",
+            "evidence": "INFERRED",
+            "source": "L6"
+          },
+          {
+            "target": "ts-plsql-oracle-forms-hrms-main/plsql/packages/PKG_LEAVE.pks",
+            "evidence": "INFERRED",
+            "source": "L6"
+          },
+          {
+            "target": "ts-plsql-oracle-forms-hrms-main/plsql/packages/PKG_PAYROLL.pks",
+            "evidence": "INFERRED",
+            "source": "L6"
+          },
+          {
+            "target": "ts-plsql-oracle-forms-hrms-main/plsql/packages/PKG_PERFORMANCE.pks",
+            "evidence": "INFERRED",
+            "source": "L6"
+          },
+          {
+            "target": "ts-plsql-oracle-forms-hrms-main/plsql/packages/PKG_REPORTING.pks",
+            "evidence": "INFERRED",
+            "source": "L6"
+          }
+        ],
+        "unresolved": []
+      },
+      "coverage_ok": true
+    },
+    "ts-plsql-oracle-forms-hrms-main/plsql/packages/PKG_EMPLOYEE.pks": {
+      "identity": {
+        "type": "plsql-spec",
+        "purpose": "Declares the core employee-management interface — CRUD, employment lifecycle (transfer/promote/terminate/rehire), org-chart/headcount queries, and validation — used by the HRMS_EMPLOYEE and HRMS_DEPARTMENT forms and batch jobs."
+      },
+      "chunk": 13,
+      "shape": [
+        "E_DUPLICATE_EMP_NUMBER",
+        "E_EMPLOYEE_NOT_FOUND",
+        "E_INVALID_DEPARTMENT",
+        "E_INVALID_MANAGER",
+        "E_TERMINATION_ERROR",
+        "G_CURRENT_DEPT_ID",
+        "G_CURRENT_EMP_ID",
+        "G_CURRENT_USER",
+        "G_DEBUG_MODE",
+        "T_EMP_CURSOR",
+        "T_EMP_ID_TABLE",
+        "T_EMP_REC",
+        "T_EMP_REC_TABLE"
+      ],
+      "connections": {
+        "calls": [
+          {
+            "target": "PKG_COMMON",
+            "evidence": "INFERRED",
+            "source": "L6"
+          },
+          {
+            "target": "PKG_AUDIT",
+            "evidence": "INFERRED",
+            "source": "L6"
+          },
+          {
+            "target": "PKG_NOTIFICATION",
+            "evidence": "INFERRED",
+            "source": "L6"
+          },
+          {
+            "target": "PKG_PAYROLL",
+            "evidence": "INFERRED",
+            "source": "L6"
+          }
+        ],
+        "called_by": [
+          {
+            "target": "ts-plsql-oracle-forms-hrms-main/forms/xml-exports/HRMS_EMPLOYEE.xml",
+            "evidence": "OBSERVED",
+            "source": "L327"
+          },
+          {
+            "target": "ts-plsql-oracle-forms-hrms-main/plsql/packages/PKG_SECURITY.pkb",
+            "evidence": "OBSERVED",
+            "source": "L79"
+          }
+        ],
+        "unresolved": []
+      },
+      "coverage_ok": true
+    },
+    "ts-plsql-oracle-forms-hrms-main/plsql/packages/PKG_INTEGRATION.pkb": {
+      "identity": {
+        "type": "plsql-body",
+        "purpose": "outbound/inbound integration with external systems — GL journal export, benefits feed export, time & attendance import, org structure sync, and integration status lookup"
+      },
+      "chunk": 7,
+      "shape": [
+        "C_BENEFITS_OUTPUT_DIR",
+        "C_GL_OUTPUT_DIR",
+        "C_TIME_INPUT_DIR"
+      ],
+      "connections": {
+        "calls": [
+          {
+            "target": "PKG_COMMON.log_info",
+            "evidence": "OBSERVED",
+            "source": "L74"
+          },
+          {
+            "target": "PKG_COMMON.log_error",
+            "evidence": "OBSERVED",
+            "source": "L81"
+          },
+          {
+            "target": "PKG_COMMON.log_info",
+            "evidence": "OBSERVED",
+            "source": "L138"
+          },
+          {
+            "target": "PKG_COMMON.log_error",
+            "evidence": "OBSERVED",
+            "source": "L145"
+          },
+          {
+            "target": "PKG_COMMON.log_error",
+            "evidence": "OBSERVED",
+            "source": "L178"
+          },
+          {
+            "target": "PKG_COMMON.log_info",
+            "evidence": "OBSERVED",
+            "source": "L185"
+          },
+          {
+            "target": "PKG_COMMON.log_error",
+            "evidence": "OBSERVED",
+            "source": "L192"
+          },
+          {
+            "target": "PKG_COMMON.log_info",
+            "evidence": "OBSERVED",
+            "source": "L201"
+          },
+          {
+            "target": "PKG_COMMON.get_param",
+            "evidence": "OBSERVED",
+            "source": "L209"
+          }
+        ],
+        "called_by": [],
+        "unresolved": []
+      },
+      "coverage_ok": true
+    },
+    "ts-plsql-oracle-forms-hrms-main/plsql/packages/PKG_INTEGRATION.pks": {
+      "identity": {
+        "type": "plsql-spec",
+        "purpose": "Declares the external-system integration interface — GL journal posting, benefits-provider feed export, time & attendance import, and org-structure sync — run by the nightly/weekly batch scheduler."
+      },
+      "chunk": 13,
+      "shape": [
+        "T_GL_ENTRY",
+        "T_GL_ENTRY_TABLE"
+      ],
+      "connections": {
+        "calls": [
+          {
+            "target": "PKG_COMMON",
+            "evidence": "INFERRED",
+            "source": "L6"
+          },
+          {
+            "target": "PKG_PAYROLL",
+            "evidence": "INFERRED",
+            "source": "L6"
+          },
+          {
+            "target": "PKG_EMPLOYEE",
+            "evidence": "INFERRED",
+            "source": "L6"
+          }
+        ],
+        "called_by": [],
+        "unresolved": []
+      },
+      "coverage_ok": true
+    },
+    "ts-plsql-oracle-forms-hrms-main/plsql/packages/PKG_LEAVE.pkb": {
+      "identity": {
+        "type": "plsql-body",
+        "purpose": "leave management — request submission/approval workflow, balance tracking, monthly accrual, and year-end carryover for HRMS employees"
+      },
+      "chunk": 8,
+      "shape": [],
+      "connections": {
+        "calls": [
+          {
+            "target": "calculate_business_days",
+            "evidence": "OBSERVED",
+            "source": "L159"
+          },
+          {
+            "target": "check_leave_overlap",
+            "evidence": "OBSERVED",
+            "source": "L174"
+          },
+          {
+            "target": "approve_leave_request",
+            "evidence": "OBSERVED",
+            "source": "L248"
+          },
+          {
+            "target": "PKG_NOTIFICATION.send_notification",
+            "evidence": "OBSERVED",
+            "source": "L231"
+          },
+          {
+            "target": "PKG_AUDIT.log_action",
+            "evidence": "OBSERVED",
+            "source": "L251"
+          },
+          {
+            "target": "PKG_NOTIFICATION.send_notification",
+            "evidence": "OBSERVED",
+            "source": "L301"
+          },
+          {
+            "target": "PKG_AUDIT.log_action",
+            "evidence": "OBSERVED",
+            "source": "L312"
+          },
+          {
+            "target": "PKG_NOTIFICATION.send_notification",
+            "evidence": "OBSERVED",
+            "source": "L358"
+          },
+          {
+            "target": "PKG_AUDIT.log_action",
+            "evidence": "OBSERVED",
+            "source": "L366"
+          },
+          {
+            "target": "PKG_AUDIT.log_action",
+            "evidence": "OBSERVED",
+            "source": "L424"
+          },
+          {
+            "target": "initialize_balances",
+            "evidence": "OBSERVED",
+            "source": "L473"
+          },
+          {
+            "target": "PKG_AUDIT.log_action",
+            "evidence": "OBSERVED",
+            "source": "L484"
+          },
+          {
+            "target": "get_leave_balance",
+            "evidence": "OBSERVED",
+            "source": "L566"
+          },
+          {
+            "target": "initialize_balances",
+            "evidence": "OBSERVED",
+            "source": "L592"
+          },
+          {
+            "target": "initialize_balances",
+            "evidence": "OBSERVED",
+            "source": "L666"
+          },
+          {
+            "target": "DBMS_OUTPUT.PUT_LINE",
+            "evidence": "OBSERVED",
+            "source": "L533"
+          },
+          {
+            "target": "DBMS_SCHEDULER",
+            "evidence": "INFERRED",
+            "source": "L523"
+          }
+        ],
+        "called_by": [],
+        "unresolved": [
+          {
+            "target": "DBMS_OUTPUT.PUT_LINE",
+            "reason": "no declaring file found"
+          },
+          {
+            "target": "DBMS_SCHEDULER",
+            "reason": "no declaring file found"
+          }
+        ]
+      },
+      "coverage_ok": true
+    },
+    "ts-plsql-oracle-forms-hrms-main/plsql/packages/PKG_LEAVE.pks": {
+      "identity": {
+        "type": "plsql-spec",
+        "purpose": "Declares the leave-management interface — leave requests, approvals, balance tracking, and accrual/carryover batch processing — used by the HRMS_LEAVE form, self-service portal, and the batch accrual job."
+      },
+      "chunk": 13,
+      "shape": [
+        "E_APPROVAL_ERROR",
+        "E_INSUFFICIENT_BALANCE",
+        "E_INVALID_LEAVE_TYPE",
+        "E_OVERLAPPING_LEAVE",
+        "T_LEAVE_CURSOR"
+      ],
+      "connections": {
+        "calls": [
+          {
+            "target": "PKG_EMPLOYEE",
+            "evidence": "INFERRED",
+            "source": "L6"
+          },
+          {
+            "target": "PKG_COMMON",
+            "evidence": "INFERRED",
+            "source": "L6"
+          },
+          {
+            "target": "PKG_AUDIT",
+            "evidence": "INFERRED",
+            "source": "L6"
+          },
+          {
+            "target": "PKG_NOTIFICATION",
+            "evidence": "INFERRED",
+            "source": "L6"
+          }
+        ],
+        "called_by": [
+          {
+            "target": "ts-plsql-oracle-forms-hrms-main/forms/xml-exports/HRMS_LEAVE.xml",
+            "evidence": "OBSERVED",
+            "source": "L84"
+          },
+          {
+            "target": "ts-plsql-oracle-forms-hrms-main/forms/xml-exports/HRMS_LEAVE.xml",
+            "evidence": "OBSERVED",
+            "source": "L152"
+          },
+          {
+            "target": "ts-plsql-oracle-forms-hrms-main/plsql/packages/PKG_LEAVE.pkb",
+            "evidence": "OBSERVED",
+            "source": "L159"
+          },
+          {
+            "target": "ts-plsql-oracle-forms-hrms-main/plsql/packages/PKG_LEAVE.pkb",
+            "evidence": "OBSERVED",
+            "source": "L174"
+          },
+          {
+            "target": "ts-plsql-oracle-forms-hrms-main/plsql/packages/PKG_LEAVE.pkb",
+            "evidence": "OBSERVED",
+            "source": "L248"
+          },
+          {
+            "target": "ts-plsql-oracle-forms-hrms-main/plsql/packages/PKG_LEAVE.pkb",
+            "evidence": "OBSERVED",
+            "source": "L473"
+          },
+          {
+            "target": "ts-plsql-oracle-forms-hrms-main/plsql/packages/PKG_LEAVE.pkb",
+            "evidence": "OBSERVED",
+            "source": "L566"
+          },
+          {
+            "target": "ts-plsql-oracle-forms-hrms-main/plsql/packages/PKG_LEAVE.pkb",
+            "evidence": "OBSERVED",
+            "source": "L592"
+          },
+          {
+            "target": "ts-plsql-oracle-forms-hrms-main/plsql/packages/PKG_LEAVE.pkb",
+            "evidence": "OBSERVED",
+            "source": "L666"
+          }
+        ],
+        "unresolved": []
+      },
+      "coverage_ok": true
+    },
+    "ts-plsql-oracle-forms-hrms-main/plsql/packages/PKG_NOTIFICATION.pkb": {
+      "identity": {
+        "type": "plsql-body",
+        "purpose": "queues outbound notifications and delivers them asynchronously via SMTP, with retry and cancellation support"
+      },
+      "chunk": 9,
+      "shape": [
+        "C_FROM_ADDRESS",
+        "C_FROM_NAME",
+        "C_SMTP_HOST",
+        "C_SMTP_PORT"
+      ],
+      "connections": {
+        "calls": [
+          {
+            "target": "PKG_COMMON.log_error",
+            "evidence": "OBSERVED",
+            "source": "L61-62"
+          },
+          {
+            "target": "PKG_COMMON.log_info",
+            "evidence": "OBSERVED",
+            "source": "L140-141"
+          },
+          {
+            "target": "SEQ_NOTIFICATION.NEXTVAL",
+            "evidence": "OBSERVED",
+            "source": "L50"
+          },
+          {
+            "target": "UTL_SMTP.OPEN_CONNECTION",
+            "evidence": "OBSERVED",
+            "source": "L90"
+          },
+          {
+            "target": "UTL_SMTP.HELO",
+            "evidence": "OBSERVED",
+            "source": "L91"
+          },
+          {
+            "target": "UTL_SMTP.MAIL",
+            "evidence": "OBSERVED",
+            "source": "L92"
+          },
+          {
+            "target": "UTL_SMTP.RCPT",
+            "evidence": "OBSERVED",
+            "source": "L93"
+          },
+          {
+            "target": "UTL_SMTP.OPEN_DATA",
+            "evidence": "OBSERVED",
+            "source": "L95"
+          },
+          {
+            "target": "UTL_SMTP.WRITE_DATA",
+            "evidence": "OBSERVED",
+            "source": "L96-105"
+          },
+          {
+            "target": "UTL_SMTP.CLOSE_DATA",
+            "evidence": "OBSERVED",
+            "source": "L106"
+          },
+          {
+            "target": "UTL_SMTP.QUIT",
+            "evidence": "OBSERVED",
+            "source": "L107"
+          },
+          {
+            "target": "UTL_SMTP.QUIT",
+            "evidence": "OBSERVED",
+            "source": "L130"
+          },
+          {
+            "target": "UTL_TCP.CRLF",
+            "evidence": "OBSERVED",
+            "source": "L97"
+          }
+        ],
+        "called_by": [
+          {
+            "target": "ts-plsql-oracle-forms-hrms-main/plsql/packages/PKG_EMPLOYEE.pks",
+            "evidence": "INFERRED",
+            "source": "L6"
+          },
+          {
+            "target": "ts-plsql-oracle-forms-hrms-main/plsql/packages/PKG_LEAVE.pks",
+            "evidence": "INFERRED",
+            "source": "L6"
+          },
+          {
+            "target": "ts-plsql-oracle-forms-hrms-main/plsql/packages/PKG_PAYROLL.pks",
+            "evidence": "INFERRED",
+            "source": "L6"
+          },
+          {
+            "target": "ts-plsql-oracle-forms-hrms-main/plsql/packages/PKG_PERFORMANCE.pks",
+            "evidence": "INFERRED",
+            "source": "L6"
+          }
+        ],
+        "unresolved": [
+          {
+            "target": "SEQ_NOTIFICATION.NEXTVAL",
+            "reason": "no declaring file found"
+          },
+          {
+            "target": "UTL_SMTP.OPEN_CONNECTION",
+            "reason": "no declaring file found"
+          },
+          {
+            "target": "UTL_SMTP.HELO",
+            "reason": "no declaring file found"
+          },
+          {
+            "target": "UTL_SMTP.MAIL",
+            "reason": "no declaring file found"
+          },
+          {
+            "target": "UTL_SMTP.RCPT",
+            "reason": "no declaring file found"
+          },
+          {
+            "target": "UTL_SMTP.OPEN_DATA",
+            "reason": "no declaring file found"
+          },
+          {
+            "target": "UTL_SMTP.WRITE_DATA",
+            "reason": "no declaring file found"
+          },
+          {
+            "target": "UTL_SMTP.CLOSE_DATA",
+            "reason": "no declaring file found"
+          },
+          {
+            "target": "UTL_SMTP.QUIT",
+            "reason": "no declaring file found"
+          },
+          {
+            "target": "UTL_SMTP.QUIT",
+            "reason": "no declaring file found"
+          },
+          {
+            "target": "UTL_TCP.CRLF",
+            "reason": "no declaring file found"
+          }
+        ]
+      },
+      "coverage_ok": true
+    },
+    "ts-plsql-oracle-forms-hrms-main/plsql/packages/PKG_NOTIFICATION.pks": {
+      "identity": {
+        "type": "plsql-spec",
+        "purpose": "Declares the notification-queue interface — sending, batch processing, retry, and cancellation of email/in-app/SMS notifications — used by PKG_EMPLOYEE, PKG_LEAVE, PKG_PAYROLL, and PKG_PERFORMANCE."
+      },
+      "chunk": 13,
+      "shape": [],
+      "connections": {
+        "calls": [
+          {
+            "target": "PKG_COMMON",
+            "evidence": "INFERRED",
+            "source": "L6"
+          }
+        ],
+        "called_by": [
+          {
+            "target": "ts-plsql-oracle-forms-hrms-main/plsql/packages/PKG_EMPLOYEE.pkb",
+            "evidence": "OBSERVED",
+            "source": "L324"
+          },
+          {
+            "target": "ts-plsql-oracle-forms-hrms-main/plsql/packages/PKG_EMPLOYEE.pkb",
+            "evidence": "OBSERVED",
+            "source": "L335"
+          },
+          {
+            "target": "ts-plsql-oracle-forms-hrms-main/plsql/packages/PKG_EMPLOYEE.pkb",
+            "evidence": "OBSERVED",
+            "source": "L768"
+          },
+          {
+            "target": "ts-plsql-oracle-forms-hrms-main/plsql/packages/PKG_LEAVE.pkb",
+            "evidence": "OBSERVED",
+            "source": "L231"
+          },
+          {
+            "target": "ts-plsql-oracle-forms-hrms-main/plsql/packages/PKG_LEAVE.pkb",
+            "evidence": "OBSERVED",
+            "source": "L301"
+          },
+          {
+            "target": "ts-plsql-oracle-forms-hrms-main/plsql/packages/PKG_LEAVE.pkb",
+            "evidence": "OBSERVED",
+            "source": "L358"
+          },
+          {
+            "target": "ts-plsql-oracle-forms-hrms-main/plsql/packages/PKG_PERFORMANCE.pkb",
+            "evidence": "OBSERVED",
+            "source": "L86"
+          },
+          {
+            "target": "ts-plsql-oracle-forms-hrms-main/plsql/packages/PKG_PERFORMANCE.pkb",
+            "evidence": "OBSERVED",
+            "source": "L127"
+          },
+          {
+            "target": "ts-plsql-oracle-forms-hrms-main/plsql/packages/PKG_PERFORMANCE.pkb",
+            "evidence": "OBSERVED",
+            "source": "L185"
+          }
+        ],
+        "unresolved": []
+      },
+      "coverage_ok": true
+    },
+    "ts-plsql-oracle-forms-hrms-main/plsql/packages/PKG_PAYROLL.pkb": {
+      "identity": {
+        "type": "plsql-body",
+        "purpose": "Payroll processing — salary history, pay period/run lifecycle, tax and deduction calculation, payslip and pay register reporting"
+      },
+      "chunk": 10,
+      "shape": [
+        "C_ALLOWANCE_AMOUNT",
+        "C_MEDICARE_ADDL_RATE",
+        "C_MEDICARE_ADDL_THRESHOLD",
+        "C_MEDICARE_RATE",
+        "C_SS_RATE",
+        "C_SS_WAGE_BASE_2024",
+        "C_STANDARD_DEDUCTION_MARRIED",
+        "C_STANDARD_DEDUCTION_SINGLE"
+      ],
+      "connections": {
+        "calls": [
+          {
+            "target": "PKG_AUDIT.log_action",
+            "evidence": "OBSERVED",
+            "source": "L69"
+          },
+          {
+            "target": "PKG_AUDIT.log_action",
+            "evidence": "OBSERVED",
+            "source": "L672"
+          },
+          {
+            "target": "calculate_employee_pay",
+            "evidence": "OBSERVED",
+            "source": "L338"
+          },
+          {
+            "target": "get_salary_as_of",
+            "evidence": "OBSERVED",
+            "source": "L437"
+          },
+          {
+            "target": "get_ytd_earnings",
+            "evidence": "OBSERVED",
+            "source": "L460"
+          },
+          {
+            "target": "calculate_federal_tax",
+            "evidence": "OBSERVED",
+            "source": "L488"
+          },
+          {
+            "target": "calculate_state_tax",
+            "evidence": "OBSERVED",
+            "source": "L509"
+          },
+          {
+            "target": "calculate_fica",
+            "evidence": "OBSERVED",
+            "source": "L528"
+          },
+          {
+            "target": "calculate_medicare",
+            "evidence": "OBSERVED",
+            "source": "L545"
+          },
+          {
+            "target": "PKG_COMMON.log_error",
+            "evidence": "OBSERVED",
+            "source": "L617"
+          },
+          {
+            "target": "PKG_COMMON.log_error",
+            "evidence": "OBSERVED",
+            "source": "L1006"
+          },
+          {
+            "target": "UTL_FILE.FOPEN",
+            "evidence": "OBSERVED",
+            "source": "L954"
+          },
+          {
+            "target": "UTL_FILE.PUT_LINE",
+            "evidence": "OBSERVED",
+            "source": "L957"
+          },
+          {
+            "target": "UTL_FILE.FCLOSE",
+            "evidence": "OBSERVED",
+            "source": "L997"
+          },
+          {
+            "target": "UTL_FILE.IS_OPEN",
+            "evidence": "OBSERVED",
+            "source": "L1003"
+          },
+          {
+            "target": "DBMS_OUTPUT.PUT_LINE",
+            "evidence": "OBSERVED",
+            "source": "L999"
+          }
+        ],
+        "called_by": [
+          {
+            "target": "ts-plsql-oracle-forms-hrms-main/plsql/packages/PKG_EMPLOYEE.pks",
+            "evidence": "INFERRED",
+            "source": "L6"
+          },
+          {
+            "target": "ts-plsql-oracle-forms-hrms-main/plsql/packages/PKG_INTEGRATION.pks",
+            "evidence": "INFERRED",
+            "source": "L6"
+          },
+          {
+            "target": "ts-plsql-oracle-forms-hrms-main/plsql/packages/PKG_REPORTING.pks",
+            "evidence": "INFERRED",
+            "source": "L6"
+          }
+        ],
+        "unresolved": [
+          {
+            "target": "UTL_FILE.FOPEN",
+            "reason": "no declaring file found"
+          },
+          {
+            "target": "UTL_FILE.PUT_LINE",
+            "reason": "no declaring file found"
+          },
+          {
+            "target": "UTL_FILE.FCLOSE",
+            "reason": "no declaring file found"
+          },
+          {
+            "target": "UTL_FILE.IS_OPEN",
+            "reason": "no declaring file found"
+          },
+          {
+            "target": "DBMS_OUTPUT.PUT_LINE",
+            "reason": "no declaring file found"
+          }
+        ]
+      },
+      "coverage_ok": false
+    },
+    "ts-plsql-oracle-forms-hrms-main/plsql/packages/PKG_PAYROLL.pks": {
+      "identity": {
+        "type": "plsql-spec",
+        "purpose": "Declares the payroll-processing interface — salary records, pay-period management, payroll-run calculation/approval/reversal, tax withholding calculations, and payslip/pay-register reporting — used by the HRMS_PAYROLL form and the DBMS_SCHEDULER batch scheduler."
+      },
+      "chunk": 13,
+      "shape": [
+        "E_CALCULATION_ERROR",
+        "E_INVALID_SALARY",
+        "E_PERIOD_CLOSED",
+        "E_RUN_ALREADY_PAID",
+        "T_PAYSLIP_CURSOR",
+        "T_PAYSLIP_REC"
+      ],
+      "connections": {
+        "calls": [
+          {
+            "target": "PKG_EMPLOYEE",
+            "evidence": "INFERRED",
+            "source": "L6"
+          },
+          {
+            "target": "PKG_COMMON",
+            "evidence": "INFERRED",
+            "source": "L6"
+          },
+          {
+            "target": "PKG_AUDIT",
+            "evidence": "INFERRED",
+            "source": "L6"
+          },
+          {
+            "target": "PKG_NOTIFICATION",
+            "evidence": "INFERRED",
+            "source": "L6"
+          }
+        ],
+        "called_by": [
+          {
+            "target": "ts-plsql-oracle-forms-hrms-main/forms/xml-exports/HRMS_PAYROLL.xml",
+            "evidence": "OBSERVED",
+            "source": "L98"
+          },
+          {
+            "target": "ts-plsql-oracle-forms-hrms-main/forms/xml-exports/HRMS_PAYROLL.xml",
+            "evidence": "OBSERVED",
+            "source": "L122"
+          },
+          {
+            "target": "ts-plsql-oracle-forms-hrms-main/forms/xml-exports/HRMS_PAYROLL.xml",
+            "evidence": "OBSERVED",
+            "source": "L142"
+          },
+          {
+            "target": "ts-plsql-oracle-forms-hrms-main/plsql/packages/PKG_EMPLOYEE.pkb",
+            "evidence": "OBSERVED",
+            "source": "L293"
+          },
+          {
+            "target": "ts-plsql-oracle-forms-hrms-main/plsql/packages/PKG_EMPLOYEE.pkb",
+            "evidence": "OBSERVED",
+            "source": "L650"
+          },
+          {
+            "target": "ts-plsql-oracle-forms-hrms-main/plsql/packages/PKG_EMPLOYEE.pkb",
+            "evidence": "OBSERVED",
+            "source": "L821"
+          },
+          {
+            "target": "ts-plsql-oracle-forms-hrms-main/plsql/packages/PKG_PAYROLL.pkb",
+            "evidence": "OBSERVED",
+            "source": "L338"
+          },
+          {
+            "target": "ts-plsql-oracle-forms-hrms-main/plsql/packages/PKG_PAYROLL.pkb",
+            "evidence": "OBSERVED",
+            "source": "L437"
+          },
+          {
+            "target": "ts-plsql-oracle-forms-hrms-main/plsql/packages/PKG_PAYROLL.pkb",
+            "evidence": "OBSERVED",
+            "source": "L460"
+          },
+          {
+            "target": "ts-plsql-oracle-forms-hrms-main/plsql/packages/PKG_PAYROLL.pkb",
+            "evidence": "OBSERVED",
+            "source": "L488"
+          },
+          {
+            "target": "ts-plsql-oracle-forms-hrms-main/plsql/packages/PKG_PAYROLL.pkb",
+            "evidence": "OBSERVED",
+            "source": "L509"
+          },
+          {
+            "target": "ts-plsql-oracle-forms-hrms-main/plsql/packages/PKG_PAYROLL.pkb",
+            "evidence": "OBSERVED",
+            "source": "L528"
+          },
+          {
+            "target": "ts-plsql-oracle-forms-hrms-main/plsql/packages/PKG_PAYROLL.pkb",
+            "evidence": "OBSERVED",
+            "source": "L545"
+          }
+        ],
+        "unresolved": []
+      },
+      "coverage_ok": true
+    },
+    "ts-plsql-oracle-forms-hrms-main/plsql/packages/PKG_PERFORMANCE.pkb": {
+      "identity": {
+        "type": "plsql-body",
+        "purpose": "Performance review lifecycle management — review cycles, self/manager reviews, goals, and reporting cursors"
+      },
+      "chunk": 11,
+      "shape": [],
+      "connections": {
+        "calls": [
+          {
+            "target": "PKG_AUDIT.log_action",
+            "evidence": "OBSERVED",
+            "source": "L29"
+          },
+          {
+            "target": "PKG_NOTIFICATION.send_notification",
+            "evidence": "OBSERVED",
+            "source": "L86"
+          },
+          {
+            "target": "PKG_NOTIFICATION.send_notification",
+            "evidence": "OBSERVED",
+            "source": "L127"
+          },
+          {
+            "target": "PKG_NOTIFICATION.send_notification",
+            "evidence": "OBSERVED",
+            "source": "L185"
+          },
+          {
+            "target": "create_review",
+            "evidence": "OBSERVED",
+            "source": "L327"
+          }
+        ],
+        "called_by": [],
+        "unresolved": []
+      },
+      "coverage_ok": true
+    },
+    "ts-plsql-oracle-forms-hrms-main/plsql/packages/PKG_PERFORMANCE.pks": {
+      "identity": {
+        "type": "plsql-spec",
+        "purpose": "Performance review management — review cycles, self/manager assessments, goal tracking, and rating distribution/calibration."
+      },
+      "chunk": 13,
+      "shape": [
+        "T_REVIEW_CURSOR"
+      ],
+      "connections": {
+        "calls": [
+          {
+            "target": "PKG_EMPLOYEE",
+            "evidence": "INFERRED",
+            "source": "L6"
+          },
+          {
+            "target": "PKG_COMMON",
+            "evidence": "INFERRED",
+            "source": "L6"
+          },
+          {
+            "target": "PKG_AUDIT",
+            "evidence": "INFERRED",
+            "source": "L6"
+          },
+          {
+            "target": "PKG_NOTIFICATION",
+            "evidence": "INFERRED",
+            "source": "L6"
+          }
+        ],
+        "called_by": [
+          {
+            "target": "ts-plsql-oracle-forms-hrms-main/plsql/packages/PKG_PERFORMANCE.pkb",
+            "evidence": "OBSERVED",
+            "source": "L327"
+          }
+        ],
+        "unresolved": []
+      },
+      "coverage_ok": true
+    },
+    "ts-plsql-oracle-forms-hrms-main/plsql/packages/PKG_REPORTING.pkb": {
+      "identity": {
+        "type": "plsql-body",
+        "purpose": "HR/payroll reporting — headcount, compensation, turnover, new hires, leave utilization, payroll summary, and EEO compliance report cursors"
+      },
+      "chunk": 11,
+      "shape": [],
+      "connections": {
+        "calls": [
+          {
+            "target": "PKG_COMMON.log_info",
+            "evidence": "OBSERVED",
+            "source": "L235"
+          }
+        ],
+        "called_by": [],
+        "unresolved": []
+      },
+      "coverage_ok": true
+    },
+    "ts-plsql-oracle-forms-hrms-main/plsql/packages/PKG_REPORTING.pks": {
+      "identity": {
+        "type": "plsql-spec",
+        "purpose": "Report generation — headcount, compensation, turnover, new hires, leave utilization, payroll summary, and EEO compliance reporting."
+      },
+      "chunk": 13,
+      "shape": [
+        "T_REPORT_CURSOR"
+      ],
+      "connections": {
+        "calls": [
+          {
+            "target": "PKG_EMPLOYEE",
+            "evidence": "INFERRED",
+            "source": "L6"
+          },
+          {
+            "target": "PKG_PAYROLL",
+            "evidence": "INFERRED",
+            "source": "L6"
+          },
+          {
+            "target": "PKG_COMMON",
+            "evidence": "INFERRED",
+            "source": "L6"
+          }
+        ],
+        "called_by": [],
+        "unresolved": []
+      },
+      "coverage_ok": true
+    },
+    "ts-plsql-oracle-forms-hrms-main/plsql/packages/PKG_SECURITY.pkb": {
+      "identity": {
+        "type": "plsql-body",
+        "purpose": "Authentication, session lifecycle management, role/permission checks, SSN encryption, and password policy enforcement for the HRMS system."
+      },
+      "chunk": 12,
+      "shape": [
+        "C_ENCRYPTION_KEY",
+        "C_SESSION_TIMEOUT_MIN"
+      ],
+      "connections": {
+        "calls": [
+          {
+            "target": "DBMS_CRYPTO.HASH",
+            "evidence": "EXTERNAL",
+            "source": "L20"
+          },
+          {
+            "target": "UTL_RAW.CAST_TO_RAW",
+            "evidence": "EXTERNAL",
+            "source": "L7"
+          },
+          {
+            "target": "PKG_EMPLOYEE.set_session_context",
+            "evidence": "OBSERVED",
+            "source": "L79"
+          },
+          {
+            "target": "PKG_AUDIT.log_action",
+            "evidence": "OBSERVED",
+            "source": "L81"
+          },
+          {
+            "target": "DBMS_CRYPTO.ENCRYPT",
+            "evidence": "EXTERNAL",
+            "source": "L196"
+          },
+          {
+            "target": "DBMS_CRYPTO.DECRYPT",
+            "evidence": "EXTERNAL",
+            "source": "L209"
+          },
+          {
+            "target": "UTL_RAW.CAST_TO_VARCHAR2",
+            "evidence": "EXTERNAL",
+            "source": "L214"
+          },
+          {
+            "target": "PKG_AUDIT.log_action",
+            "evidence": "OBSERVED",
+            "source": "L252"
+          }
+        ],
+        "called_by": [],
+        "unresolved": [
+          {
+            "target": "DBMS_CRYPTO.HASH",
+            "reason": "no declaring file found"
+          },
+          {
+            "target": "UTL_RAW.CAST_TO_RAW",
+            "reason": "no declaring file found"
+          },
+          {
+            "target": "DBMS_CRYPTO.ENCRYPT",
+            "reason": "no declaring file found"
+          },
+          {
+            "target": "DBMS_CRYPTO.DECRYPT",
+            "reason": "no declaring file found"
+          },
+          {
+            "target": "UTL_RAW.CAST_TO_VARCHAR2",
+            "reason": "no declaring file found"
+          }
+        ]
+      },
+      "coverage_ok": false
+    },
+    "ts-plsql-oracle-forms-hrms-main/plsql/packages/PKG_SECURITY.pks": {
+      "identity": {
+        "type": "plsql-spec",
+        "purpose": "Public interface for authentication, session management, role-based authorization, and SSN/password encryption in HRMS."
+      },
+      "chunk": 14,
+      "shape": [
+        "E_ACCOUNT_LOCKED",
+        "E_INSUFFICIENT_PRIV",
+        "E_INVALID_CREDENTIALS",
+        "E_SESSION_EXPIRED"
+      ],
+      "connections": {
+        "calls": [
+          {
+            "target": "PKG_COMMON",
+            "evidence": "INFERRED",
+            "source": "L6"
+          },
+          {
+            "target": "PKG_AUDIT",
+            "evidence": "INFERRED",
+            "source": "L6"
+          }
+        ],
+        "called_by": [
+          {
+            "target": "ts-plsql-oracle-forms-hrms-main/forms/libraries/HRMS_COMMON_LIB.pll.sql",
+            "evidence": "OBSERVED",
+            "source": "L140"
+          },
+          {
+            "target": "ts-plsql-oracle-forms-hrms-main/forms/menus/HRMS_MENU.mmb.sql",
+            "evidence": "INFERRED",
+            "source": "L60"
+          },
+          {
+            "target": "ts-plsql-oracle-forms-hrms-main/forms/xml-exports/HRMS_EMPLOYEE.xml",
+            "evidence": "OBSERVED",
+            "source": "L35"
+          },
+          {
+            "target": "ts-plsql-oracle-forms-hrms-main/forms/xml-exports/HRMS_EMPLOYEE.xml",
+            "evidence": "OBSERVED",
+            "source": "L45"
+          },
+          {
+            "target": "ts-plsql-oracle-forms-hrms-main/forms/xml-exports/HRMS_LEAVE.xml",
+            "evidence": "OBSERVED",
+            "source": "L25"
+          },
+          {
+            "target": "ts-plsql-oracle-forms-hrms-main/forms/xml-exports/HRMS_LOGIN.xml",
+            "evidence": "OBSERVED",
+            "source": "L75"
+          },
+          {
+            "target": "ts-plsql-oracle-forms-hrms-main/forms/xml-exports/HRMS_MENU.xml",
+            "evidence": "OBSERVED",
+            "source": "L26"
+          },
+          {
+            "target": "ts-plsql-oracle-forms-hrms-main/forms/xml-exports/HRMS_MENU.xml",
+            "evidence": "OBSERVED",
+            "source": "L30"
+          },
+          {
+            "target": "ts-plsql-oracle-forms-hrms-main/forms/xml-exports/HRMS_MENU.xml",
+            "evidence": "OBSERVED",
+            "source": "L34"
+          },
+          {
+            "target": "ts-plsql-oracle-forms-hrms-main/forms/xml-exports/HRMS_MENU.xml",
+            "evidence": "OBSERVED",
+            "source": "L75"
+          },
+          {
+            "target": "ts-plsql-oracle-forms-hrms-main/forms/xml-exports/HRMS_MENU.xml",
+            "evidence": "OBSERVED",
+            "source": "L115"
+          },
+          {
+            "target": "ts-plsql-oracle-forms-hrms-main/forms/xml-exports/HRMS_MENU.xml",
+            "evidence": "OBSERVED",
+            "source": "L131"
+          },
+          {
+            "target": "ts-plsql-oracle-forms-hrms-main/forms/xml-exports/HRMS_MENU.xml",
+            "evidence": "OBSERVED",
+            "source": "L149"
+          },
+          {
+            "target": "ts-plsql-oracle-forms-hrms-main/forms/xml-exports/HRMS_PAYROLL.xml",
+            "evidence": "OBSERVED",
+            "source": "L28"
+          },
+          {
+            "target": "ts-plsql-oracle-forms-hrms-main/forms/xml-exports/HRMS_PAYROLL.xml",
+            "evidence": "OBSERVED",
+            "source": "L34"
+          },
+          {
+            "target": "ts-plsql-oracle-forms-hrms-main/forms/xml-exports/HRMS_PAYROLL.xml",
+            "evidence": "OBSERVED",
+            "source": "L137"
+          },
+          {
+            "target": "ts-plsql-oracle-forms-hrms-main/forms/xml-exports/HRMS_PERFORMANCE.xml",
+            "evidence": "OBSERVED",
+            "source": "L23"
+          }
+        ],
+        "unresolved": []
+      },
+      "coverage_ok": true
+    },
+    "ts-plsql-oracle-forms-hrms-main/plsql/packages/PKG_VALIDATION.pkb": {
+      "identity": {
+        "type": "plsql-body",
+        "purpose": "Centralized field/business-rule validation routines (dates, salary bands, email/phone/employee-number formats, business-day/holiday checks, required-field checks) used across HRMS."
+      },
+      "chunk": 12,
+      "shape": [],
+      "connections": {
+        "calls": [
+          {
+            "target": "PKG_COMMON.is_valid_email",
+            "evidence": "OBSERVED",
+            "source": "L60"
+          },
+          {
+            "target": "PKG_COMMON.is_valid_phone",
+            "evidence": "OBSERVED",
+            "source": "L67"
+          }
+        ],
+        "called_by": [],
+        "unresolved": []
+      },
+      "coverage_ok": true
+    },
+    "ts-plsql-oracle-forms-hrms-main/plsql/packages/PKG_VALIDATION.pks": {
+      "identity": {
+        "type": "plsql-spec",
+        "purpose": "Public interface for centralized business-rule validation shared between Forms WHEN-VALIDATE-ITEM triggers and PL/SQL packages (date ranges, salary-to-grade, email/phone/employee-number formats, future-date/business-day checks, required-field checks)."
+      },
+      "chunk": 14,
+      "shape": [],
+      "connections": {
+        "calls": [
+          {
+            "target": "PKG_COMMON",
+            "evidence": "INFERRED",
+            "source": "L6"
+          }
+        ],
+        "called_by": [
+          {
+            "target": "ts-plsql-oracle-forms-hrms-main/forms/xml-exports/HRMS_EMPLOYEE.xml",
+            "evidence": "OBSERVED",
+            "source": "L377"
+          }
+        ],
+        "unresolved": []
+      },
+      "coverage_ok": true
+    },
+    "ts-plsql-oracle-forms-hrms-main/plsql/triggers/trg_audit.sql": {
+      "identity": {
+        "type": "schema",
+        "purpose": "Generic audit-trail triggers that record INSERT/UPDATE/DELETE changes on SALARY_RECORDS, status changes on LEAVE_REQUESTS, and INSERT/UPDATE/DELETE changes on DEPARTMENTS, via PKG_AUDIT.log_action."
+      },
+      "chunk": 15,
+      "shape": [
+        "TRG_DEPARTMENT_AUDIT",
+        "TRG_LEAVE_REQUEST_AUDIT",
+        "TRG_SALARY_AUDIT"
+      ],
+      "connections": {
+        "calls": [
+          {
+            "target": "PKG_AUDIT.log_action",
+            "evidence": "OBSERVED",
+            "source": "L35"
+          },
+          {
+            "target": "PKG_AUDIT.log_action",
+            "evidence": "OBSERVED",
+            "source": "L57"
+          },
+          {
+            "target": "PKG_AUDIT.log_action",
+            "evidence": "OBSERVED",
+            "source": "L85"
+          }
+        ],
+        "called_by": [],
+        "unresolved": []
+      },
+      "coverage_ok": true
+    },
+    "ts-plsql-oracle-forms-hrms-main/plsql/triggers/trg_employees.sql": {
+      "identity": {
+        "type": "schema",
+        "purpose": "Database-level triggers enforcing employee insert/update validation, audit-column defaults, status/department/job change history logging, and a soft-delete guard on HRMS.EMPLOYEES — duplicating logic that also exists in PKG_EMPLOYEE and Forms triggers."
+      },
+      "chunk": 15,
+      "shape": [
+        "TRG_EMP_BEFORE_INSERT",
+        "TRG_EMP_BEFORE_UPDATE",
+        "TRG_EMP_INSTEAD_OF_DELETE"
+      ],
+      "connections": {
+        "calls": [],
+        "called_by": [],
+        "unresolved": []
+      },
+      "coverage_ok": true
+    },
+    "ts-plsql-oracle-forms-hrms-main/README.md": {
+      "identity": {
+        "type": "other",
+        "purpose": "describes the overall architecture, directory layout, and technical characteristics of the Oracle Forms 11g/12c legacy HRMS application"
+      },
+      "chunk": 4,
+      "shape": [],
+      "connections": {
+        "calls": [],
+        "called_by": [],
+        "unresolved": []
+      },
+      "coverage_ok": true
+    },
+    "ts-plsql-oracle-forms-hrms-main/schema/sequences/hrms_sequences.sql": {
+      "identity": {
+        "type": "schema",
+        "purpose": "Creates all surrogate-key sequences used across the HRMS schema's tables (employee, payroll, leave, performance, and system/audit domains)"
+      },
+      "chunk": 15,
+      "shape": [
+        "SEQ_AUDIT",
+        "SEQ_DEPARTMENT",
+        "SEQ_DEPENDENT",
+        "SEQ_EMERGENCY_CONTACT",
+        "SEQ_EMPLOYEE",
+        "SEQ_EMP_HISTORY",
+        "SEQ_EMP_NUMBER",
+        "SEQ_EMP_PAY_ELEMENT",
+        "SEQ_HOLIDAY",
+        "SEQ_JOB_GRADE",
+        "SEQ_JOB_TITLE",
+        "SEQ_LEAVE_ACCRUAL",
+        "SEQ_LEAVE_BALANCE",
+        "SEQ_LEAVE_REQUEST",
+        "SEQ_LEAVE_TYPE",
+        "SEQ_LOCATION",
+        "SEQ_LOOKUP",
+        "SEQ_NOTIFICATION",
+        "SEQ_PAYROLL_DETAIL",
+        "SEQ_PAYROLL_RUN",
+        "SEQ_PAY_ELEMENT",
+        "SEQ_PAY_PERIOD",
+        "SEQ_PERF_GOAL",
+        "SEQ_PERF_REVIEW",
+        "SEQ_REVIEW_CYCLE",
+        "SEQ_SALARY",
+        "SEQ_SYSTEM_PARAM",
+        "SEQ_TAX_BRACKET",
+        "SEQ_USER_SESSION"
+      ],
+      "connections": {
+        "calls": [],
+        "called_by": [],
+        "unresolved": []
+      },
+      "coverage_ok": true
+    },
+    "ts-plsql-oracle-forms-hrms-main/schema/tables/01_core_tables.sql": {
+      "identity": {
+        "type": "schema",
+        "purpose": "DDL defining the HRMS core entity tables — departments, locations, job grades/titles, employees, employee history, dependents, and emergency contacts"
+      },
+      "chunk": 16,
+      "shape": [],
+      "connections": {
+        "calls": [],
+        "called_by": [],
+        "unresolved": []
+      },
+      "coverage_ok": true
+    },
+    "ts-plsql-oracle-forms-hrms-main/schema/tables/02_payroll_tables.sql": {
+      "identity": {
+        "type": "schema",
+        "purpose": "DDL defining the HRMS payroll subsystem tables — salary history, pay elements, pay periods/runs, tax brackets, employee tax info, and bank accounts for direct deposit"
+      },
+      "chunk": 16,
+      "shape": [],
+      "connections": {
+        "calls": [],
+        "called_by": [],
+        "unresolved": []
+      },
+      "coverage_ok": true
+    },
+    "ts-plsql-oracle-forms-hrms-main/schema/tables/03_leave_tables.sql": {
+      "identity": {
+        "type": "schema",
+        "purpose": "DDL defining the HRMS leave-management tables — leave types, balances, requests, accrual log, and company holidays"
+      },
+      "chunk": 16,
+      "shape": [],
+      "connections": {
+        "calls": [],
+        "called_by": [],
+        "unresolved": []
+      },
+      "coverage_ok": true
+    },
+    "ts-plsql-oracle-forms-hrms-main/schema/tables/04_performance_tables.sql": {
+      "identity": {
+        "type": "schema",
+        "purpose": "creates HRMS performance-management, audit, configuration, notification, session-tracking, and generic lookup tables"
+      },
+      "chunk": 17,
+      "shape": [
+        "ACTION_TYPE",
+        "ACTIVE_FLAG",
+        "AREAS_FOR_IMPROVEMENT",
+        "AUDIT_ID",
+        "AUDIT_LOG",
+        "BODY",
+        "CALIBRATED_RATING",
+        "CALIBRATION_DUE",
+        "CALIBRATION_NOTES",
+        "CHANGED_BY",
+        "CHANGED_DATE",
+        "COMMENTS",
+        "CREATED_BY",
+        "CREATED_DATE",
+        "CYCLE_ID",
+        "CYCLE_NAME",
+        "CYCLE_YEAR",
+        "DATA_TYPE",
+        "DEVELOPMENT_PLAN",
+        "DISPLAY_ORDER",
+        "EDITABLE_FLAG",
+        "EMPLOYEE_ACK_DATE",
+        "EMPLOYEE_COMMENTS",
+        "EMP_ID",
+        "END_DATE",
+        "ERROR_MESSAGE",
+        "FORMS_MODULE",
+        "GOAL_CATEGORY",
+        "GOAL_DESCRIPTION",
+        "GOAL_ID",
+        "GOAL_TITLE",
+        "IP_ADDRESS",
+        "LOGIN_TIME",
+        "LOGOUT_TIME",
+        "LOOKUP_CODE",
+        "LOOKUP_ID",
+        "LOOKUP_TYPE",
+        "LOOKUP_VALUE",
+        "LOOKUP_VALUES",
+        "MANAGER_ASSESSMENT",
+        "MANAGER_RATING",
+        "MANAGER_REVIEW_DUE",
+        "MODIFIED_BY",
+        "MODIFIED_DATE",
+        "NEW_VALUES",
+        "NOTIFICATION_ID",
+        "NOTIFICATION_QUEUE",
+        "NOTIFICATION_TYPE",
+        "OLD_VALUES",
+        "OVERALL_RATING",
+        "PARAM_CODE",
+        "PARAM_DESCRIPTION",
+        "PARAM_GROUP",
+        "PARAM_ID",
+        "PARAM_VALUE",
+        "PARENT_LOOKUP_ID",
+        "PERFORMANCE_GOALS",
+        "PERFORMANCE_REVIEWS",
+        "PRIORITY",
+        "PROGRESS_PCT",
+        "RATING_LABEL",
+        "RECIPIENT_EMAIL",
+        "RECIPIENT_EMP_ID",
+        "RECORD_ID",
+        "REFERENCE_ID",
+        "REFERENCE_TABLE",
+        "RETRY_COUNT",
+        "REVIEWER_EMP_ID",
+        "REVIEW_CYCLES",
+        "REVIEW_ID",
+        "REVIEW_TYPE",
+        "SELF_ASSESSMENT",
+        "SELF_RATING",
+        "SELF_REVIEW_DUE",
+        "SENT_DATE",
+        "SESSION_ID",
+        "SESSION_STATUS",
+        "START_DATE",
+        "STATUS",
+        "STRENGTHS",
+        "SUBJECT",
+        "SYSTEM_PARAMETERS",
+        "TABLE_NAME",
+        "TARGET_DATE",
+        "USERNAME",
+        "USER_SESSIONS",
+        "WEIGHT_PCT"
+      ],
+      "connections": {
+        "calls": [],
+        "called_by": [],
+        "unresolved": []
+      },
+      "coverage_ok": true
+    },
+    "ts-plsql-oracle-forms-hrms-main/schema/views/hrms_views.sql": {
+      "identity": {
+        "type": "schema",
+        "purpose": "Creates reporting/lookup views over the HRMS schema for use by Oracle Reports (.rdf), Forms LOVs, and external reporting tools."
+      },
+      "chunk": 17,
+      "shape": [],
+      "connections": {
+        "calls": [],
+        "called_by": [],
+        "unresolved": []
+      },
+      "coverage_ok": true
+    }
+  }
+}

@@ -1,0 +1,291 @@
+{
+  "chunk_index": 6,
+  "total_chunks": 19,
+  "type_group": "plsql-body",
+  "budget": 30000,
+  "expected_files": [
+    {
+      "path": "ts-plsql-oracle-forms-hrms-main/plsql/packages/PKG_EMPLOYEE.pkb",
+      "type": "plsql-body"
+    }
+  ],
+  "total_source_chars": 43327,
+  "entries": {
+    "ts-plsql-oracle-forms-hrms-main/plsql/packages/PKG_EMPLOYEE.pkb": {
+      "type": "plsql-body",
+      "pass": "correction",
+      "attempt": 2,
+      "content": "**IDENTITY:**\n  KIND: package body\n  PURPOSE: employee lifecycle management (hire, update, transfer, promote, terminate, rehire) and employee/org-chart lookups for the HRMS schema\n\n**STRUCTURES:**\n  c_emp_number_prefix — KIND: constant; TYPE: VARCHAR2(3)\n  c_max_hierarchy_depth — KIND: constant; TYPE: NUMBER\n\n**METHODS:**\n  **FUNCTION generate_emp_number RETURN VARCHAR2** [SOURCE: L40-56]\n  - What it does: Called internally (by create_employee) to mint a new employee number. Selects the max numeric suffix from EMP_NUMBER values in EMPLOYEES matching 'EMP-%', adds 1, and formats as prefix + 6-digit zero-padded number. On any exception, falls back to a sequence-based number instead.\n  - Business rules: Employee numbers follow format EMP-NNNNNN, derived by incrementing the current max suffix. Comment flags a known bug: race condition under concurrent inserts, since there's no SELECT FOR UPDATE / locking on the MAX lookup, so concurrent calls can generate duplicate numbers [L38].\n  - Numbers & thresholds: c_emp_number_prefix = 'EMP' [L7]; v_new_number declared VARCHAR2(20) [L42]; LPAD width of 6 digits with '0' padding used in both the primary and fallback path [L49, L55].\n  - Security & error handling: WHEN OTHERS catches any exception (including the race-condition duplicate scenario) and falls back to SEQ_EMPLOYEE.NEXTVAL-based numbering instead of failing [L52-55].\n  - Data in/out: Input — none (reads EMPLOYEES internally). Output — returns generated employee number as VARCHAR2.\n\n  **FUNCTION get_next_emp_id RETURN NUMBER** [SOURCE: L61-66]\n  - What it does: Private helper (used internally by create_employee) that pulls SEQ_EMPLOYEE.NEXTVAL via SELECT ... FROM DUAL.\n  - Business rules: None beyond sequence-based ID assignment.\n  - Numbers & thresholds: None.\n  - Security & error handling: None — no exception handling.\n  - Data in/out: Input — none. Output — returns NUMBER.\n\n  **PROCEDURE validate_dept(p_dept_id IN NUMBER)** [SOURCE: L71-86]\n  - What it does: Private helper called by create_employee, transfer_employee, and rehire_employee. Counts DEPARTMENTS rows matching p_dept_id with ACTIVE_FLAG='Y'; raises an error if none found.\n  - Business rules: Only departments flagged ACTIVE_FLAG='Y' are valid for employee assignment [L74]. Department must exist and be active before assignment [L81].\n  - Numbers & thresholds: None beyond the 'Y' flag literal.\n  - Security & error handling: RAISE_APPLICATION_ERROR(-20003, ...) when the department is invalid or inactive [L84].\n  - Data in/out: Input — p_dept_id. Output — none (validation only; raises on failure).\n\n  **PROCEDURE validate_manager(p_manager_id IN NUMBER, p_emp_id IN NUMBER DEFAULT NULL)** [SOURCE: L92-142]\n  - What it does: Private helper called by create_employee (validate only) and transfer_employee (validate + circular check). If p_manager_id is NULL, returns immediately as valid. Otherwise checks the manager exists in EMPLOYEES with EMPLOYMENT_STATUS='ACTIVE'. If p_emp_id is supplied, walks up the MANAGER_EMP_ID chain from p_manager_id checking for a loop back to p_emp_id, up to c_max_hierarchy_depth levels.\n  - Business rules: NULL manager is valid (top-level employee) [L97-99]. Manager must exist and be EMPLOYMENT_STATUS='ACTIVE' [L103-114]. Circular reporting chains are prohibited, checked only when p_emp_id is supplied [L117-141]. Chain walk stops after c_max_hierarchy_depth levels or when NO_DATA_FOUND ends the chain [L134-136].\n  - Numbers & thresholds: c_max_hierarchy_depth = 15 (max reporting-hierarchy traversal depth to prevent unbounded loop-detection traversal) [L9, L120].\n  - Security & error handling: RAISE_APPLICATION_ERROR(-20004, ...) for invalid/inactive manager [L113] and for detected circular chain [L124-126]. Inner NO_DATA_FOUND on the chain walk is caught and treated as end-of-chain rather than an error [L134-136].\n  - Data in/out: Input — p_manager_id, p_emp_id (optional). Output — none (validation only; raises on failure).\n\n  **PROCEDURE log_history(p_emp_id, p_change_type, p_effective_date, p_old_dept_id, p_new_dept_id, p_old_job_id, p_new_job_id, p_old_manager, p_new_manager, p_old_salary, p_new_salary, p_old_location, p_new_location, p_reason_code, p_comments, p_user)** [SOURCE: L148-190]\n  - What it does: Private helper called by create_employee, transfer_employee, promote_employee, terminate_employee, and rehire_employee after each change. Runs as an autonomous transaction; inserts one row into EMPLOYEE_HISTORY with old/new values and commits independently of the caller's transaction.\n  - Business rules: History logging must never fail the calling transaction — any exception is caught, rolled back locally, and swallowed (optionally logged to DBMS_OUTPUT) rather than propagated [L182-189].\n  - Numbers & thresholds: None.\n  - Security & error handling: PRAGMA AUTONOMOUS_TRANSACTION isolates the INSERT+COMMIT from the caller's transaction [L166]. WHEN OTHERS rolls back and, only if g_debug_mode is set, prints a warning — otherwise fails silently [L182-189].\n  - Data in/out: Inputs — p_emp_id, p_change_type, p_effective_date (required); old/new dept/job/manager/salary/location, reason_code, comments, p_user (optional). Output — inserts one EMPLOYEE_HISTORY row via SEQ_EMP_HISTORY.NEXTVAL; commits.\n\n  **FUNCTION create_employee(p_first_name, p_last_name, p_hire_date, p_dept_id, p_job_id, p_manager_emp_id, p_location_code, p_employment_type, p_base_salary, p_email, p_user) RETURN NUMBER** [SOURCE: L195-361]\n  - What it does: Public hire entry point. Validates first/last name are present, validates department and manager, checks the job exists/active and gets its grade, optionally warns (non-blocking) if starting salary is outside the grade's band, defaults location from the department if unset, generates EMP_ID/EMP_NUMBER, inserts the EMPLOYEES row, optionally creates an initial SALARY_RECORDS row via PKG_PAYROLL.create_salary_record, logs history, writes an audit entry, and sends welcome/manager notifications.\n  - Business rules: First and last name are mandatory [L214-218]. Department must be valid/active [L220]. Manager, if any, must be valid [L221]. Job must exist and be ACTIVE_FLAG='Y' [L224-233]. Starting salary outside the job grade's MIN_SALARY/MAX_SALARY band is only a soft warning (not enforced here — Forms layer allows override with manager approval) [L246-255]. Location defaults to the department's location when not provided [L260-267]. A SALARY_RECORDS row is only created if a starting salary is explicitly given [L289-300]. Names stored upper-cased/trimmed; email stored lower-cased/trimmed [L281-284]. Manager notification only sent if a manager was assigned [L334-344]. Duplicate employee number (race condition from generate_emp_number) surfaces as a retry-able error [L349-351].\n  - Numbers & thresholds: v_emp_number declared VARCHAR2(20) [L209]; default p_employment_type = 'FULL_TIME' [L203]; error codes -20010 (missing name) [L217], -20011 (invalid/inactive job) [L232], -20002 (duplicate employee number) [L351].\n  - Security & error handling: RAISE_APPLICATION_ERROR -20010/-20011 on validation failure; DUP_VAL_ON_INDEX mapped to -20002 with a retry message [L349-351]; WHEN OTHERS logs via PKG_COMMON.log_error then re-raises [L352-360]. No dynamic SQL; inputs bound as parameters.\n  - Data in/out: Inputs — p_first_name, p_last_name, p_hire_date, p_dept_id, p_job_id (required); p_manager_emp_id, p_location_code, p_employment_type (default 'FULL_TIME'), p_base_salary, p_email, p_user (default USER) (optional). Output — returns new EMP_ID; inserts EMPLOYEES, optionally SALARY_RECORDS (via PKG_PAYROLL), EMPLOYEE_HISTORY; writes audit log; sends up to two notifications.\n\n  **PROCEDURE update_employee(p_emp_id, p_first_name, p_last_name, p_email, p_phone_work, p_phone_mobile, p_address_line1, p_address_line2, p_city, p_state_province, p_postal_code, p_country_code, p_user)** [SOURCE: L367-413]\n  - What it does: Public partial-update of contact/personal info. Confirms the employee exists, then updates only EMPLOYEES columns for which a non-NULL argument was passed (others preserved via NVL); writes an audit entry.\n  - Business rules: Employee must exist before update [L384-387]. NULL parameters preserve existing values (partial-update pattern) [L389]. Names upper-cased/trimmed, email lower-cased/trimmed on write [L391-393]. Zero rows affected after a successful existence check is treated as a concurrent-deletion integrity failure [L406-410].\n  - Numbers & thresholds: None.\n  - Security & error handling: RAISE_APPLICATION_ERROR -20001 if employee not found [L386], and -20001 again if the UPDATE affects 0 rows [L409].\n  - Data in/out: Input — p_emp_id (required); contact/address fields, p_user (optional). Output — updates matching EMPLOYEES row; writes PKG_AUDIT log entry.\n\n  **FUNCTION get_employee(p_emp_id IN NUMBER) RETURN t_emp_rec** [SOURCE: L418-445]\n  - What it does: Public lookup returning core employee fields plus a correlated subquery for current base salary from SALARY_RECORDS.\n  - Business rules: Current salary is the active salary record (ACTIVE_FLAG='Y') effective on/before SYSDATE with END_DATE NULL or in the future [L426-433].\n  - Numbers & thresholds: ROWNUM = 1 subquery limiter [L433].\n  - Security & error handling: RAISE_APPLICATION_ERROR -20001 if EMP_ID not found (NO_DATA_FOUND) [L444].\n  - Data in/out: Input — p_emp_id. Output — returns t_emp_rec record.\n\n  **FUNCTION get_employee_by_number(p_emp_number IN VARCHAR2) RETURN t_emp_rec** [SOURCE: L450-464]\n  - What it does: Public lookup; resolves EMP_NUMBER to EMP_ID via EMPLOYEES, then delegates to get_employee.\n  - Business rules: None beyond delegating to get_employee's rules.\n  - Numbers & thresholds: None.\n  - Security & error handling: RAISE_APPLICATION_ERROR -20001 if EMP_NUMBER not found [L463].\n  - Data in/out: Input — p_emp_number. Output — returns t_emp_rec (via get_employee).\n\n  **PROCEDURE search_employees(p_cursor OUT t_emp_cursor, p_last_name, p_first_name, p_dept_id, p_status, p_location_code, p_hire_date_from, p_hire_date_to)** [SOURCE: L472-527]\n  - What it does: Public dynamic search. Builds a SQL string joining EMPLOYEES, DEPARTMENTS, JOB_TITLES starting from \"WHERE 1=1\", appending filter clauses per non-NULL parameter, ordered by last/first name, then opens p_cursor as a REF CURSOR for the built SQL.\n  - Business rules: Status filter, when provided, restricts to the given EMPLOYMENT_STATUS value [L505-508]. All filters optional and additive (AND-combined).\n  - Numbers & thresholds: v_sql declared VARCHAR2(4000) [L482].\n  - Security & error handling: Comment explicitly flags a SQL injection bug — p_last_name, p_first_name, and other string filters are concatenated directly into dynamic SQL instead of using bind variables [L469-470, L493-494, L498, L507, L511], mitigated in practice only by Forms LOV pre-validation, not by this procedure. No other error handling.\n  - Data in/out: Inputs — all filter parameters optional. Output — p_cursor (OUT REF CURSOR) opened against the dynamic query.\n\n  **PROCEDURE transfer_employee(p_emp_id, p_new_dept_id, p_new_job_id, p_new_manager_id, p_new_location, p_effective_date, p_reason_code, p_comments, p_user)** [SOURCE: L532-608]\n  - What it does: Public department/job/manager/location transfer. Locks the EMPLOYEES row (FOR UPDATE NOWAIT), requires ACTIVE status, validates the new department, defaults job/location to current values if unset, validates the new manager (with circular-chain check) if supplied, updates EMPLOYEES, logs history, writes an audit entry.\n  - Business rules: Only ACTIVE employees may be transferred [L553-558]. New department must be valid/active [L561]. Job/location default to current values when not specified [L564-566]. New manager, if given, is validated including circular-chain detection [L569-572].\n  - Numbers & thresholds: Error code -20012.\n  - Security & error handling: FOR UPDATE NOWAIT (fails immediately rather than blocking if locked) [L551]. RAISE_APPLICATION_ERROR -20012 if not ACTIVE [L556-557]. WHEN OTHERS logs via PKG_COMMON.log_error and re-raises [L605-607].\n  - Data in/out: Inputs — p_emp_id, p_new_dept_id (required); job/manager/location/effective_date (default SYSDATE)/reason/comments/user (optional). Output — updates EMPLOYEES; inserts EMPLOYEE_HISTORY; writes audit log.\n\n  **PROCEDURE promote_employee(p_emp_id, p_new_job_id, p_new_salary, p_effective_date, p_comments, p_user)** [SOURCE: L613-676]\n  - What it does: Public promotion. Reads the employee's current JOB_ID, looks up the most recent active SALARY_RECORDS row (defaulting to 0 if none), updates EMPLOYEES.JOB_ID, creates a new salary record via PKG_PAYROLL.create_salary_record with a computed % change, logs history, writes audit entry.\n  - Business rules: Most recent ACTIVE_FLAG='Y' record (EFFECTIVE_DATE DESC, first row) is the % change baseline; absent record defaults to 0 [L629-640]. % change computed only when prior salary > 0, else NULL [L655-658].\n  - Numbers & thresholds: Percentage change rounded to 2 decimal places: ROUND(((p_new_salary - v_old_salary) / v_old_salary) * 100, 2) [L657]. ROWNUM = 1 limiter on salary lookup [L635].\n  - Security & error handling: NO_DATA_FOUND on salary lookup caught, defaults old salary to 0 [L637-640]. No WHEN OTHERS handler in this procedure.\n  - Data in/out: Inputs — p_emp_id, p_new_job_id, p_new_salary (required); effective_date (default SYSDATE), comments, user (optional). Output — updates EMPLOYEES.JOB_ID; inserts SALARY_RECORDS (via PKG_PAYROLL); inserts EMPLOYEE_HISTORY; writes audit log.\n\n  **PROCEDURE terminate_employee(p_emp_id, p_termination_date, p_reason, p_comments, p_user)** [SOURCE: L681-786]\n  - What it does: Public termination. Locks the EMPLOYEES row (FOR UPDATE), rejects if already TERMINATED, auto-cancels PENDING leave requests, sets EMPLOYEES to TERMINATED/ACTIVE_FLAG='N' with date/reason, closes the active SALARY_RECORDS row and active EMPLOYEE_PAY_ELEMENTS rows, logs history, writes audit entry, notifies manager if present. Leaves several integrations unimplemented (TODOs).\n  - Business rules: Cannot re-terminate an already-TERMINATED employee [L697-701]. All PENDING leave requests auto-cancelled on termination [L704-721]. Only currently active (ACTIVE_FLAG='Y') SALARY_RECORDS and EMPLOYEE_PAY_ELEMENTS rows are closed [L734-751]. Manager notification only sent if a manager is assigned [L766-776]. TODOs (not implemented): COBRA benefits integration, revoking access via PKG_SECURITY, final-pay calc via PKG_PAYROLL.calculate_final_pay [L778-780].\n  - Numbers & thresholds: Error code -20005.\n  - Security & error handling: FOR UPDATE row lock (blocking) [L694]. RAISE_APPLICATION_ERROR -20005 if already terminated [L699-700]. WHEN OTHERS logs via PKG_COMMON.log_error and re-raises [L783-785].\n  - Data in/out: Inputs — p_emp_id, p_termination_date, p_reason (required); comments, user (optional). Output — updates EMPLOYEES, LEAVE_REQUESTS (conditionally), SALARY_RECORDS, EMPLOYEE_PAY_ELEMENTS; inserts EMPLOYEE_HISTORY; writes audit log; sends manager notification if applicable.\n\n  **PROCEDURE rehire_employee(p_emp_id, p_rehire_date, p_dept_id, p_job_id, p_base_salary, p_user)** [SOURCE: L791-836]\n  - What it does: Public rehire. Validates the new department, resets EMPLOYEES to ACTIVE with the rehire date, clears termination fields, sets new dept/job, creates a new SALARY_RECORDS row via PKG_PAYROLL.create_salary_record, logs history, writes audit entry.\n  - Business rules: Rehire overwrites HIRE_DATE with the rehire date and clears TERMINATION_DATE/TERMINATION_REASON — treated as a fresh start [L802-813]. New department must be valid/active [L800].\n  - Numbers & thresholds: Error code -20001.\n  - Security & error handling: RAISE_APPLICATION_ERROR -20001 if EMP_ID doesn't exist (0 rows updated) [L815-818]. No WHEN OTHERS handler.\n  - Data in/out: Inputs — p_emp_id, p_rehire_date, p_dept_id, p_job_id, p_base_salary (required); p_user (default USER). Output — updates EMPLOYEES; inserts SALARY_RECORDS (via PKG_PAYROLL); inserts EMPLOYEE_HISTORY; writes audit log.\n\n  **FUNCTION get_direct_reports(p_manager_emp_id IN NUMBER) RETURN t_emp_id_table** [SOURCE: L841-860]\n  - What it does: Public lookup. Loops over EMPLOYEES rows where MANAGER_EMP_ID matches and EMPLOYMENT_STATUS='ACTIVE', ordered by last/first name, collecting EMP_IDs into an indexed table.\n  - Business rules: Only ACTIVE employees are returned as direct reports [L848-852].\n  - Numbers & thresholds: None.\n  - Security & error handling: None.\n  - Data in/out: Input — p_manager_emp_id. Output — returns t_emp_id_table.\n\n  **FUNCTION get_org_chart(p_root_emp_id IN NUMBER, p_max_depth IN NUMBER DEFAULT 10) RETURN t_emp_cursor** [SOURCE: L866-886]\n  - What it does: Public hierarchy lookup. Opens a REF CURSOR using CONNECT BY PRIOR to walk the management hierarchy from p_root_emp_id down to p_max_depth levels, restricted to ACTIVE employees, ordered siblings by last/first name, with LEVEL exposed as depth. Comment notes the recursive query is known to time out for orgs with >500 employees.\n  - Business rules: Only ACTIVE employees included in traversal [L878-879]. Default depth overridable by caller; deeper traversal risks timeout on large orgs [L872].\n  - Numbers & thresholds: p_max_depth default = 10 [L868]; documented risk threshold — times out for orgs with >500 employees [L864] (not enforced, just noted).\n  - Security & error handling: None — no exception handling; large hierarchies can time out per the comment.\n  - Data in/out: Input — p_root_emp_id (required), p_max_depth (default 10). Output — returns t_emp_cursor of depth/emp_id/emp_number/first_name/last_name/dept_id/job_id/manager_emp_id.\n\n  **FUNCTION get_headcount_by_dept(p_dept_id IN NUMBER DEFAULT NULL, p_as_of_date IN DATE DEFAULT SYSDATE) RETURN NUMBER** [SOURCE: L891-907]\n  - What it does: Public aggregate. Counts EMPLOYEES rows matching an optional dept filter, EMPLOYMENT_STATUS='ACTIVE', hired on/before the as-of date, and not yet terminated as of that date.\n  - Business rules: Headcount counts only employees actively employed as of the given date [L897-904].\n  - Numbers & thresholds: None.\n  - Security & error handling: None.\n  - Data in/out: Inputs — p_dept_id (default NULL=all), p_as_of_date (default SYSDATE). Output — returns NUMBER count.\n\n  **FUNCTION get_tenure_years(p_emp_id IN NUMBER) RETURN NUMBER** [SOURCE: L912-928]\n  - What it does: Public calculation. Reads HIRE_DATE and TERMINATION_DATE (defaulting to SYSDATE if NULL), returns tenure in years.\n  - Business rules: Active employees with no termination date use today's date as the tenure end point [L918].\n  - Numbers & thresholds: MONTHS_BETWEEN(...) / 12 converts months to years; result ROUND(...,1) to 1 decimal place [L924].\n  - Security & error handling: NO_DATA_FOUND caught, returns NULL [L926-927].\n  - Data in/out: Input — p_emp_id. Output — returns NUMBER (years, 1 decimal) or NULL.\n\n  **FUNCTION is_active(p_emp_id IN NUMBER) RETURN BOOLEAN** [SOURCE: L933-948]\n  - What it does: Public check. Reads EMPLOYMENT_STATUS and returns TRUE only if it equals 'ACTIVE'.\n  - Business rules: Active iff EMPLOYMENT_STATUS = 'ACTIVE' [L943-944].\n  - Numbers & thresholds: None.\n  - Security & error handling: NO_DATA_FOUND caught, returns FALSE [L946-947].\n  - Data in/out: Input — p_emp_id. Output — returns BOOLEAN.\n\n  **FUNCTION validate_employee(p_emp_id IN NUMBER) RETURN BOOLEAN** [SOURCE: L953-980]\n  - What it does: Public integrity check. Reads the full EMPLOYEES row and checks: names present, hire date present, EMPLOYMENT_STATUS/ACTIVE_FLAG consistency.\n  - Business rules: Invalid if FIRST_NAME or LAST_NAME is NULL [L962-964]. Invalid if HIRE_DATE is NULL [L967-969]. Invalid if EMPLOYMENT_STATUS='ACTIVE' but ACTIVE_FLAG != 'Y' [L972-974].\n  - Numbers & thresholds: None.\n  - Security & error handling: NO_DATA_FOUND caught, returns FALSE [L978-979].\n  - Data in/out: Input — p_emp_id. Output — returns BOOLEAN.\n\n  **FUNCTION emp_exists(p_emp_id IN NUMBER) RETURN BOOLEAN** [SOURCE: L985-995]\n  - What it does: Public existence check. Counts EMPLOYEES rows matching p_emp_id; TRUE if count > 0.\n  - Business rules: None beyond simple existence.\n  - Numbers & thresholds: None.\n  - Security & error handling: None.\n  - Data in/out: Input — p_emp_id. Output — returns BOOLEAN.\n\n  **PROCEDURE set_session_context(p_user IN VARCHAR2, p_emp_id IN NUMBER)** [SOURCE: L1000-1015]\n  - What it does: Public session setup. Sets package globals g_current_user and g_current_emp_id from parameters, then looks up and sets g_current_dept_id from the employee's EMPLOYEES row.\n  - Business rules: None explicit.\n  - Numbers & thresholds: None.\n  - Security & error handling: NO_DATA_FOUND on the department lookup caught, sets g_current_dept_id to NULL [L1012-1014].\n  - Data in/out: Inputs — p_user, p_emp_id. Output — side effect: sets package-level globals g_current_user, g_current_emp_id, g_current_dept_id.\n\n**DEPENDENCIES:**\n  Data touched:\n  - Reads: EMPLOYEES — existence/status/hierarchy/lookup checks across generate_emp_number, validate_manager, get_employee, get_employee_by_number, transfer_employee, promote_employee, terminate_employee, get_direct_reports, get_org_chart, get_headcount_by_dept, get_tenure_years, is_active, validate_employee, emp_exists, set_session_context; also joined in search_employees dynamic SQL\n  - Reads: DEPARTMENTS — active-department check (validate_dept), default location lookup (create_employee); joined in search_employees dynamic SQL\n  - Reads: JOB_TITLES — job existence/active/grade lookup (create_employee); joined in search_employees dynamic SQL\n  - Reads: JOB_GRADES — salary band lookup (create_employee)\n  - Reads: SALARY_RECORDS — current-salary subquery (get_employee); prior-salary lookup (promote_employee); active-record lookup for closing (terminate_employee)\n  - Reads: LEAVE_REQUESTS — pending-leave count (terminate_employee)\n  - Reads: DUAL — sequence pull (get_next_emp_id)\n  - Reads: SEQ_EMPLOYEE — NEXTVAL (generate_emp_number fallback, get_next_emp_id)\n  - Reads: SEQ_EMP_HISTORY — NEXTVAL (log_history)\n  - Writes: EMPLOYEES — INSERT (create_employee); UPDATE (update_employee, transfer_employee, promote_employee, terminate_employee, rehire_employee)\n  - Writes: EMPLOYEE_HISTORY — INSERT (log_history)\n  - Writes: LEAVE_REQUESTS — UPDATE, auto-cancel pending (terminate_employee)\n  - Writes: SALARY_RECORDS — UPDATE, close active record (terminate_employee); note new rows are inserted by PKG_PAYROLL.create_salary_record, not directly here\n  - Writes: EMPLOYEE_PAY_ELEMENTS — UPDATE, close active pay elements (terminate_employee)\n\n  CALLS: PKG_PAYROLL.create_salary_record | EVIDENCE: OBSERVED | SOURCE: L293\n  CALLS: PKG_PAYROLL.create_salary_record | EVIDENCE: OBSERVED | SOURCE: L650\n  CALLS: PKG_PAYROLL.create_salary_record | EVIDENCE: OBSERVED | SOURCE: L821\n  CALLS: PKG_AUDIT.log_action | EVIDENCE: OBSERVED | SOURCE: L316\n  CALLS: PKG_AUDIT.log_action | EVIDENCE: OBSERVED | SOURCE: L412\n  CALLS: PKG_AUDIT.log_action | EVIDENCE: OBSERVED | SOURCE: L602\n  CALLS: PKG_AUDIT.log_action | EVIDENCE: OBSERVED | SOURCE: L675\n  CALLS: PKG_AUDIT.log_action | EVIDENCE: OBSERVED | SOURCE: L763\n  CALLS: PKG_AUDIT.log_action | EVIDENCE: OBSERVED | SOURCE: L835\n  CALLS: PKG_NOTIFICATION.send_notification | EVIDENCE: OBSERVED | SOURCE: L324\n  CALLS: PKG_NOTIFICATION.send_notification | EVIDENCE: OBSERVED | SOURCE: L335\n  CALLS: PKG_NOTIFICATION.send_notification | EVIDENCE: OBSERVED | SOURCE: L768\n  CALLS: PKG_COMMON.log_error | EVIDENCE: OBSERVED | SOURCE: L354\n  CALLS: PKG_COMMON.log_error | EVIDENCE: OBSERVED | SOURCE: L606\n  CALLS: PKG_COMMON.log_error | EVIDENCE: OBSERVED | SOURCE: L784\n\n  Config/env: None\n  External integrations: None (notification/audit are internal PL/SQL package calls, not direct external service calls from this file)\n\n**GAPS:**\n  t_emp_rec, t_emp_cursor, t_emp_id_table return types are used but not declared in this body — UNKNOWN, presumably declared in the PKG_EMPLOYEE package spec (.pks), which was not provided for analysis.\n  Package globals g_debug_mode, g_current_user, g_current_emp_id, g_current_dept_id are referenced/set here but not declared in this body — UNKNOWN, presumably declared in the package spec.\n  Comment at L291-292 claims PKG_PAYROLL.create_salary_record may call back into PKG_EMPLOYEE.is_active (circular package dependency) — INFERRED from comment only; PKG_PAYROLL body not analyzed here so this can't be confirmed.\n  PKG_SECURITY access revocation and PKG_PAYROLL.calculate_final_pay (both referenced only in TODO comments at L778-780) are not actually implemented/called — NOT_ANALYZED, since no such code exists in this file.",
+      "raw_chars": 43327,
+      "extracted_chars": 24783,
+      "expected_inventory": {
+        "numbers": [
+          "0",
+          "1",
+          "10",
+          "100",
+          "12",
+          "15",
+          "20",
+          "20001",
+          "20002",
+          "20003",
+          "20004",
+          "20005",
+          "20010",
+          "20011",
+          "20012",
+          "4000",
+          "500"
+        ],
+        "procedures": [
+          "CREATE_EMPLOYEE",
+          "EMP_EXISTS",
+          "GENERATE_EMP_NUMBER",
+          "GET_DIRECT_REPORTS",
+          "GET_EMPLOYEE",
+          "GET_EMPLOYEE_BY_NUMBER",
+          "GET_HEADCOUNT_BY_DEPT",
+          "GET_NEXT_EMP_ID",
+          "GET_ORG_CHART",
+          "GET_TENURE_YEARS",
+          "IS_ACTIVE",
+          "LOG_HISTORY",
+          "PROMOTE_EMPLOYEE",
+          "REHIRE_EMPLOYEE",
+          "SEARCH_EMPLOYEES",
+          "SET_SESSION_CONTEXT",
+          "TERMINATE_EMPLOYEE",
+          "TRANSFER_EMPLOYEE",
+          "UPDATE_EMPLOYEE",
+          "VALIDATE_DEPT",
+          "VALIDATE_EMPLOYEE",
+          "VALIDATE_MANAGER"
+        ],
+        "units": [
+          {
+            "name": "LOG_HISTORY",
+            "line": 12
+          },
+          {
+            "name": "VALIDATE_DEPT",
+            "line": 31
+          },
+          {
+            "name": "VALIDATE_MANAGER",
+            "line": 32
+          },
+          {
+            "name": "GET_NEXT_EMP_ID",
+            "line": 33
+          },
+          {
+            "name": "GENERATE_EMP_NUMBER",
+            "line": 40
+          },
+          {
+            "name": "GET_NEXT_EMP_ID",
+            "line": 61
+          },
+          {
+            "name": "VALIDATE_DEPT",
+            "line": 71
+          },
+          {
+            "name": "VALIDATE_MANAGER",
+            "line": 92
+          },
+          {
+            "name": "LOG_HISTORY",
+            "line": 148
+          },
+          {
+            "name": "CREATE_EMPLOYEE",
+            "line": 195
+          },
+          {
+            "name": "UPDATE_EMPLOYEE",
+            "line": 367
+          },
+          {
+            "name": "GET_EMPLOYEE",
+            "line": 418
+          },
+          {
+            "name": "GET_EMPLOYEE_BY_NUMBER",
+            "line": 450
+          },
+          {
+            "name": "SEARCH_EMPLOYEES",
+            "line": 472
+          },
+          {
+            "name": "TRANSFER_EMPLOYEE",
+            "line": 532
+          },
+          {
+            "name": "PROMOTE_EMPLOYEE",
+            "line": 613
+          },
+          {
+            "name": "TERMINATE_EMPLOYEE",
+            "line": 681
+          },
+          {
+            "name": "REHIRE_EMPLOYEE",
+            "line": 791
+          },
+          {
+            "name": "GET_DIRECT_REPORTS",
+            "line": 841
+          },
+          {
+            "name": "GET_ORG_CHART",
+            "line": 866
+          },
+          {
+            "name": "GET_HEADCOUNT_BY_DEPT",
+            "line": 891
+          },
+          {
+            "name": "GET_TENURE_YEARS",
+            "line": 912
+          },
+          {
+            "name": "IS_ACTIVE",
+            "line": 933
+          },
+          {
+            "name": "VALIDATE_EMPLOYEE",
+            "line": 953
+          },
+          {
+            "name": "EMP_EXISTS",
+            "line": 985
+          },
+          {
+            "name": "SET_SESSION_CONTEXT",
+            "line": 1000
+          }
+        ]
+      },
+      "coverage": {
+        "numbers": {
+          "expected": 17,
+          "captured": 17,
+          "missing": []
+        },
+        "procedures": {
+          "expected": 22,
+          "captured": 22,
+          "missing": []
+        },
+        "units": {
+          "expected": 26,
+          "captured": 26,
+          "missing": []
+        },
+        "structure": {
+          "expected": 5,
+          "captured": 5,
+          "missing": []
+        }
+      },
+      "dependencies": {
+        "calls": [
+          {
+            "target": "PKG_PAYROLL.create_salary_record",
+            "evidence": "OBSERVED",
+            "source": "L293"
+          },
+          {
+            "target": "PKG_PAYROLL.create_salary_record",
+            "evidence": "OBSERVED",
+            "source": "L650"
+          },
+          {
+            "target": "PKG_PAYROLL.create_salary_record",
+            "evidence": "OBSERVED",
+            "source": "L821"
+          },
+          {
+            "target": "PKG_AUDIT.log_action",
+            "evidence": "OBSERVED",
+            "source": "L316"
+          },
+          {
+            "target": "PKG_AUDIT.log_action",
+            "evidence": "OBSERVED",
+            "source": "L412"
+          },
+          {
+            "target": "PKG_AUDIT.log_action",
+            "evidence": "OBSERVED",
+            "source": "L602"
+          },
+          {
+            "target": "PKG_AUDIT.log_action",
+            "evidence": "OBSERVED",
+            "source": "L675"
+          },
+          {
+            "target": "PKG_AUDIT.log_action",
+            "evidence": "OBSERVED",
+            "source": "L763"
+          },
+          {
+            "target": "PKG_AUDIT.log_action",
+            "evidence": "OBSERVED",
+            "source": "L835"
+          },
+          {
+            "target": "PKG_NOTIFICATION.send_notification",
+            "evidence": "OBSERVED",
+            "source": "L324"
+          },
+          {
+            "target": "PKG_NOTIFICATION.send_notification",
+            "evidence": "OBSERVED",
+            "source": "L335"
+          },
+          {
+            "target": "PKG_NOTIFICATION.send_notification",
+            "evidence": "OBSERVED",
+            "source": "L768"
+          },
+          {
+            "target": "PKG_COMMON.log_error",
+            "evidence": "OBSERVED",
+            "source": "L354"
+          },
+          {
+            "target": "PKG_COMMON.log_error",
+            "evidence": "OBSERVED",
+            "source": "L606"
+          },
+          {
+            "target": "PKG_COMMON.log_error",
+            "evidence": "OBSERVED",
+            "source": "L784"
+          }
+        ],
+        "imports": [],
+        "extends": [],
+        "implements": [],
+        "publishes_to": [],
+        "subscribes_to": []
+      }
+    }
+  },
+  "status": {
+    "expected": 1,
+    "delivered": 1,
+    "missing": [],
+    "clean_first_pass": 0,
+    "corrected": [
+      "ts-plsql-oracle-forms-hrms-main/plsql/packages/PKG_EMPLOYEE.pkb"
+    ],
+    "still_incomplete": [],
+    "duplicate_count": 0
+  }
+}

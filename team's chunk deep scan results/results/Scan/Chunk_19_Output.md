@@ -1,0 +1,119 @@
+=== CHUNK METADATA ===
+Chunk: 19            (chunk count is budget-driven, not a fixed file count)
+Type group: seed
+Expected files (1):
+  1. [seed] ts-plsql-oracle-forms-hrms-main/data/seed/02_employee_data.sql (11482 chars written)
+Total source content: 20905 characters (budget: 30000)
+=== END METADATA ===
+
+
+---
+
+=== FILE: ts-plsql-oracle-forms-hrms-main/data/seed/02_employee_data.sql ===
+
+**IDENTITY:**
+  KIND: seed data
+  PURPOSE: loads 24 sample HRMS employees (executives, HR, Finance, IT, Sales, plus one terminated employee) with their current salary records, and updates department manager assignments
+
+**STRUCTURES:**
+  **EMPLOYEES — all rows:**
+  | EMP_ID | EMP_NUMBER | FIRST_NAME | LAST_NAME | EMAIL | PHONE_WORK | HIRE_DATE | DEPT_ID | JOB_ID | MANAGER_EMP_ID | LOCATION_CODE | EMPLOYMENT_TYPE | EMPLOYMENT_STATUS | TERMINATION_DATE | TERMINATION_REASON | GENDER | DATE_OF_BIRTH | MARITAL_STATUS | ACTIVE_FLAG | CREATED_BY | CREATED_DATE |
+  |---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
+  | 1 | EMP-000001 | JAMES | RICHARDSON | james.richardson@company.com | 212-555-1001 | 2010-03-15 | 1 | 1 | NULL | HQ | FULL_TIME | ACTIVE | NULL | NULL | M | 1968-07-22 | MARRIED | Y | SYSTEM | SYSDATE |
+  | 2 | EMP-000002 | SARAH | CHEN | sarah.chen@company.com | 212-555-1002 | 2012-06-01 | 20 | 2 | 1 | HQ | FULL_TIME | ACTIVE | NULL | NULL | F | 1975-11-03 | MARRIED | Y | SYSTEM | SYSDATE |
+  | 3 | EMP-000003 | MICHAEL | OCONNOR | michael.oconnor@company.com | 312-555-2001 | 2011-09-12 | 30 | 3 | 1 | CHI | FULL_TIME | ACTIVE | NULL | NULL | M | 1972-03-18 | DIVORCED | Y | SYSTEM | SYSDATE |
+  | 10 | EMP-000010 | PATRICIA | WILLIAMS | patricia.williams@company.com | 212-555-1101 | 2013-02-18 | 10 | 10 | 1 | HQ | FULL_TIME | ACTIVE | NULL | NULL | F | 1978-09-14 | SINGLE | Y | SYSTEM | SYSDATE |
+  | 11 | EMP-000011 | DAVID | MARTINEZ | david.martinez@company.com | 212-555-1102 | 2016-08-22 | 10 | 53 | 10 | HQ | FULL_TIME | ACTIVE | NULL | NULL | M | 1985-04-30 | MARRIED | Y | SYSTEM | SYSDATE |
+  | 12 | EMP-000012 | EMILY | JOHNSON | emily.johnson@company.com | 212-555-1103 | 2019-01-07 | 10 | 61 | 10 | HQ | FULL_TIME | ACTIVE | NULL | NULL | F | 1994-12-08 | SINGLE | Y | SYSTEM | SYSDATE |
+  | 20 | EMP-000020 | ROBERT | KUMAR | robert.kumar@company.com | 212-555-1201 | 2014-05-12 | 20 | 11 | 2 | HQ | FULL_TIME | ACTIVE | NULL | NULL | M | 1980-01-25 | MARRIED | Y | SYSTEM | SYSDATE |
+  | 21 | EMP-000021 | JENNIFER | PARK | jennifer.park@company.com | 212-555-1202 | 2017-03-20 | 20 | 32 | 20 | HQ | FULL_TIME | ACTIVE | NULL | NULL | F | 1983-06-17 | MARRIED | Y | SYSTEM | SYSDATE |
+  | 22 | EMP-000022 | THOMAS | BAKER | thomas.baker@company.com | 212-555-1203 | 2018-09-10 | 20 | 42 | 21 | HQ | FULL_TIME | ACTIVE | NULL | NULL | M | 1987-02-14 | SINGLE | Y | SYSTEM | SYSDATE |
+  | 23 | EMP-000023 | LISA | WONG | lisa.wong@company.com | 212-555-1204 | 2020-11-02 | 20 | 52 | 21 | HQ | FULL_TIME | ACTIVE | NULL | NULL | F | 1992-08-21 | SINGLE | Y | SYSTEM | SYSDATE |
+  | 24 | EMP-000024 | ANDREW | PATEL | andrew.patel@company.com | 212-555-1205 | 2022-06-15 | 20 | 62 | 21 | HQ | FULL_TIME | ACTIVE | NULL | NULL | M | 1997-10-30 | SINGLE | Y | SYSTEM | SYSDATE |
+  | 30 | EMP-000030 | RACHEL | THOMPSON | rachel.thompson@company.com | 312-555-2101 | 2015-01-05 | 30 | 20 | 3 | CHI | FULL_TIME | ACTIVE | NULL | NULL | F | 1979-05-12 | MARRIED | Y | SYSTEM | SYSDATE |
+  | 31 | EMP-000031 | KEVIN | GARCIA | kevin.garcia@company.com | 312-555-2102 | 2016-04-18 | 31 | 30 | 30 | CHI | FULL_TIME | ACTIVE | NULL | NULL | M | 1984-11-07 | MARRIED | Y | SYSTEM | SYSDATE |
+  | 32 | EMP-000032 | MARIA | RODRIGUEZ | maria.rodriguez@company.com | 312-555-2103 | 2017-07-24 | 31 | 40 | 31 | CHI | FULL_TIME | ACTIVE | NULL | NULL | F | 1986-03-29 | SINGLE | Y | SYSTEM | SYSDATE |
+  | 33 | EMP-000033 | DANIEL | LEE | daniel.lee@company.com | 312-555-2104 | 2018-02-12 | 31 | 41 | 31 | CHI | FULL_TIME | ACTIVE | NULL | NULL | M | 1982-09-05 | MARRIED | Y | SYSTEM | SYSDATE |
+  | 34 | EMP-000034 | JESSICA | NGUYEN | jessica.nguyen@company.com | 312-555-2105 | 2019-05-06 | 31 | 50 | 31 | CHI | FULL_TIME | ACTIVE | NULL | NULL | F | 1991-07-15 | SINGLE | Y | SYSTEM | SYSDATE |
+  | 35 | EMP-000035 | CHRIS | ANDERSON | chris.anderson@company.com | 312-555-2106 | 2020-08-17 | 31 | 50 | 31 | CHI | FULL_TIME | ACTIVE | NULL | NULL | M | 1993-01-22 | SINGLE | Y | SYSTEM | SYSDATE |
+  | 36 | EMP-000036 | PRIYA | SHARMA | priya.sharma@company.com | 312-555-2107 | 2021-03-22 | 31 | 51 | 31 | CHI | FULL_TIME | ACTIVE | NULL | NULL | F | 1995-06-10 | SINGLE | Y | SYSTEM | SYSDATE |
+  | 37 | EMP-000037 | ALEX | TAYLOR | alex.taylor@company.com | 312-555-2108 | 2022-01-10 | 31 | 60 | 31 | CHI | FULL_TIME | ACTIVE | NULL | NULL | M | 1998-04-18 | SINGLE | Y | SYSTEM | SYSDATE |
+  | 40 | EMP-000040 | MARK | DAVIS | mark.davis@company.com | 415-555-3101 | 2014-11-03 | 40 | 12 | 1 | SF | FULL_TIME | ACTIVE | NULL | NULL | M | 1977-08-09 | MARRIED | Y | SYSTEM | SYSDATE |
+  | 41 | EMP-000041 | ASHLEY | BROWN | ashley.brown@company.com | 415-555-3102 | 2017-06-19 | 40 | 33 | 40 | SF | FULL_TIME | ACTIVE | NULL | NULL | F | 1985-02-28 | SINGLE | Y | SYSTEM | SYSDATE |
+  | 42 | EMP-000042 | JASON | WILSON | jason.wilson@company.com | 415-555-3103 | 2019-09-16 | 40 | 43 | 41 | SF | FULL_TIME | ACTIVE | NULL | NULL | M | 1989-12-01 | MARRIED | Y | SYSTEM | SYSDATE |
+  | 43 | EMP-000043 | SAMANTHA | MOORE | samantha.moore@company.com | 415-555-3104 | 2021-02-08 | 40 | 54 | 41 | SF | FULL_TIME | ACTIVE | NULL | NULL | F | 1993-10-25 | SINGLE | Y | SYSTEM | SYSDATE |
+  | 99 | EMP-000099 | BRIAN | FOSTER | brian.foster@company.com | 312-555-2199 | 2018-04-02 | 31 | 50 | 31 | CHI | FULL_TIME | TERMINATED | 2023-06-30 | VOLUNTARY | M | 1990-05-14 | SINGLE | N | SYSTEM | SYSDATE |
+
+  **SALARY_RECORDS — all rows:**
+  | SALARY_ID | EMP_ID | EFFECTIVE_DATE | END_DATE | BASE_SALARY | CURRENCY_CODE | PAY_FREQUENCY | SALARY_BASIS | CHANGE_REASON | ACTIVE_FLAG | CREATED_BY | CREATED_DATE |
+  |---|---|---|---|---|---|---|---|---|---|---|---|
+  | 1 | 1 | 2023-01-01 | NULL | 450000 | USD | MONTHLY | ANNUAL | Annual review | Y | SYSTEM | SYSDATE |
+  | 2 | 2 | 2023-01-01 | NULL | 380000 | USD | MONTHLY | ANNUAL | Annual review | Y | SYSTEM | SYSDATE |
+  | 3 | 3 | 2023-01-01 | NULL | 370000 | USD | MONTHLY | ANNUAL | Annual review | Y | SYSTEM | SYSDATE |
+  | 10 | 10 | 2023-07-01 | NULL | 240000 | USD | MONTHLY | ANNUAL | Promotion | Y | SYSTEM | SYSDATE |
+  | 11 | 11 | 2023-01-01 | NULL | 78000 | USD | MONTHLY | ANNUAL | Annual review | Y | SYSTEM | SYSDATE |
+  | 12 | 12 | 2023-01-01 | NULL | 52000 | USD | MONTHLY | ANNUAL | Annual review | Y | SYSTEM | SYSDATE |
+  | 20 | 20 | 2023-01-01 | NULL | 260000 | USD | MONTHLY | ANNUAL | Annual review | Y | SYSTEM | SYSDATE |
+  | 21 | 21 | 2023-01-01 | NULL | 135000 | USD | MONTHLY | ANNUAL | Annual review | Y | SYSTEM | SYSDATE |
+  | 22 | 22 | 2023-01-01 | NULL | 95000 | USD | MONTHLY | ANNUAL | Annual review | Y | SYSTEM | SYSDATE |
+  | 23 | 23 | 2023-01-01 | NULL | 72000 | USD | MONTHLY | ANNUAL | Annual review | Y | SYSTEM | SYSDATE |
+  | 24 | 24 | 2022-06-15 | NULL | 48000 | USD | MONTHLY | ANNUAL | New hire | Y | SYSTEM | SYSDATE |
+  | 30 | 30 | 2023-01-01 | NULL | 195000 | USD | MONTHLY | ANNUAL | Annual review | Y | SYSTEM | SYSDATE |
+  | 31 | 31 | 2023-01-01 | NULL | 145000 | USD | MONTHLY | ANNUAL | Annual review | Y | SYSTEM | SYSDATE |
+  | 32 | 32 | 2023-01-01 | NULL | 115000 | USD | MONTHLY | ANNUAL | Annual review | Y | SYSTEM | SYSDATE |
+  | 33 | 33 | 2023-01-01 | NULL | 110000 | USD | MONTHLY | ANNUAL | Annual review | Y | SYSTEM | SYSDATE |
+  | 34 | 34 | 2023-01-01 | NULL | 82000 | USD | MONTHLY | ANNUAL | Annual review | Y | SYSTEM | SYSDATE |
+  | 35 | 35 | 2023-01-01 | NULL | 78000 | USD | MONTHLY | ANNUAL | Annual review | Y | SYSTEM | SYSDATE |
+  | 36 | 36 | 2023-01-01 | NULL | 70000 | USD | MONTHLY | ANNUAL | Annual review | Y | SYSTEM | SYSDATE |
+  | 37 | 37 | 2022-01-10 | NULL | 55000 | USD | MONTHLY | ANNUAL | New hire | Y | SYSTEM | SYSDATE |
+  | 40 | 40 | 2023-01-01 | NULL | 280000 | USD | MONTHLY | ANNUAL | Annual review | Y | SYSTEM | SYSDATE |
+  | 41 | 41 | 2023-01-01 | NULL | 130000 | USD | MONTHLY | ANNUAL | Annual review | Y | SYSTEM | SYSDATE |
+  | 42 | 42 | 2023-01-01 | NULL | 105000 | USD | MONTHLY | ANNUAL | Annual review | Y | SYSTEM | SYSDATE |
+  | 43 | 43 | 2023-01-01 | NULL | 65000 | USD | MONTHLY | ANNUAL | Annual review | Y | SYSTEM | SYSDATE |
+  (No salary record is inserted for EMP_ID 99, the terminated employee.)
+
+  **DEPARTMENTS — UPDATE statements applied, in file order (not full-row inserts):**
+  | Line | DEPT_ID | MANAGER_EMP_ID set to |
+  |---|---|---|
+  | L164 | 10 | 10 |
+  | L165 | 20 | 2 |
+  | L166 | 30 | 3 |
+  | L167 | 30 | 30 (comment: "Dir IT manages IT" — overwrites L166's value for DEPT_ID 30) |
+  | L168 | 31 | 31 |
+  | L169 | 40 | 40 |
+  | L170 | 1 | 1 |
+
+**METHODS:**
+  **FILE-LEVEL EFFECT** [SOURCE: L1-172]
+  - What it does: Runs as seed script 02 (after reference data script 01). Disables SQL*Plus substitution variable processing (`SET DEFINE OFF` [L7], needed because EMAIL/other values contain no `&` here but is standard practice for seed scripts). Inserts 24 EMPLOYEES rows spanning Executive, HR, Finance, IT, and Sales departments plus one TERMINATED employee (EMP_ID 99) kept for historical-query testing [L88-89]. Inserts 23 matching SALARY_RECORDS rows (one per active employee; none for the terminated EMP_ID 99). Runs 7 UPDATE statements against DEPARTMENTS to set MANAGER_EMP_ID for depts 10, 20, 30, 31, 40, 1, then COMMITs [L172].
+  - Business rules: Header comment claims "25 employees" [L4] but only 24 INSERT INTO EMPLOYEES statements are present in the file — the seed data is one short of what the comment describes. DEPT_ID 30 is updated twice for MANAGER_EMP_ID: once to 3 [L166], then immediately overwritten to 30 [L167] with the inline comment "Dir IT manages IT" — the L166 update is dead/superseded and only the final value (30) survives. Every employee row hardcodes ACTIVE_FLAG='Y' except EMP_ID 99 which is 'N' (terminated); EMPLOYMENT_STATUS is 'ACTIVE' for all except EMP_ID 99 ('TERMINATED'). All salary and employee rows are stamped CREATED_BY='SYSTEM'.
+  - Numbers & thresholds: See the EMPLOYEES, SALARY_RECORDS, and DEPARTMENTS tables above — every row/value is a business rule. Notable figures: highest salary 450000 (EMP_ID 1, CEO-level), lowest salary 48000 (EMP_ID 24); EMP_ID 99 terminated effective 2023-06-30 with reason VOLUNTARY.
+  - Security & error handling: None — no error handling, constraints are enforced only by the underlying table DDL (not shown in this file); plaintext email addresses and phone numbers are inserted with no masking.
+  - Data in/out: Output — 24 rows inserted into EMPLOYEES, 23 rows inserted into SALARY_RECORDS, 7 rows updated in DEPARTMENTS, transaction committed at L172.
+
+**DEPENDENCIES:**
+  Data touched:
+  - Reads: None
+  - Writes: EMPLOYEES — inserts 24 employee rows; SALARY_RECORDS — inserts 23 salary rows; DEPARTMENTS — updates MANAGER_EMP_ID for DEPT_ID 1, 10, 20, 30, 31, 40
+
+  Config/env: None
+  External integrations: None
+
+**GAPS:**
+  UNKNOWN: Header comment states "25 employees" [L4] but only 24 INSERT INTO EMPLOYEES statements exist in the file — could not determine if a 25th employee row was intended and omitted, or if the comment is simply stale.
+  UNRESOLVED: Whether the L167 override of DEPT_ID 30's MANAGER_EMP_ID (from 3 to 30) is intentional (per its inline comment) or a leftover/copy-paste artifact that should have targeted a different DEPT_ID — the effect is that L166 is a no-op.
+  EXTERNAL: EMPLOYEES/SALARY_RECORDS/DEPARTMENTS table DDL (column constraints, defaults, FK relationships) is not in this file and was not analyzed here.
+
+*[pipeline status — type: seed · pass: original · attempt: 1 · coverage: 100% (numbers 160/160 · tables 4/4 · units 1/1 · structure 5/5)]*
+
+---
+
+=== CHUNK STATUS ===
+Files expected: 1
+Files delivered: 1
+  Full coverage on first pass: 1
+  Required correction: 0
+  Still incomplete after max attempts: 0
+Raw source: 20905 chars (budget target: 30000)
+Duplicate sections in this chunk: 0
+=== END STATUS ===

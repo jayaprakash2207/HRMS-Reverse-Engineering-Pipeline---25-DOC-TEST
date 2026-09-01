@@ -1,0 +1,216 @@
+{
+  "chunk_index": 16,
+  "total_chunks": 19,
+  "type_group": "schema",
+  "budget": 30000,
+  "expected_files": [
+    {
+      "path": "ts-plsql-oracle-forms-hrms-main/schema/tables/01_core_tables.sql",
+      "type": "schema"
+    },
+    {
+      "path": "ts-plsql-oracle-forms-hrms-main/schema/tables/02_payroll_tables.sql",
+      "type": "schema"
+    },
+    {
+      "path": "ts-plsql-oracle-forms-hrms-main/schema/tables/03_leave_tables.sql",
+      "type": "schema"
+    }
+  ],
+  "total_source_chars": 27947,
+  "entries": {
+    "ts-plsql-oracle-forms-hrms-main/schema/tables/01_core_tables.sql": {
+      "type": "schema",
+      "pass": "original",
+      "attempt": 1,
+      "content": "**IDENTITY:**\n  KIND: schema script\n  PURPOSE: DDL defining the HRMS core entity tables — departments, locations, job grades/titles, employees, employee history, dependents, and emergency contacts\n\n**STRUCTURES:**\n  HRMS.DEPARTMENTS — KIND: table; TYPE: N/A\n  **DEPARTMENTS columns:**\n  - DEPT_ID — NUMBER(10); NOT NULL, PK (PK_DEPARTMENTS)\n  - DEPT_CODE — VARCHAR2(20); NOT NULL, UNIQUE (UK_DEPT_CODE)\n  - DEPT_NAME — VARCHAR2(100); NOT NULL\n  - PARENT_DEPT_ID — NUMBER(10); self-referencing FK for department hierarchy (comment, no FK constraint declared)\n  - COST_CENTER — VARCHAR2(20); financial cost center code for GL integration (comment)\n  - MANAGER_EMP_ID — NUMBER(10); N/A\n  - LOCATION_CODE — VARCHAR2(10); N/A\n  - ACTIVE_FLAG — CHAR(1); DEFAULT 'Y', NOT NULL, CHECK IN ('Y','N') (CHK_DEPT_ACTIVE)\n  - CREATED_BY — VARCHAR2(30); NOT NULL\n  - CREATED_DATE — DATE; DEFAULT SYSDATE, NOT NULL\n  - MODIFIED_BY — VARCHAR2(30); N/A\n  - MODIFIED_DATE — DATE; N/A\n\n  HRMS.LOCATIONS — KIND: table; TYPE: N/A\n  **LOCATIONS columns:**\n  - LOCATION_CODE — VARCHAR2(10); NOT NULL, PK (PK_LOCATIONS)\n  - LOCATION_NAME — VARCHAR2(100); NOT NULL\n  - ADDRESS_LINE1 — VARCHAR2(200); N/A\n  - ADDRESS_LINE2 — VARCHAR2(200); N/A\n  - CITY — VARCHAR2(100); N/A\n  - STATE_PROVINCE — VARCHAR2(100); N/A\n  - POSTAL_CODE — VARCHAR2(20); N/A\n  - COUNTRY_CODE — VARCHAR2(3); N/A\n  - PHONE_NUMBER — VARCHAR2(30); N/A\n  - TIMEZONE — VARCHAR2(50); DEFAULT 'America/New_York'\n  - ACTIVE_FLAG — CHAR(1); DEFAULT 'Y', NOT NULL\n  - CREATED_BY — VARCHAR2(30); NOT NULL\n  - CREATED_DATE — DATE; DEFAULT SYSDATE, NOT NULL\n  - MODIFIED_BY — VARCHAR2(30); N/A\n  - MODIFIED_DATE — DATE; N/A\n\n  HRMS.JOB_GRADES — KIND: table; TYPE: N/A\n  **JOB_GRADES columns:**\n  - GRADE_ID — NUMBER(5); NOT NULL, PK (PK_JOB_GRADES)\n  - GRADE_CODE — VARCHAR2(10); NOT NULL, UNIQUE (UK_GRADE_CODE)\n  - GRADE_NAME — VARCHAR2(50); NOT NULL\n  - MIN_SALARY — NUMBER(12,2); NOT NULL\n  - MAX_SALARY — NUMBER(12,2); NOT NULL, CHECK MAX_SALARY >= MIN_SALARY (CHK_SALARY_RANGE)\n  - OVERTIME_ELIGIBLE — CHAR(1); DEFAULT 'N'\n  - ACTIVE_FLAG — CHAR(1); DEFAULT 'Y', NOT NULL\n  - CREATED_BY — VARCHAR2(30); NOT NULL\n  - CREATED_DATE — DATE; DEFAULT SYSDATE, NOT NULL\n  - MODIFIED_BY — VARCHAR2(30); N/A\n  - MODIFIED_DATE — DATE; N/A\n\n  HRMS.JOB_TITLES — KIND: table; TYPE: N/A\n  **JOB_TITLES columns:**\n  - JOB_ID — NUMBER(10); NOT NULL, PK (PK_JOB_TITLES)\n  - JOB_CODE — VARCHAR2(20); NOT NULL, UNIQUE (UK_JOB_CODE)\n  - JOB_TITLE — VARCHAR2(100); NOT NULL\n  - JOB_FAMILY — VARCHAR2(50); N/A\n  - GRADE_ID — NUMBER(5); NOT NULL, FK_JOB_GRADE → HRMS.JOB_GRADES(GRADE_ID)\n  - EEO_CATEGORY — VARCHAR2(10); N/A\n  - FLSA_STATUS — VARCHAR2(10); DEFAULT 'EXEMPT'\n  - ACTIVE_FLAG — CHAR(1); DEFAULT 'Y', NOT NULL\n  - CREATED_BY — VARCHAR2(30); NOT NULL\n  - CREATED_DATE — DATE; DEFAULT SYSDATE, NOT NULL\n  - MODIFIED_BY — VARCHAR2(30); N/A\n  - MODIFIED_DATE — DATE; N/A\n\n  HRMS.EMPLOYEES — KIND: table; TYPE: N/A\n  **EMPLOYEES columns:**\n  - EMP_ID — NUMBER(10); NOT NULL, PK (PK_EMPLOYEES)\n  - EMP_NUMBER — VARCHAR2(20); NOT NULL, UNIQUE (UK_EMP_NUMBER)\n  - FIRST_NAME — VARCHAR2(50); NOT NULL\n  - MIDDLE_NAME — VARCHAR2(50); N/A\n  - LAST_NAME — VARCHAR2(50); NOT NULL\n  - DATE_OF_BIRTH — DATE; N/A\n  - GENDER — CHAR(1); CHECK IN ('M','F','O') (CHK_EMP_GENDER)\n  - MARITAL_STATUS — VARCHAR2(10); N/A\n  - NATIONALITY — VARCHAR2(50); N/A\n  - SSN_ENCRYPTED — VARCHAR2(200); AES-256 encrypted SSN, decrypted only in PKG_SECURITY (comment)\n  - EMAIL — VARCHAR2(100); N/A\n  - PHONE_WORK — VARCHAR2(30); N/A\n  - PHONE_MOBILE — VARCHAR2(30); N/A\n  - ADDRESS_LINE1 — VARCHAR2(200); N/A\n  - ADDRESS_LINE2 — VARCHAR2(200); N/A\n  - CITY — VARCHAR2(100); N/A\n  - STATE_PROVINCE — VARCHAR2(100); N/A\n  - POSTAL_CODE — VARCHAR2(20); N/A\n  - COUNTRY_CODE — VARCHAR2(3); N/A\n  - HIRE_DATE — DATE; NOT NULL\n  - TERMINATION_DATE — DATE; N/A\n  - TERMINATION_REASON — VARCHAR2(50); N/A\n  - DEPT_ID — NUMBER(10); NOT NULL, FK_EMP_DEPT → HRMS.DEPARTMENTS(DEPT_ID)\n  - JOB_ID — NUMBER(10); NOT NULL, FK_EMP_JOB → HRMS.JOB_TITLES(JOB_ID)\n  - MANAGER_EMP_ID — NUMBER(10); FK_EMP_MANAGER → HRMS.EMPLOYEES(EMP_ID) (self-referencing)\n  - LOCATION_CODE — VARCHAR2(10); FK_EMP_LOCATION → HRMS.LOCATIONS(LOCATION_CODE)\n  - EMPLOYMENT_TYPE — VARCHAR2(20); DEFAULT 'FULL_TIME', CHECK IN ('FULL_TIME','PART_TIME','CONTRACT','INTERN') (CHK_EMP_TYPE)\n  - EMPLOYMENT_STATUS — VARCHAR2(20); DEFAULT 'ACTIVE', CHECK IN ('ACTIVE','ON_LEAVE','SUSPENDED','TERMINATED') (CHK_EMP_STATUS)\n  - PHOTO_BLOB — BLOB; N/A\n  - NOTES — CLOB; N/A\n  - ACTIVE_FLAG — CHAR(1); DEFAULT 'Y', NOT NULL\n  - CREATED_BY — VARCHAR2(30); NOT NULL\n  - CREATED_DATE — DATE; DEFAULT SYSDATE, NOT NULL\n  - MODIFIED_BY — VARCHAR2(30); N/A\n  - MODIFIED_DATE — DATE; N/A\n\n  HRMS.EMPLOYEE_HISTORY — KIND: table; TYPE: N/A\n  **EMPLOYEE_HISTORY columns:**\n  - HIST_ID — NUMBER(15); NOT NULL, PK (PK_EMP_HISTORY)\n  - EMP_ID — NUMBER(10); NOT NULL, FK_HIST_EMP → HRMS.EMPLOYEES(EMP_ID)\n  - CHANGE_TYPE — VARCHAR2(30); NOT NULL, CHECK IN ('HIRE','TRANSFER','PROMOTION','DEMOTION','SALARY_CHANGE','TERMINATION','REHIRE','LEAVE_START','LEAVE_END','STATUS_CHANGE') (CHK_CHANGE_TYPE)\n  - EFFECTIVE_DATE — DATE; NOT NULL\n  - OLD_DEPT_ID — NUMBER(10); N/A\n  - NEW_DEPT_ID — NUMBER(10); N/A\n  - OLD_JOB_ID — NUMBER(10); N/A\n  - NEW_JOB_ID — NUMBER(10); N/A\n  - OLD_MANAGER_ID — NUMBER(10); N/A\n  - NEW_MANAGER_ID — NUMBER(10); N/A\n  - OLD_SALARY — NUMBER(12,2); N/A\n  - NEW_SALARY — NUMBER(12,2); N/A\n  - OLD_LOCATION — VARCHAR2(10); N/A\n  - NEW_LOCATION — VARCHAR2(10); N/A\n  - REASON_CODE — VARCHAR2(30); N/A\n  - COMMENTS — VARCHAR2(4000); N/A\n  - CREATED_BY — VARCHAR2(30); NOT NULL\n  - CREATED_DATE — DATE; DEFAULT SYSDATE, NOT NULL\n\n  HRMS.EMPLOYEE_DEPENDENTS — KIND: table; TYPE: N/A\n  **EMPLOYEE_DEPENDENTS columns:**\n  - DEPENDENT_ID — NUMBER(10); NOT NULL, PK (PK_EMP_DEPENDENTS)\n  - EMP_ID — NUMBER(10); NOT NULL, FK_DEP_EMP → HRMS.EMPLOYEES(EMP_ID)\n  - FIRST_NAME — VARCHAR2(50); NOT NULL\n  - LAST_NAME — VARCHAR2(50); NOT NULL\n  - RELATIONSHIP — VARCHAR2(20); NOT NULL, CHECK IN ('SPOUSE','CHILD','PARENT','DOMESTIC_PARTNER','OTHER') (CHK_RELATIONSHIP)\n  - DATE_OF_BIRTH — DATE; N/A\n  - SSN_ENCRYPTED — VARCHAR2(200); N/A\n  - BENEFITS_ENROLLED — CHAR(1); DEFAULT 'N'\n  - ACTIVE_FLAG — CHAR(1); DEFAULT 'Y', NOT NULL\n  - CREATED_BY — VARCHAR2(30); NOT NULL\n  - CREATED_DATE — DATE; DEFAULT SYSDATE, NOT NULL\n  - MODIFIED_BY — VARCHAR2(30); N/A\n  - MODIFIED_DATE — DATE; N/A\n\n  HRMS.EMERGENCY_CONTACTS — KIND: table; TYPE: N/A\n  **EMERGENCY_CONTACTS columns:**\n  - CONTACT_ID — NUMBER(10); NOT NULL, PK (PK_EMERGENCY_CONTACTS)\n  - EMP_ID — NUMBER(10); NOT NULL, FK_EC_EMP → HRMS.EMPLOYEES(EMP_ID)\n  - CONTACT_NAME — VARCHAR2(100); NOT NULL\n  - RELATIONSHIP — VARCHAR2(30); N/A\n  - PHONE_PRIMARY — VARCHAR2(30); NOT NULL\n  - PHONE_SECONDARY — VARCHAR2(30); N/A\n  - EMAIL — VARCHAR2(100); N/A\n  - PRIORITY_ORDER — NUMBER(2); DEFAULT 1\n  - ACTIVE_FLAG — CHAR(1); DEFAULT 'Y', NOT NULL\n  - CREATED_BY — VARCHAR2(30); NOT NULL\n  - CREATED_DATE — DATE; DEFAULT SYSDATE, NOT NULL\n  - MODIFIED_BY — VARCHAR2(30); N/A\n  - MODIFIED_DATE — DATE; N/A\n\n**METHODS:**\n  **FILE-LEVEL EFFECT** [SOURCE: L1-220]\n  - What it does: Runs as a schema-creation script under the HRMS schema. Creates, in order: DEPARTMENTS, LOCATIONS, JOB_GRADES, JOB_TITLES, EMPLOYEES, EMPLOYEE_HISTORY, EMPLOYEE_DEPENDENTS, EMERGENCY_CONTACTS, plus column/table COMMENT ON statements for DEPARTMENTS and EMPLOYEES.\n  - Business rules: DEPARTMENTS.ACTIVE_FLAG restricted to 'Y'/'N' (CHK_DEPT_ACTIVE). JOB_GRADES.MAX_SALARY must be >= MIN_SALARY (CHK_SALARY_RANGE). EMPLOYEES.GENDER restricted to 'M'/'F'/'O' (CHK_EMP_GENDER); EMPLOYMENT_STATUS restricted to ACTIVE/ON_LEAVE/SUSPENDED/TERMINATED (CHK_EMP_STATUS); EMPLOYMENT_TYPE restricted to FULL_TIME/PART_TIME/CONTRACT/INTERN (CHK_EMP_TYPE); MANAGER_EMP_ID self-references EMPLOYEES. EMPLOYEE_HISTORY.CHANGE_TYPE restricted to HIRE/TRANSFER/PROMOTION/DEMOTION/SALARY_CHANGE/TERMINATION/REHIRE/LEAVE_START/LEAVE_END/STATUS_CHANGE (CHK_CHANGE_TYPE). EMPLOYEE_DEPENDENTS.RELATIONSHIP restricted to SPOUSE/CHILD/PARENT/DOMESTIC_PARTNER/OTHER (CHK_RELATIONSHIP). All tables' EMP-linked rows require an existing EMPLOYEES row (FK constraints); JOB_TITLES rows require an existing JOB_GRADES row; EMPLOYEES rows require existing DEPARTMENTS, JOB_TITLES, and (if set) LOCATIONS rows.\n  - Numbers & thresholds: EMERGENCY_CONTACTS.PRIORITY_ORDER default 1. No tax/pay-rate literals in this file (those live in payroll tables/seed data elsewhere).\n  - Security & error handling: SSN_ENCRYPTED columns on EMPLOYEES and EMPLOYEE_DEPENDENTS store AES-256 encrypted values per column comment; decryption is documented as occurring only in PKG_SECURITY (not in this file). No other access control; DDL execution fails outright (ORA error) if a constraint/table already exists or a referenced table is missing.\n  - Data in/out: Output — creates 8 HRMS tables and their constraints/comments; no rows are inserted.\n\n**DEPENDENCIES:**\n  Data touched:\n  - Reads: None\n  - Writes: None\n\n  Config/env: None\n  External integrations: None\n\n**GAPS:**\n  PKG_SECURITY, referenced only in the SSN_ENCRYPTED column comment as decrypting the encrypted SSN, is not present in this file — NOT_ANALYZED.",
+      "raw_chars": 10556,
+      "extracted_chars": 9234,
+      "expected_inventory": {
+        "numbers": [
+          "1",
+          "10",
+          "100",
+          "12",
+          "15",
+          "20",
+          "200",
+          "256",
+          "30",
+          "4000",
+          "50"
+        ],
+        "tables": [
+          "HRMS"
+        ],
+        "units": [
+          {
+            "name": "FILE-LEVEL EFFECT",
+            "line": null
+          }
+        ]
+      },
+      "coverage": {
+        "numbers": {
+          "expected": 11,
+          "captured": 11,
+          "missing": []
+        },
+        "tables": {
+          "expected": 1,
+          "captured": 1,
+          "missing": []
+        },
+        "units": {
+          "expected": 1,
+          "captured": 1,
+          "missing": []
+        },
+        "structure": {
+          "expected": 5,
+          "captured": 5,
+          "missing": []
+        }
+      },
+      "dependencies": {
+        "calls": [],
+        "imports": [],
+        "extends": [],
+        "implements": [],
+        "publishes_to": [],
+        "subscribes_to": []
+      }
+    },
+    "ts-plsql-oracle-forms-hrms-main/schema/tables/02_payroll_tables.sql": {
+      "type": "schema",
+      "pass": "original",
+      "attempt": 1,
+      "content": "**IDENTITY:**\n  KIND: schema script\n  PURPOSE: DDL defining the HRMS payroll subsystem tables — salary history, pay elements, pay periods/runs, tax brackets, employee tax info, and bank accounts for direct deposit\n\n**STRUCTURES:**\n  HRMS.SALARY_RECORDS — KIND: table; TYPE: N/A\n  **SALARY_RECORDS columns:**\n  - SALARY_ID — NUMBER(10); NOT NULL, PK (PK_SALARY_RECORDS)\n  - EMP_ID — NUMBER(10); NOT NULL, FK_SAL_EMP → HRMS.EMPLOYEES(EMP_ID)\n  - EFFECTIVE_DATE — DATE; NOT NULL\n  - END_DATE — DATE; N/A\n  - BASE_SALARY — NUMBER(12,2); NOT NULL\n  - CURRENCY_CODE — VARCHAR2(3); DEFAULT 'USD'\n  - PAY_FREQUENCY — VARCHAR2(20); DEFAULT 'MONTHLY', CHECK IN ('WEEKLY','BIWEEKLY','SEMIMONTHLY','MONTHLY') (CHK_PAY_FREQ)\n  - SALARY_BASIS — VARCHAR2(20); DEFAULT 'ANNUAL', CHECK IN ('ANNUAL','HOURLY') (CHK_SAL_BASIS)\n  - CHANGE_REASON — VARCHAR2(50); N/A\n  - CHANGE_PCT — NUMBER(5,2); N/A\n  - APPROVED_BY — NUMBER(10); N/A\n  - APPROVAL_DATE — DATE; N/A\n  - ACTIVE_FLAG — CHAR(1); DEFAULT 'Y', NOT NULL\n  - CREATED_BY — VARCHAR2(30); NOT NULL\n  - CREATED_DATE — DATE; DEFAULT SYSDATE, NOT NULL\n  - MODIFIED_BY — VARCHAR2(30); N/A\n  - MODIFIED_DATE — DATE; N/A\n\n  HRMS.PAY_ELEMENTS — KIND: table; TYPE: N/A\n  **PAY_ELEMENTS columns:**\n  - ELEMENT_ID — NUMBER(10); NOT NULL, PK (PK_PAY_ELEMENTS)\n  - ELEMENT_CODE — VARCHAR2(30); NOT NULL, UNIQUE (UK_PAY_ELEM_CODE)\n  - ELEMENT_NAME — VARCHAR2(100); NOT NULL\n  - ELEMENT_TYPE — VARCHAR2(20); NOT NULL, CHECK IN ('EARNING','DEDUCTION','TAX','BENEFIT','REIMBURSEMENT') (CHK_ELEM_TYPE)\n  - CALCULATION_TYPE — VARCHAR2(20); NOT NULL, CHECK IN ('FLAT','PERCENTAGE','HOURS','FORMULA') (CHK_CALC_TYPE)\n  - DEFAULT_AMOUNT — NUMBER(12,2); N/A\n  - DEFAULT_PERCENTAGE — NUMBER(5,2); N/A\n  - TAXABLE_FLAG — CHAR(1); DEFAULT 'Y'\n  - PRETAX_FLAG — CHAR(1); DEFAULT 'N'\n  - EMPLOYER_PAID — CHAR(1); DEFAULT 'N'\n  - GL_ACCOUNT_CODE — VARCHAR2(30); N/A\n  - PRIORITY_ORDER — NUMBER(5); DEFAULT 100\n  - ACTIVE_FLAG — CHAR(1); DEFAULT 'Y', NOT NULL\n  - CREATED_BY — VARCHAR2(30); NOT NULL\n  - CREATED_DATE — DATE; DEFAULT SYSDATE, NOT NULL\n  - MODIFIED_BY — VARCHAR2(30); N/A\n  - MODIFIED_DATE — DATE; N/A\n\n  HRMS.EMPLOYEE_PAY_ELEMENTS — KIND: table; TYPE: N/A\n  **EMPLOYEE_PAY_ELEMENTS columns:**\n  - EMP_ELEMENT_ID — NUMBER(10); NOT NULL, PK (PK_EMP_PAY_ELEMENTS)\n  - EMP_ID — NUMBER(10); NOT NULL, FK_EPE_EMP → HRMS.EMPLOYEES(EMP_ID)\n  - ELEMENT_ID — NUMBER(10); NOT NULL, FK_EPE_ELEMENT → HRMS.PAY_ELEMENTS(ELEMENT_ID)\n  - EFFECTIVE_DATE — DATE; NOT NULL\n  - END_DATE — DATE; N/A\n  - AMOUNT — NUMBER(12,2); N/A\n  - PERCENTAGE — NUMBER(5,2); N/A\n  - OVERRIDE_AMOUNT — NUMBER(12,2); N/A\n  - ACTIVE_FLAG — CHAR(1); DEFAULT 'Y', NOT NULL\n  - CREATED_BY — VARCHAR2(30); NOT NULL\n  - CREATED_DATE — DATE; DEFAULT SYSDATE, NOT NULL\n  - MODIFIED_BY — VARCHAR2(30); N/A\n  - MODIFIED_DATE — DATE; N/A\n\n  HRMS.PAY_PERIODS — KIND: table; TYPE: N/A\n  **PAY_PERIODS columns:**\n  - PERIOD_ID — NUMBER(10); NOT NULL, PK (PK_PAY_PERIODS)\n  - PERIOD_NAME — VARCHAR2(50); NOT NULL\n  - PAY_FREQUENCY — VARCHAR2(20); NOT NULL\n  - PERIOD_START_DATE — DATE; NOT NULL\n  - PERIOD_END_DATE — DATE; NOT NULL\n  - PAY_DATE — DATE; NOT NULL\n  - STATUS — VARCHAR2(20); DEFAULT 'OPEN', CHECK IN ('OPEN','PROCESSING','CLOSED','REVERSED') (CHK_PERIOD_STATUS)\n  - CLOSED_BY — VARCHAR2(30); N/A\n  - CLOSED_DATE — DATE; N/A\n  - CREATED_BY — VARCHAR2(30); NOT NULL\n  - CREATED_DATE — DATE; DEFAULT SYSDATE, NOT NULL\n  - MODIFIED_BY — VARCHAR2(30); N/A\n  - MODIFIED_DATE — DATE; N/A\n\n  HRMS.PAYROLL_RUNS — KIND: table; TYPE: N/A\n  **PAYROLL_RUNS columns:**\n  - RUN_ID — NUMBER(10); NOT NULL, PK (PK_PAYROLL_RUNS)\n  - PERIOD_ID — NUMBER(10); NOT NULL, FK_PR_PERIOD → HRMS.PAY_PERIODS(PERIOD_ID)\n  - RUN_TYPE — VARCHAR2(20); DEFAULT 'REGULAR', CHECK IN ('REGULAR','SUPPLEMENTAL','BONUS','FINAL') (CHK_RUN_TYPE)\n  - RUN_DATE — DATE; NOT NULL\n  - STATUS — VARCHAR2(20); DEFAULT 'PENDING', CHECK IN ('PENDING','CALCULATING','CALCULATED','APPROVED','PAID','REVERSED','ERROR') (CHK_RUN_STATUS)\n  - TOTAL_GROSS — NUMBER(15,2); N/A\n  - TOTAL_DEDUCTIONS — NUMBER(15,2); N/A\n  - TOTAL_NET — NUMBER(15,2); N/A\n  - TOTAL_EMPLOYER_COST — NUMBER(15,2); N/A\n  - EMPLOYEE_COUNT — NUMBER(10); N/A\n  - ERROR_COUNT — NUMBER(10); DEFAULT 0\n  - SUBMITTED_BY — VARCHAR2(30); N/A\n  - SUBMITTED_DATE — DATE; N/A\n  - APPROVED_BY — VARCHAR2(30); N/A\n  - APPROVED_DATE — DATE; N/A\n  - CREATED_BY — VARCHAR2(30); NOT NULL\n  - CREATED_DATE — DATE; DEFAULT SYSDATE, NOT NULL\n  - MODIFIED_BY — VARCHAR2(30); N/A\n  - MODIFIED_DATE — DATE; N/A\n\n  HRMS.PAYROLL_DETAILS — KIND: table; TYPE: N/A\n  **PAYROLL_DETAILS columns:**\n  - DETAIL_ID — NUMBER(15); NOT NULL, PK (PK_PAYROLL_DETAILS)\n  - RUN_ID — NUMBER(10); NOT NULL, FK_PD_RUN → HRMS.PAYROLL_RUNS(RUN_ID)\n  - EMP_ID — NUMBER(10); NOT NULL, FK_PD_EMP → HRMS.EMPLOYEES(EMP_ID)\n  - ELEMENT_ID — NUMBER(10); NOT NULL, FK_PD_ELEMENT → HRMS.PAY_ELEMENTS(ELEMENT_ID)\n  - ELEMENT_TYPE — VARCHAR2(20); NOT NULL\n  - HOURS_WORKED — NUMBER(6,2); N/A\n  - RATE — NUMBER(12,4); N/A\n  - AMOUNT — NUMBER(12,2); NOT NULL\n  - YTD_AMOUNT — NUMBER(15,2); N/A\n  - STATUS — VARCHAR2(20); DEFAULT 'CALCULATED'\n  - ERROR_MESSAGE — VARCHAR2(4000); N/A\n  - CREATED_BY — VARCHAR2(30); NOT NULL\n  - CREATED_DATE — DATE; DEFAULT SYSDATE, NOT NULL\n\n  HRMS.TAX_BRACKETS — KIND: table; TYPE: N/A\n  **TAX_BRACKETS columns:**\n  - BRACKET_ID — NUMBER(10); NOT NULL, PK (PK_TAX_BRACKETS)\n  - TAX_YEAR — NUMBER(4); NOT NULL\n  - FILING_STATUS — VARCHAR2(30); NOT NULL, CHECK IN ('SINGLE','MARRIED_JOINT','MARRIED_SEPARATE','HEAD_OF_HOUSEHOLD') (CHK_FILING_STATUS)\n  - BRACKET_MIN — NUMBER(12,2); NOT NULL\n  - BRACKET_MAX — NUMBER(12,2); N/A\n  - TAX_RATE — NUMBER(5,4); NOT NULL\n  - BASE_TAX — NUMBER(12,2); DEFAULT 0\n  - STATE_CODE — VARCHAR2(3); N/A\n  - ACTIVE_FLAG — CHAR(1); DEFAULT 'Y', NOT NULL\n  - CREATED_BY — VARCHAR2(30); NOT NULL\n  - CREATED_DATE — DATE; DEFAULT SYSDATE, NOT NULL\n\n  HRMS.EMPLOYEE_TAX_INFO — KIND: table; TYPE: N/A\n  **EMPLOYEE_TAX_INFO columns:**\n  - TAX_INFO_ID — NUMBER(10); NOT NULL, PK (PK_EMP_TAX_INFO)\n  - EMP_ID — NUMBER(10); NOT NULL, FK_ETI_EMP → HRMS.EMPLOYEES(EMP_ID); part of UNIQUE(EMP_ID, TAX_YEAR) (UK_EMP_TAX_YEAR)\n  - TAX_YEAR — NUMBER(4); NOT NULL; part of UK_EMP_TAX_YEAR\n  - FILING_STATUS — VARCHAR2(30); NOT NULL\n  - FEDERAL_ALLOWANCES — NUMBER(3); DEFAULT 0\n  - STATE_ALLOWANCES — NUMBER(3); DEFAULT 0\n  - ADDITIONAL_FED_WH — NUMBER(12,2); DEFAULT 0\n  - ADDITIONAL_STATE_WH — NUMBER(12,2); DEFAULT 0\n  - EXEMPT_FLAG — CHAR(1); DEFAULT 'N'\n  - STATE_CODE — VARCHAR2(3); N/A\n  - W4_RECEIVED_DATE — DATE; N/A\n  - ACTIVE_FLAG — CHAR(1); DEFAULT 'Y', NOT NULL\n  - CREATED_BY — VARCHAR2(30); NOT NULL\n  - CREATED_DATE — DATE; DEFAULT SYSDATE, NOT NULL\n  - MODIFIED_BY — VARCHAR2(30); N/A\n  - MODIFIED_DATE — DATE; N/A\n\n  HRMS.EMPLOYEE_BANK_ACCOUNTS — KIND: table; TYPE: N/A\n  **EMPLOYEE_BANK_ACCOUNTS columns (table named EMPLOYEE_BANK_ACCOUNTS in DDL; section comment labels it \"BANK_ACCOUNTS (Direct Deposit)\"):**\n  - BANK_ACCT_ID — NUMBER(10); NOT NULL, PK (PK_EMP_BANK_ACCTS)\n  - EMP_ID — NUMBER(10); NOT NULL, FK_BA_EMP → HRMS.EMPLOYEES(EMP_ID)\n  - BANK_NAME — VARCHAR2(100); N/A\n  - ROUTING_NUMBER — VARCHAR2(20); NOT NULL\n  - ACCOUNT_NUMBER_ENC — VARCHAR2(200); NOT NULL\n  - ACCOUNT_TYPE — VARCHAR2(20); DEFAULT 'CHECKING', CHECK IN ('CHECKING','SAVINGS') (CHK_ACCT_TYPE)\n  - DEPOSIT_TYPE — VARCHAR2(20); DEFAULT 'FULL', CHECK IN ('FULL','PARTIAL_AMOUNT','PARTIAL_PERCENT','REMAINDER') (CHK_DEPOSIT_TYPE)\n  - DEPOSIT_AMOUNT — NUMBER(12,2); N/A\n  - DEPOSIT_PERCENTAGE — NUMBER(5,2); N/A\n  - PRIORITY_ORDER — NUMBER(2); DEFAULT 1\n  - PRENOTE_SENT — CHAR(1); DEFAULT 'N'\n  - PRENOTE_DATE — DATE; N/A\n  - ACTIVE_FLAG — CHAR(1); DEFAULT 'Y', NOT NULL\n  - CREATED_BY — VARCHAR2(30); NOT NULL\n  - CREATED_DATE — DATE; DEFAULT SYSDATE, NOT NULL\n  - MODIFIED_BY — VARCHAR2(30); N/A\n  - MODIFIED_DATE — DATE; N/A\n\n**METHODS:**\n  **FILE-LEVEL EFFECT** [SOURCE: L1-225]\n  - What it does: Runs as a schema-creation script under the HRMS schema. Creates, in order: SALARY_RECORDS, PAY_ELEMENTS, EMPLOYEE_PAY_ELEMENTS, PAY_PERIODS, PAYROLL_RUNS, PAYROLL_DETAILS, TAX_BRACKETS, EMPLOYEE_TAX_INFO, EMPLOYEE_BANK_ACCOUNTS.\n  - Business rules: SALARY_RECORDS.PAY_FREQUENCY restricted to WEEKLY/BIWEEKLY/SEMIMONTHLY/MONTHLY (CHK_PAY_FREQ); SALARY_BASIS restricted to ANNUAL/HOURLY (CHK_SAL_BASIS). PAY_ELEMENTS.ELEMENT_TYPE restricted to EARNING/DEDUCTION/TAX/BENEFIT/REIMBURSEMENT (CHK_ELEM_TYPE); CALCULATION_TYPE restricted to FLAT/PERCENTAGE/HOURS/FORMULA (CHK_CALC_TYPE). PAY_PERIODS.STATUS restricted to OPEN/PROCESSING/CLOSED/REVERSED (CHK_PERIOD_STATUS). PAYROLL_RUNS.RUN_TYPE restricted to REGULAR/SUPPLEMENTAL/BONUS/FINAL (CHK_RUN_TYPE); STATUS restricted to PENDING/CALCULATING/CALCULATED/APPROVED/PAID/REVERSED/ERROR (CHK_RUN_STATUS). TAX_BRACKETS.FILING_STATUS restricted to SINGLE/MARRIED_JOINT/MARRIED_SEPARATE/HEAD_OF_HOUSEHOLD (CHK_FILING_STATUS). EMPLOYEE_TAX_INFO enforces one row per (EMP_ID, TAX_YEAR) via UK_EMP_TAX_YEAR. EMPLOYEE_BANK_ACCOUNTS.ACCOUNT_TYPE restricted to CHECKING/SAVINGS (CHK_ACCT_TYPE); DEPOSIT_TYPE restricted to FULL/PARTIAL_AMOUNT/PARTIAL_PERCENT/REMAINDER (CHK_DEPOSIT_TYPE). All child tables require their parent FK rows to exist (EMPLOYEES, PAY_PERIODS, PAYROLL_RUNS, PAY_ELEMENTS as applicable).\n  - Numbers & thresholds: PAY_ELEMENTS.PRIORITY_ORDER default 100. PAYROLL_RUNS.ERROR_COUNT default 0. TAX_BRACKETS.BASE_TAX default 0; TAX_RATE precision NUMBER(5,4); no actual bracket rate/threshold values are inserted by this file (table structure only — actual rate data would come from a seed/data file not included here). EMPLOYEE_TAX_INFO.FEDERAL_ALLOWANCES/STATE_ALLOWANCES default 0; ADDITIONAL_FED_WH/ADDITIONAL_STATE_WH default 0. EMPLOYEE_BANK_ACCOUNTS.PRIORITY_ORDER default 1.\n  - Security & error handling: ACCOUNT_NUMBER_ENC stores an encrypted bank account number (naming convention \"_ENC\"); no decryption logic in this file. No other access control. DDL execution fails outright if a constraint/table already exists or a referenced parent table/row set is missing.\n  - Data in/out: Output — creates 9 HRMS payroll tables and their constraints; no rows are inserted.\n\n**DEPENDENCIES:**\n  Data touched:\n  - Reads: None\n  - Writes: None\n\n  Config/env: None\n  External integrations: None\n\n**GAPS:**\n  Actual TAX_BRACKETS rate/bracket data is not present in this file — this file only defines the table structure; the populated bracket rows (if any) would be in a separate seed/data file not provided here. UNRESOLVED.",
+      "raw_chars": 11180,
+      "extracted_chars": 10469,
+      "expected_inventory": {
+        "numbers": [
+          "0",
+          "1",
+          "10",
+          "100",
+          "12",
+          "15",
+          "20",
+          "200",
+          "30",
+          "4000",
+          "50"
+        ],
+        "tables": [
+          "HRMS"
+        ],
+        "units": [
+          {
+            "name": "FILE-LEVEL EFFECT",
+            "line": null
+          }
+        ]
+      },
+      "coverage": {
+        "numbers": {
+          "expected": 11,
+          "captured": 11,
+          "missing": []
+        },
+        "tables": {
+          "expected": 1,
+          "captured": 1,
+          "missing": []
+        },
+        "units": {
+          "expected": 1,
+          "captured": 1,
+          "missing": []
+        },
+        "structure": {
+          "expected": 5,
+          "captured": 5,
+          "missing": []
+        }
+      },
+      "dependencies": {
+        "calls": [],
+        "imports": [],
+        "extends": [],
+        "implements": [],
+        "publishes_to": [],
+        "subscribes_to": []
+      }
+    },
+    "ts-plsql-oracle-forms-hrms-main/schema/tables/03_leave_tables.sql": {
+      "type": "schema",
+      "pass": "original",
+      "attempt": 1,
+      "content": "**IDENTITY:**\n  KIND: schema script\n  PURPOSE: DDL defining the HRMS leave-management tables — leave types, balances, requests, accrual log, and company holidays\n\n**STRUCTURES:**\n  HRMS.LEAVE_TYPES — KIND: table; TYPE: N/A\n  **LEAVE_TYPES columns:**\n  - LEAVE_TYPE_ID — NUMBER(5); NOT NULL, PK (PK_LEAVE_TYPES)\n  - LEAVE_TYPE_CODE — VARCHAR2(20); NOT NULL, UNIQUE (UK_LEAVE_TYPE_CODE)\n  - LEAVE_TYPE_NAME — VARCHAR2(50); NOT NULL\n  - PAID_FLAG — CHAR(1); DEFAULT 'Y'\n  - ACCRUAL_FLAG — CHAR(1); DEFAULT 'Y'\n  - ACCRUAL_RATE — NUMBER(6,2); N/A\n  - ACCRUAL_FREQUENCY — VARCHAR2(20); CHECK IN ('MONTHLY','BIWEEKLY','ANNUAL', NULL) (CHK_ACCRUAL_FREQ)\n  - MAX_BALANCE — NUMBER(6,2); N/A\n  - CARRYOVER_MAX — NUMBER(6,2); N/A\n  - CARRYOVER_EXPIRY — NUMBER(3); N/A\n  - MIN_TENURE_DAYS — NUMBER(5); DEFAULT 0\n  - REQUIRES_APPROVAL — CHAR(1); DEFAULT 'Y'\n  - REQUIRES_DOCUMENT — CHAR(1); DEFAULT 'N'\n  - ACTIVE_FLAG — CHAR(1); DEFAULT 'Y', NOT NULL\n  - CREATED_BY — VARCHAR2(30); NOT NULL\n  - CREATED_DATE — DATE; DEFAULT SYSDATE, NOT NULL\n  - MODIFIED_BY — VARCHAR2(30); N/A\n  - MODIFIED_DATE — DATE; N/A\n\n  HRMS.LEAVE_BALANCES — KIND: table; TYPE: N/A\n  **LEAVE_BALANCES columns:**\n  - BALANCE_ID — NUMBER(10); NOT NULL, PK (PK_LEAVE_BALANCES)\n  - EMP_ID — NUMBER(10); NOT NULL, FK_LB_EMP → HRMS.EMPLOYEES(EMP_ID); part of UNIQUE(EMP_ID, LEAVE_TYPE_ID, CALENDAR_YEAR) (UK_LEAVE_BAL)\n  - LEAVE_TYPE_ID — NUMBER(5); NOT NULL, FK_LB_TYPE → HRMS.LEAVE_TYPES(LEAVE_TYPE_ID); part of UK_LEAVE_BAL\n  - CALENDAR_YEAR — NUMBER(4); NOT NULL; part of UK_LEAVE_BAL\n  - OPENING_BALANCE — NUMBER(6,2); DEFAULT 0\n  - ACCRUED — NUMBER(6,2); DEFAULT 0\n  - USED — NUMBER(6,2); DEFAULT 0\n  - ADJUSTMENT — NUMBER(6,2); DEFAULT 0\n  - PENDING — NUMBER(6,2); DEFAULT 0\n  - AVAILABLE — NUMBER(6,2); GENERATED ALWAYS AS (OPENING_BALANCE + ACCRUED - USED + ADJUSTMENT - PENDING) VIRTUAL\n  - CARRYOVER_FROM_PREV — NUMBER(6,2); DEFAULT 0\n  - CARRYOVER_EXPIRY_DT — DATE; N/A\n  - CREATED_BY — VARCHAR2(30); NOT NULL\n  - CREATED_DATE — DATE; DEFAULT SYSDATE, NOT NULL\n  - MODIFIED_BY — VARCHAR2(30); N/A\n  - MODIFIED_DATE — DATE; N/A\n\n  HRMS.LEAVE_REQUESTS — KIND: table; TYPE: N/A\n  **LEAVE_REQUESTS columns:**\n  - REQUEST_ID — NUMBER(10); NOT NULL, PK (PK_LEAVE_REQUESTS)\n  - EMP_ID — NUMBER(10); NOT NULL, FK_LR_EMP → HRMS.EMPLOYEES(EMP_ID)\n  - LEAVE_TYPE_ID — NUMBER(5); NOT NULL, FK_LR_TYPE → HRMS.LEAVE_TYPES(LEAVE_TYPE_ID)\n  - START_DATE — DATE; NOT NULL\n  - END_DATE — DATE; NOT NULL, CHECK END_DATE >= START_DATE (CHK_LR_DATES)\n  - TOTAL_DAYS — NUMBER(5,1); NOT NULL\n  - HALF_DAY_FLAG — CHAR(1); DEFAULT 'N'\n  - HALF_DAY_PERIOD — VARCHAR2(10); CHECK IN ('AM','PM', NULL) (CHK_HALF_DAY)\n  - STATUS — VARCHAR2(20); DEFAULT 'PENDING', CHECK IN ('PENDING','APPROVED','REJECTED','CANCELLED','TAKEN') (CHK_LR_STATUS)\n  - REASON — VARCHAR2(4000); N/A\n  - SUPPORTING_DOC_PATH — VARCHAR2(500); N/A\n  - APPROVER_EMP_ID — NUMBER(10); FK_LR_APPROVER → HRMS.EMPLOYEES(EMP_ID)\n  - APPROVAL_DATE — DATE; N/A\n  - APPROVAL_COMMENTS — VARCHAR2(4000); N/A\n  - CANCEL_REASON — VARCHAR2(4000); N/A\n  - CANCELLED_DATE — DATE; N/A\n  - CREATED_BY — VARCHAR2(30); NOT NULL\n  - CREATED_DATE — DATE; DEFAULT SYSDATE, NOT NULL\n  - MODIFIED_BY — VARCHAR2(30); N/A\n  - MODIFIED_DATE — DATE; N/A\n\n  HRMS.LEAVE_ACCRUAL_LOG — KIND: table; TYPE: N/A\n  **LEAVE_ACCRUAL_LOG columns:**\n  - ACCRUAL_ID — NUMBER(15); NOT NULL, PK (PK_LEAVE_ACCRUAL_LOG)\n  - EMP_ID — NUMBER(10); NOT NULL, FK_LAL_EMP → HRMS.EMPLOYEES(EMP_ID)\n  - LEAVE_TYPE_ID — NUMBER(5); NOT NULL, FK_LAL_TYPE → HRMS.LEAVE_TYPES(LEAVE_TYPE_ID)\n  - ACCRUAL_DATE — DATE; NOT NULL\n  - ACCRUAL_AMOUNT — NUMBER(6,2); NOT NULL\n  - BALANCE_AFTER — NUMBER(6,2); N/A\n  - RUN_ID — NUMBER(10); N/A (no FK constraint declared to PAYROLL_RUNS despite the name)\n  - CREATED_BY — VARCHAR2(30); NOT NULL\n  - CREATED_DATE — DATE; DEFAULT SYSDATE, NOT NULL\n\n  HRMS.HOLIDAYS — KIND: table; TYPE: N/A\n  **HOLIDAYS columns:**\n  - HOLIDAY_ID — NUMBER(5); NOT NULL, PK (PK_HOLIDAYS)\n  - HOLIDAY_DATE — DATE; NOT NULL\n  - HOLIDAY_NAME — VARCHAR2(100); NOT NULL\n  - LOCATION_CODE — VARCHAR2(10); N/A (no FK constraint declared to LOCATIONS despite the name/type match)\n  - FLOATING_FLAG — CHAR(1); DEFAULT 'N'\n  - ACTIVE_FLAG — CHAR(1); DEFAULT 'Y', NOT NULL\n  - CREATED_BY — VARCHAR2(30); NOT NULL\n  - CREATED_DATE — DATE; DEFAULT SYSDATE, NOT NULL\n\n**METHODS:**\n  **FILE-LEVEL EFFECT** [SOURCE: L1-124]\n  - What it does: Runs as a schema-creation script under the HRMS schema. Creates, in order: LEAVE_TYPES, LEAVE_BALANCES, LEAVE_REQUESTS, LEAVE_ACCRUAL_LOG, HOLIDAYS.\n  - Business rules: LEAVE_TYPES.ACCRUAL_FREQUENCY restricted to MONTHLY/BIWEEKLY/ANNUAL/NULL (CHK_ACCRUAL_FREQ). LEAVE_BALANCES enforces one row per (EMP_ID, LEAVE_TYPE_ID, CALENDAR_YEAR) via UK_LEAVE_BAL; AVAILABLE is a computed (virtual) column = OPENING_BALANCE + ACCRUED - USED + ADJUSTMENT - PENDING. LEAVE_REQUESTS.END_DATE must be >= START_DATE (CHK_LR_DATES); HALF_DAY_PERIOD restricted to AM/PM/NULL (CHK_HALF_DAY); STATUS restricted to PENDING/APPROVED/REJECTED/CANCELLED/TAKEN (CHK_LR_STATUS). All EMP-linked rows require an existing EMPLOYEES row; LEAVE_TYPE_ID columns require an existing LEAVE_TYPES row.\n  - Numbers & thresholds: LEAVE_TYPES.MIN_TENURE_DAYS default 0. LEAVE_BALANCES.OPENING_BALANCE/ACCRUED/USED/ADJUSTMENT/PENDING/CARRYOVER_FROM_PREV all default 0; AVAILABLE computed via the formula OPENING_BALANCE + ACCRUED - USED + ADJUSTMENT - PENDING (no numeric literals — data-driven). No actual leave-type accrual rates, max balances, or carryover limits are inserted by this file (table structure only).\n  - Security & error handling: None.\n  - Data in/out: Output — creates 5 HRMS leave-management tables and their constraints; no rows are inserted.\n\n**DEPENDENCIES:**\n  Data touched:\n  - Reads: None\n  - Writes: None\n\n  Config/env: None\n  External integrations: None\n\n**GAPS:**\n  LEAVE_ACCRUAL_LOG.RUN_ID has no FK constraint to PAYROLL_RUNS despite the naming convention matching that table's PK — UNRESOLVED whether this is an intentional loose reference or a missed constraint. HOLIDAYS.LOCATION_CODE similarly has no FK constraint to LOCATIONS — UNRESOLVED. Actual leave-type accrual-rate/max-balance/carryover data is not present in this file (structure only) — the populated rows would be in a separate seed/data file not provided here, NOT_ANALYZED.\n\nThat's all three files processed. Notable structural gaps worth flagging: `LEAVE_ACCRUAL_LOG.RUN_ID` and `HOLIDAYS.LOCATION_CODE` look like they should be foreign keys (naming matches `PAYROLL_RUNS`/`LOCATIONS`) but neither has an FK constraint declared — worth confirming with downstream schema-consistency review. Ready for the next batch of files.",
+      "raw_chars": 6211,
+      "extracted_chars": 6681,
+      "expected_inventory": {
+        "numbers": [
+          "0",
+          "10",
+          "100",
+          "15",
+          "20",
+          "30",
+          "4000",
+          "50",
+          "500"
+        ],
+        "tables": [
+          "HRMS"
+        ],
+        "units": [
+          {
+            "name": "FILE-LEVEL EFFECT",
+            "line": null
+          }
+        ]
+      },
+      "coverage": {
+        "numbers": {
+          "expected": 9,
+          "captured": 9,
+          "missing": []
+        },
+        "tables": {
+          "expected": 1,
+          "captured": 1,
+          "missing": []
+        },
+        "units": {
+          "expected": 1,
+          "captured": 1,
+          "missing": []
+        },
+        "structure": {
+          "expected": 5,
+          "captured": 5,
+          "missing": []
+        }
+      },
+      "dependencies": {
+        "calls": [],
+        "imports": [],
+        "extends": [],
+        "implements": [],
+        "publishes_to": [],
+        "subscribes_to": []
+      }
+    }
+  },
+  "status": {
+    "expected": 3,
+    "delivered": 3,
+    "missing": [],
+    "clean_first_pass": 3,
+    "corrected": [],
+    "still_incomplete": [],
+    "duplicate_count": 0
+  }
+}

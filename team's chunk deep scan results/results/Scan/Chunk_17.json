@@ -1,0 +1,144 @@
+{
+  "chunk_index": 17,
+  "total_chunks": 19,
+  "type_group": "schema",
+  "budget": 30000,
+  "expected_files": [
+    {
+      "path": "ts-plsql-oracle-forms-hrms-main/schema/tables/04_performance_tables.sql",
+      "type": "schema"
+    },
+    {
+      "path": "ts-plsql-oracle-forms-hrms-main/schema/views/hrms_views.sql",
+      "type": "schema"
+    }
+  ],
+  "total_source_chars": 15911,
+  "entries": {
+    "ts-plsql-oracle-forms-hrms-main/schema/tables/04_performance_tables.sql": {
+      "type": "schema",
+      "pass": "original",
+      "attempt": 1,
+      "content": "**IDENTITY:**\n  KIND: schema script (DDL)\n  PURPOSE: creates HRMS performance-management, audit, configuration, notification, session-tracking, and generic lookup tables\n\n**STRUCTURES:**\n  REVIEW_CYCLES — KIND: table; TYPE: N/A\n  **REVIEW_CYCLES columns:**\n  CYCLE_ID — KIND: column; TYPE: NUMBER(10) NOT NULL (PK)\n  CYCLE_NAME — KIND: column; TYPE: VARCHAR2(100) NOT NULL\n  CYCLE_YEAR — KIND: column; TYPE: NUMBER(4) NOT NULL\n  START_DATE — KIND: column; TYPE: DATE NOT NULL\n  END_DATE — KIND: column; TYPE: DATE NOT NULL\n  SELF_REVIEW_DUE — KIND: column; TYPE: DATE\n  MANAGER_REVIEW_DUE — KIND: column; TYPE: DATE\n  CALIBRATION_DUE — KIND: column; TYPE: DATE\n  STATUS — KIND: column; TYPE: VARCHAR2(20) DEFAULT 'DRAFT'\n  CREATED_BY — KIND: column; TYPE: VARCHAR2(30) NOT NULL\n  CREATED_DATE — KIND: column; TYPE: DATE DEFAULT SYSDATE NOT NULL\n  MODIFIED_BY — KIND: column; TYPE: VARCHAR2(30)\n  MODIFIED_DATE — KIND: column; TYPE: DATE\n\n  PERFORMANCE_REVIEWS — KIND: table; TYPE: N/A\n  **PERFORMANCE_REVIEWS columns:**\n  REVIEW_ID — KIND: column; TYPE: NUMBER(10) NOT NULL (PK)\n  CYCLE_ID — KIND: column; TYPE: NUMBER(10) NOT NULL (FK -> REVIEW_CYCLES.CYCLE_ID)\n  EMP_ID — KIND: column; TYPE: NUMBER(10) NOT NULL (FK -> EMPLOYEES.EMP_ID)\n  REVIEWER_EMP_ID — KIND: column; TYPE: NUMBER(10) NOT NULL (FK -> EMPLOYEES.EMP_ID)\n  REVIEW_TYPE — KIND: column; TYPE: VARCHAR2(20) DEFAULT 'ANNUAL'\n  STATUS — KIND: column; TYPE: VARCHAR2(20) DEFAULT 'NOT_STARTED'\n  OVERALL_RATING — KIND: column; TYPE: NUMBER(2,1)\n  RATING_LABEL — KIND: column; TYPE: VARCHAR2(50)\n  SELF_ASSESSMENT — KIND: column; TYPE: CLOB\n  MANAGER_ASSESSMENT — KIND: column; TYPE: CLOB\n  STRENGTHS — KIND: column; TYPE: CLOB\n  AREAS_FOR_IMPROVEMENT — KIND: column; TYPE: CLOB\n  DEVELOPMENT_PLAN — KIND: column; TYPE: CLOB\n  EMPLOYEE_COMMENTS — KIND: column; TYPE: CLOB\n  EMPLOYEE_ACK_DATE — KIND: column; TYPE: DATE\n  CALIBRATED_RATING — KIND: column; TYPE: NUMBER(2,1)\n  CALIBRATION_NOTES — KIND: column; TYPE: VARCHAR2(4000)\n  CREATED_BY — KIND: column; TYPE: VARCHAR2(30) NOT NULL\n  CREATED_DATE — KIND: column; TYPE: DATE DEFAULT SYSDATE NOT NULL\n  MODIFIED_BY — KIND: column; TYPE: VARCHAR2(30)\n  MODIFIED_DATE — KIND: column; TYPE: DATE\n\n  PERFORMANCE_GOALS — KIND: table; TYPE: N/A\n  **PERFORMANCE_GOALS columns:**\n  GOAL_ID — KIND: column; TYPE: NUMBER(10) NOT NULL (PK)\n  REVIEW_ID — KIND: column; TYPE: NUMBER(10) NOT NULL (FK -> PERFORMANCE_REVIEWS.REVIEW_ID)\n  EMP_ID — KIND: column; TYPE: NUMBER(10) NOT NULL (FK -> EMPLOYEES.EMP_ID)\n  GOAL_TITLE — KIND: column; TYPE: VARCHAR2(200) NOT NULL\n  GOAL_DESCRIPTION — KIND: column; TYPE: CLOB\n  GOAL_CATEGORY — KIND: column; TYPE: VARCHAR2(30)\n  WEIGHT_PCT — KIND: column; TYPE: NUMBER(5,2) DEFAULT 0\n  TARGET_DATE — KIND: column; TYPE: DATE\n  STATUS — KIND: column; TYPE: VARCHAR2(20) DEFAULT 'NOT_STARTED'\n  PROGRESS_PCT — KIND: column; TYPE: NUMBER(5,2) DEFAULT 0\n  SELF_RATING — KIND: column; TYPE: NUMBER(2,1)\n  MANAGER_RATING — KIND: column; TYPE: NUMBER(2,1)\n  COMMENTS — KIND: column; TYPE: CLOB\n  CREATED_BY — KIND: column; TYPE: VARCHAR2(30) NOT NULL\n  CREATED_DATE — KIND: column; TYPE: DATE DEFAULT SYSDATE NOT NULL\n  MODIFIED_BY — KIND: column; TYPE: VARCHAR2(30)\n  MODIFIED_DATE — KIND: column; TYPE: DATE\n\n  AUDIT_LOG — KIND: table; TYPE: N/A\n  **AUDIT_LOG columns:**\n  AUDIT_ID — KIND: column; TYPE: NUMBER(15) NOT NULL (PK)\n  TABLE_NAME — KIND: column; TYPE: VARCHAR2(60) NOT NULL\n  RECORD_ID — KIND: column; TYPE: NUMBER(15) NOT NULL\n  ACTION_TYPE — KIND: column; TYPE: VARCHAR2(10) NOT NULL\n  OLD_VALUES — KIND: column; TYPE: CLOB\n  NEW_VALUES — KIND: column; TYPE: CLOB\n  CHANGED_BY — KIND: column; TYPE: VARCHAR2(30) NOT NULL\n  CHANGED_DATE — KIND: column; TYPE: DATE DEFAULT SYSDATE NOT NULL\n  IP_ADDRESS — KIND: column; TYPE: VARCHAR2(50)\n  SESSION_ID — KIND: column; TYPE: VARCHAR2(100)\n\n  SYSTEM_PARAMETERS — KIND: table; TYPE: N/A\n  **SYSTEM_PARAMETERS columns:**\n  PARAM_ID — KIND: column; TYPE: NUMBER(5) NOT NULL (PK)\n  PARAM_GROUP — KIND: column; TYPE: VARCHAR2(50) NOT NULL\n  PARAM_CODE — KIND: column; TYPE: VARCHAR2(50) NOT NULL\n  PARAM_VALUE — KIND: column; TYPE: VARCHAR2(4000) NOT NULL\n  PARAM_DESCRIPTION — KIND: column; TYPE: VARCHAR2(200)\n  DATA_TYPE — KIND: column; TYPE: VARCHAR2(20) DEFAULT 'VARCHAR2'\n  EDITABLE_FLAG — KIND: column; TYPE: CHAR(1) DEFAULT 'Y'\n  CREATED_BY — KIND: column; TYPE: VARCHAR2(30) NOT NULL\n  CREATED_DATE — KIND: column; TYPE: DATE DEFAULT SYSDATE NOT NULL\n  MODIFIED_BY — KIND: column; TYPE: VARCHAR2(30)\n  MODIFIED_DATE — KIND: column; TYPE: DATE\n\n  NOTIFICATION_QUEUE — KIND: table; TYPE: N/A\n  **NOTIFICATION_QUEUE columns:**\n  NOTIFICATION_ID — KIND: column; TYPE: NUMBER(15) NOT NULL (PK)\n  RECIPIENT_EMP_ID — KIND: column; TYPE: NUMBER(10)\n  RECIPIENT_EMAIL — KIND: column; TYPE: VARCHAR2(100)\n  NOTIFICATION_TYPE — KIND: column; TYPE: VARCHAR2(30) NOT NULL\n  SUBJECT — KIND: column; TYPE: VARCHAR2(200) NOT NULL\n  BODY — KIND: column; TYPE: CLOB NOT NULL\n  STATUS — KIND: column; TYPE: VARCHAR2(20) DEFAULT 'PENDING'\n  PRIORITY — KIND: column; TYPE: NUMBER(2) DEFAULT 5\n  SENT_DATE — KIND: column; TYPE: DATE\n  ERROR_MESSAGE — KIND: column; TYPE: VARCHAR2(4000)\n  RETRY_COUNT — KIND: column; TYPE: NUMBER(3) DEFAULT 0\n  REFERENCE_TABLE — KIND: column; TYPE: VARCHAR2(60)\n  REFERENCE_ID — KIND: column; TYPE: NUMBER(15)\n  CREATED_BY — KIND: column; TYPE: VARCHAR2(30) NOT NULL\n  CREATED_DATE — KIND: column; TYPE: DATE DEFAULT SYSDATE NOT NULL\n\n  USER_SESSIONS — KIND: table; TYPE: N/A\n  **USER_SESSIONS columns:**\n  SESSION_ID — KIND: column; TYPE: NUMBER(15) NOT NULL (PK)\n  EMP_ID — KIND: column; TYPE: NUMBER(10) NOT NULL (FK -> EMPLOYEES.EMP_ID)\n  USERNAME — KIND: column; TYPE: VARCHAR2(30) NOT NULL\n  LOGIN_TIME — KIND: column; TYPE: DATE NOT NULL\n  LOGOUT_TIME — KIND: column; TYPE: DATE\n  IP_ADDRESS — KIND: column; TYPE: VARCHAR2(50)\n  FORMS_MODULE — KIND: column; TYPE: VARCHAR2(100)\n  SESSION_STATUS — KIND: column; TYPE: VARCHAR2(20) DEFAULT 'ACTIVE'\n  CREATED_DATE — KIND: column; TYPE: DATE DEFAULT SYSDATE NOT NULL\n\n  LOOKUP_VALUES — KIND: table; TYPE: N/A\n  **LOOKUP_VALUES columns:**\n  LOOKUP_ID — KIND: column; TYPE: NUMBER(10) NOT NULL (PK)\n  LOOKUP_TYPE — KIND: column; TYPE: VARCHAR2(50) NOT NULL\n  LOOKUP_CODE — KIND: column; TYPE: VARCHAR2(50) NOT NULL\n  LOOKUP_VALUE — KIND: column; TYPE: VARCHAR2(200) NOT NULL\n  DISPLAY_ORDER — KIND: column; TYPE: NUMBER(5) DEFAULT 0\n  PARENT_LOOKUP_ID — KIND: column; TYPE: NUMBER(10)\n  ACTIVE_FLAG — KIND: column; TYPE: CHAR(1) DEFAULT 'Y' NOT NULL\n  CREATED_BY — KIND: column; TYPE: VARCHAR2(30) NOT NULL\n  CREATED_DATE — KIND: column; TYPE: DATE DEFAULT SYSDATE NOT NULL\n\n**METHODS:**\n  **FILE-LEVEL EFFECT** [SOURCE: L1-182]\n  - What it does: Runs as a schema-migration/DDL script. Creates 8 tables in the HRMS schema: REVIEW_CYCLES, PERFORMANCE_REVIEWS, PERFORMANCE_GOALS, AUDIT_LOG, SYSTEM_PARAMETERS, NOTIFICATION_QUEUE, USER_SESSIONS, LOOKUP_VALUES, with their primary keys, foreign keys, unique constraints, and CHECK constraints as declared.\n  - Business rules: REVIEW_CYCLES.STATUS must be one of DRAFT, OPEN, IN_PROGRESS, CALIBRATION, CLOSED [L25]. PERFORMANCE_REVIEWS.STATUS must be one of NOT_STARTED, SELF_REVIEW, MANAGER_REVIEW, MEETING_SCHEDULED, COMPLETED, ACKNOWLEDGED [L57]; OVERALL_RATING must be between 1.0 and 5.0 inclusive [L58]. PERFORMANCE_GOALS.STATUS must be one of NOT_STARTED, IN_PROGRESS, COMPLETED, DEFERRED, CANCELLED [L85]; GOAL_CATEGORY must be one of BUSINESS, DEVELOPMENT, LEADERSHIP, INNOVATION, COMPLIANCE [L86]. AUDIT_LOG.ACTION_TYPE must be one of INSERT, UPDATE, DELETE [L104]. SYSTEM_PARAMETERS enforces uniqueness of (PARAM_GROUP, PARAM_CODE) [L123]. NOTIFICATION_QUEUE.STATUS must be one of PENDING, SENT, FAILED, CANCELLED [L146]; NOTIFICATION_TYPE must be one of EMAIL, IN_APP, SMS [L147]. LOOKUP_VALUES enforces uniqueness of (LOOKUP_TYPE, LOOKUP_CODE) [L181].\n  - Numbers & thresholds: Column precision/size limits — REVIEW_CYCLES: CYCLE_ID NUMBER(10), CYCLE_NAME VARCHAR2(100), CYCLE_YEAR NUMBER(4). PERFORMANCE_REVIEWS: REVIEW_ID/CYCLE_ID/EMP_ID/REVIEWER_EMP_ID NUMBER(10), OVERALL_RATING/CALIBRATED_RATING NUMBER(2,1) with CHECK range 1.0–5.0, RATING_LABEL VARCHAR2(50), CALIBRATION_NOTES VARCHAR2(4000). PERFORMANCE_GOALS: GOAL_TITLE VARCHAR2(200), WEIGHT_PCT/PROGRESS_PCT NUMBER(5,2) default 0, SELF_RATING/MANAGER_RATING NUMBER(2,1). AUDIT_LOG: AUDIT_ID/RECORD_ID NUMBER(15), TABLE_NAME VARCHAR2(60), SESSION_ID VARCHAR2(100). SYSTEM_PARAMETERS: PARAM_ID NUMBER(5), PARAM_VALUE VARCHAR2(4000), default DATA_TYPE = 'VARCHAR2', default EDITABLE_FLAG = 'Y'. NOTIFICATION_QUEUE: NOTIFICATION_ID NUMBER(15), PRIORITY NUMBER(2) default 5, RETRY_COUNT NUMBER(3) default 0, BODY CLOB NOT NULL, default STATUS='PENDING'. USER_SESSIONS: SESSION_ID NUMBER(15), default SESSION_STATUS='ACTIVE'. LOOKUP_VALUES: DISPLAY_ORDER NUMBER(5) default 0, default ACTIVE_FLAG='Y'. All CREATED_DATE/CHANGED_DATE columns default to SYSDATE.\n  - Security & error handling: No grants/roles defined in this file. Data integrity enforced only via NOT NULL, CHECK, UNIQUE and FK constraints listed above; any INSERT/UPDATE violating them is rejected by the database with a constraint-violation error (ORA-02290/ORA-00001/etc.) — no application-level handling present here.\n  - Data in/out: Output — 8 new tables and their constraints created in the HRMS schema. No data rows are inserted by this file.\n\n**DEPENDENCIES:**\n  Data touched:\n  - Reads: HRMS.EMPLOYEES — referenced by FK constraints FK_PR_EMP, FK_PR_REVIEWER, FK_PG_EMP, FK_US_EMP for referential validation\n  - Reads: HRMS.REVIEW_CYCLES — referenced by FK_PR_CYCLE (within this same file)\n  - Reads: HRMS.PERFORMANCE_REVIEWS — referenced by FK_PG_REVIEW (within this same file)\n  - Writes: HRMS.REVIEW_CYCLES — table created\n  - Writes: HRMS.PERFORMANCE_REVIEWS — table created\n  - Writes: HRMS.PERFORMANCE_GOALS — table created\n  - Writes: HRMS.AUDIT_LOG — table created\n  - Writes: HRMS.SYSTEM_PARAMETERS — table created\n  - Writes: HRMS.NOTIFICATION_QUEUE — table created\n  - Writes: HRMS.USER_SESSIONS — table created\n  - Writes: HRMS.LOOKUP_VALUES — table created\n\n  Config/env: None\n  External integrations: None\n\n**GAPS:**\n  UNKNOWN: NOTIFICATION_QUEUE.RECIPIENT_EMP_ID has no FK constraint to EMPLOYEES despite its naming, unlike other EMP_ID columns in this file — unclear if intentional (to allow notifications to non-employee recipients) or an oversight.\n  UNRESOLVED: LOOKUP_VALUES.PARENT_LOOKUP_ID appears intended as a self-referencing hierarchy pointer but no FK constraint is declared for it.\n  NOT_ANALYZED: Sequences, indexes (beyond PK/UK), and grants for these tables are not present in this file and are presumably defined elsewhere.\n  EXTERNAL: The logic that actually populates AUDIT_LOG (e.g., triggers or a logging package) is not in this file.",
+      "raw_chars": 8913,
+      "extracted_chars": 10817,
+      "expected_inventory": {
+        "numbers": [
+          "0",
+          "10",
+          "100",
+          "15",
+          "20",
+          "200",
+          "30",
+          "4000",
+          "5",
+          "50",
+          "60"
+        ],
+        "tables": [
+          "HRMS"
+        ],
+        "units": [
+          {
+            "name": "FILE-LEVEL EFFECT",
+            "line": null
+          }
+        ]
+      },
+      "coverage": {
+        "numbers": {
+          "expected": 11,
+          "captured": 11,
+          "missing": []
+        },
+        "tables": {
+          "expected": 1,
+          "captured": 1,
+          "missing": []
+        },
+        "units": {
+          "expected": 1,
+          "captured": 1,
+          "missing": []
+        },
+        "structure": {
+          "expected": 5,
+          "captured": 5,
+          "missing": []
+        }
+      },
+      "dependencies": {
+        "calls": [],
+        "imports": [],
+        "extends": [],
+        "implements": [],
+        "publishes_to": [],
+        "subscribes_to": []
+      }
+    },
+    "ts-plsql-oracle-forms-hrms-main/schema/views/hrms_views.sql": {
+      "type": "schema",
+      "pass": "correction",
+      "attempt": 2,
+      "content": "**IDENTITY:**\n  KIND: schema script (view definitions)\n  PURPOSE: Creates reporting/lookup views over the HRMS schema for use by Oracle Reports (.rdf), Forms LOVs, and external reporting tools.\n\n**STRUCTURES:**\n  HRMS.VW_ACTIVE_EMPLOYEES — KIND: view; TYPE: N/A\n  HRMS.VW_ORG_HIERARCHY — KIND: view; TYPE: N/A\n  HRMS.VW_EMPLOYEE_COMPENSATION — KIND: view; TYPE: N/A\n  HRMS.VW_LEAVE_SUMMARY — KIND: view; TYPE: N/A\n  HRMS.VW_PAYROLL_LATEST — KIND: view; TYPE: N/A\n  HRMS.VW_PENDING_APPROVALS — KIND: view; TYPE: N/A\n\n**METHODS:**\n  **FILE-LEVEL EFFECT** [SOURCE: L1-159]\n  - What it does: Runs six `CREATE OR REPLACE VIEW` statements in HRMS schema, no procedural logic. (1) VW_ACTIVE_EMPLOYEES [L10-40] joins EMPLOYEES to DEPARTMENTS, JOB_TITLES, JOB_GRADES, a self-join to EMPLOYEES for the manager's name, LOCATIONS, and the employee's active SALARY_RECORDS row, computing full name via concatenation and tenure in years via `TRUNC(MONTHS_BETWEEN(SYSDATE, HIRE_DATE)/12, 1)`; filtered to EMPLOYMENT_STATUS='ACTIVE' and ACTIVE_FLAG='Y'. A COMMENT ON TABLE documents it as \"Denormalized view of active employees with department, job, manager, location, and salary\" [L39-40]. (2) VW_ORG_HIERARCHY [L47-57] walks the manager/report tree on EMPLOYEES using `START WITH MANAGER_EMP_ID IS NULL CONNECT BY PRIOR EMP_ID = MANAGER_EMP_ID`, filtered to EMPLOYMENT_STATUS='ACTIVE', producing ORG_LEVEL via `LEVEL`, an indented path string via `SYS_CONNECT_BY_PATH`, and a leaf flag via `CONNECT_BY_ISLEAF`, ordered siblings by LAST_NAME. A comment warns performance degrades significantly above 500 employees [L45]. (3) VW_EMPLOYEE_COMPENSATION [L63-80] joins EMPLOYEES to DEPARTMENTS, JOB_TITLES, JOB_GRADES, and the active SALARY_RECORDS row, computing GRADE_MIDPOINT as `(MIN_SALARY+MAX_SALARY)/2` and COMPA_RATIO as `ROUND(BASE_SALARY / GRADE_MIDPOINT * 100, 1)`; filtered to EMPLOYMENT_STATUS='ACTIVE'. (4) VW_LEAVE_SUMMARY [L86-103] joins LEAVE_BALANCES to EMPLOYEES, DEPARTMENTS, and LEAVE_TYPES, computing AVAILABLE as `OPENING_BALANCE + ACCRUED - USED + ADJUSTMENT` and UTILIZATION_PCT as `ROUND(USED*100/NULLIF(OPENING_BALANCE+ACCRUED,0), 1)`; filtered to CALENDAR_YEAR = current-year (`EXTRACT(YEAR FROM SYSDATE)`) and EMPLOYMENT_STATUS='ACTIVE'. (5) VW_PAYROLL_LATEST [L109-129] joins PAYROLL_DETAILS to EMPLOYEES, PAYROLL_RUNS, and PAY_PERIODS, restricted to the single latest APPROVED run via a `MAX(RUN_ID)` correlated subquery on PAYROLL_RUNS filtered to STATUS='APPROVED', excludes detail rows with STATUS='ERROR', and aggregates per employee/period: GROSS_PAY = SUM of amounts where ELEMENT_TYPE='EARNING', TOTAL_TAXES = SUM of ABS(amount) where ELEMENT_TYPE='TAX', TOTAL_DEDUCTIONS = SUM of ABS(amount) where ELEMENT_TYPE IN ('DEDUCTION','BENEFIT'), NET_PAY = SUM of all amounts. (6) VW_PENDING_APPROVALS [L135-159] is a UNION ALL of two branches tagged by a literal APPROVAL_TYPE: 'LEAVE' rows from LEAVE_REQUESTS (joined to EMPLOYEES and LEAVE_TYPES) filtered to STATUS='PENDING', with DETAILS built as `<TOTAL_DAYS> day(s) <MM/DD START>-<MM/DD END>`; and 'PERFORMANCE' rows from PERFORMANCE_REVIEWS (joined to EMPLOYEES and REVIEW_CYCLES) filtered to STATUS='MANAGER_REVIEW', with ITEM_DESCRIPTION built as `'Performance Review - ' || CYCLE_NAME`.\n  - Business rules: VW_ACTIVE_EMPLOYEES only includes employees with EMPLOYMENT_STATUS='ACTIVE' and ACTIVE_FLAG='Y', and only attaches a salary row that is ACTIVE_FLAG='Y', EFFECTIVE_DATE<=SYSDATE, and (END_DATE IS NULL OR END_DATE>SYSDATE) [L32-35]. VW_ORG_HIERARCHY only includes EMPLOYMENT_STATUS='ACTIVE' employees and roots the hierarchy at employees with no manager (MANAGER_EMP_ID IS NULL) [L54-56]. VW_EMPLOYEE_COMPENSATION only includes EMPLOYMENT_STATUS='ACTIVE' employees and only their ACTIVE_FLAG='Y' salary record [L79-80]. VW_LEAVE_SUMMARY is scoped to the current calendar year and EMPLOYMENT_STATUS='ACTIVE' employees [L102-103]. VW_PAYROLL_LATEST is scoped to only the most recent APPROVED payroll run and excludes ERROR-status detail lines [L121-126]. VW_PENDING_APPROVALS surfaces only LEAVE_REQUESTS with STATUS='PENDING' and PERFORMANCE_REVIEWS with STATUS='MANAGER_REVIEW' [L147, L159].\n  - Numbers & thresholds: Tenure calculation divides months-between by 12 and truncates to 1 decimal place [L15]. Documented performance-degradation threshold for VW_ORG_HIERARCHY: \">500 employees\" [L45] (a comment/warning, not an enforced limit). COMPA_RATIO = `BASE_SALARY / ((MIN_SALARY+MAX_SALARY)/2) * 100`, rounded to 1 decimal [L71]. UTILIZATION_PCT = `USED * 100 / (OPENING_BALANCE + ACCRUED)`, rounded to 1 decimal, with divide-by-zero guarded via NULLIF [L97]. Latest payroll run selection uses `MAX(RUN_ID)` among STATUS='APPROVED' runs [L121-125].\n  - Security & error handling: None — no grants, access checks, or exception handling in the file; it is pure DDL.\n  - Data in/out: Input — existing rows in EMPLOYEES, DEPARTMENTS, JOB_TITLES, JOB_GRADES, LOCATIONS, SALARY_RECORDS, LEAVE_BALANCES, LEAVE_TYPES, LEAVE_REQUESTS, PAYROLL_DETAILS, PAYROLL_RUNS, PAY_PERIODS, PERFORMANCE_REVIEWS, REVIEW_CYCLES. Output — (re)creates the six views listed under STRUCTURES as schema objects in HRMS; VW_ACTIVE_EMPLOYEES additionally gets a table-level COMMENT [L39-40].\n\n**DEPENDENCIES:**\n  Data touched:\n  - Reads: EMPLOYEES — employee identity, status, hire date, manager link\n  - Reads: DEPARTMENTS — department name/code/cost center\n  - Reads: JOB_TITLES — job title/code, links to JOB_GRADES\n  - Reads: JOB_GRADES — grade name and MIN_SALARY/MAX_SALARY band\n  - Reads: LOCATIONS — location name/city/state/country\n  - Reads: SALARY_RECORDS — current active salary, currency, pay frequency, change history\n  - Reads: LEAVE_BALANCES — opening balance, accrued, used, adjustment, pending, calendar year\n  - Reads: LEAVE_TYPES — leave type name\n  - Reads: LEAVE_REQUESTS — pending leave request details (dates, days, status)\n  - Reads: PAYROLL_DETAILS — per-employee payroll line items (element type, amount, status)\n  - Reads: PAYROLL_RUNS — run status, used to find latest APPROVED run\n  - Reads: PAY_PERIODS — period name\n  - Reads: PERFORMANCE_REVIEWS — review status, dates, reviewer\n  - Reads: REVIEW_CYCLES — cycle name\n  - Writes: None (no DML; creates view definitions VW_ACTIVE_EMPLOYEES, VW_ORG_HIERARCHY, VW_EMPLOYEE_COMPENSATION, VW_LEAVE_SUMMARY, VW_PAYROLL_LATEST, VW_PENDING_APPROVALS as schema objects)\n\n  Config/env: None\n  External integrations: None (header comment states these views are consumed by Oracle Reports .rdf files, Forms LOVs, and external reporting tools [L2-3], but this file does not itself call out to them)\n\n**GAPS:**\n  UNKNOWN which specific Oracle Reports (.rdf) or Forms LOVs consume each view — only the general statement in the header comment [L2-3] is available; NOT_ANALYZED without those report/form files in scope.",
+      "raw_chars": 6998,
+      "extracted_chars": 6835,
+      "expected_inventory": {
+        "numbers": [
+          "100",
+          "12",
+          "500"
+        ],
+        "tables": [],
+        "units": [
+          {
+            "name": "FILE-LEVEL EFFECT",
+            "line": null
+          }
+        ]
+      },
+      "coverage": {
+        "numbers": {
+          "expected": 3,
+          "captured": 3,
+          "missing": []
+        },
+        "tables": {
+          "expected": 0,
+          "captured": 0,
+          "missing": []
+        },
+        "units": {
+          "expected": 1,
+          "captured": 1,
+          "missing": []
+        },
+        "structure": {
+          "expected": 5,
+          "captured": 5,
+          "missing": []
+        }
+      },
+      "dependencies": {
+        "calls": [],
+        "imports": [],
+        "extends": [],
+        "implements": [],
+        "publishes_to": [],
+        "subscribes_to": []
+      }
+    }
+  },
+  "status": {
+    "expected": 2,
+    "delivered": 2,
+    "missing": [],
+    "clean_first_pass": 1,
+    "corrected": [
+      "ts-plsql-oracle-forms-hrms-main/schema/views/hrms_views.sql"
+    ],
+    "still_incomplete": [],
+    "duplicate_count": 0
+  }
+}

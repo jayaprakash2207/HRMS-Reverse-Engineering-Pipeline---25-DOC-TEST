@@ -1,0 +1,80 @@
+{
+  "chunk_index": 4,
+  "total_chunks": 19,
+  "type_group": "other",
+  "budget": 30000,
+  "expected_files": [
+    {
+      "path": "ts-plsql-oracle-forms-hrms-main/README.md",
+      "type": "other"
+    }
+  ],
+  "total_source_chars": 6347,
+  "entries": {
+    "ts-plsql-oracle-forms-hrms-main/README.md": {
+      "type": "other",
+      "pass": "correction",
+      "attempt": 2,
+      "content": "**IDENTITY:**\n  KIND: documentation (README)\n  PURPOSE: describes the overall architecture, directory layout, and technical characteristics of the Oracle Forms 11g/12c legacy HRMS application\n\n**STRUCTURES:**\n  None — this file contains no code declarations, only prose/documentation and an illustrated directory tree.\n\n**METHODS:**\n  **FILE-LEVEL EFFECT** [SOURCE: L1-131]\n  - What it does: Documents the HRMS application for modernization/migration analysis: describes the six functional modules (Employee Records, Department & Organization, Payroll Processing, Leave Management, Performance Reviews, Reporting), the deployment architecture (Oracle Forms 12c App Server -> Oracle WebLogic 12c Server -> Forms Modules/PL/SQL Packages/Oracle Reports -> Oracle Database 19c HRMS schema), the repository's directory structure (forms/, plsql/, schema/, data/, config/, docs/), Oracle Forms specifics (trigger types, LOV record groups, canvas/block architecture, PLL libraries, menu modules), PL/SQL patterns used, database patterns used, and a list of known technical debt items.\n  - Business rules: None — descriptive documentation only, no enforced logic.\n  - Numbers & thresholds: Originally built in Oracle Forms 6i circa 2002; upgraded to Forms 11g in 2012; currently on Forms 12c with Oracle Database 19c. Serves approximately 200 concurrent users across 3 regional offices. Codebase contains 18 forms, 12 PL/SQL packages, 8 Oracle Reports, 42 tables, 15 views, 200+ triggers. Custom exception handling uses error codes in the range -20000 to -20999. `VARCHAR2(4000)` is used as a catch-all for text fields. Several packages exceed 3,000 lines.\n  - Security & error handling: None — this is descriptive documentation, not executable logic; it notes (as technical debt) that exception handling uses custom error codes -20000 to -20999 but does not implement any handling itself.\n  - Data in/out: None — no inputs/outputs; the file is static documentation.\n\n**DEPENDENCIES:**\n  Data touched:\n  - Reads: None\n  - Writes: None\n\n  Config/env: None\n  External integrations: None\n\n**GAPS:** None",
+      "raw_chars": 6347,
+      "extracted_chars": 2091,
+      "expected_inventory": {
+        "numbers": [
+          "000",
+          "12",
+          "15",
+          "18",
+          "200",
+          "20000",
+          "2002",
+          "2012",
+          "20999",
+          "4000",
+          "42"
+        ],
+        "units": [
+          {
+            "name": "FILE-LEVEL EFFECT",
+            "line": null
+          }
+        ]
+      },
+      "coverage": {
+        "numbers": {
+          "expected": 11,
+          "captured": 11,
+          "missing": []
+        },
+        "units": {
+          "expected": 1,
+          "captured": 1,
+          "missing": []
+        },
+        "structure": {
+          "expected": 5,
+          "captured": 5,
+          "missing": []
+        }
+      },
+      "dependencies": {
+        "calls": [],
+        "imports": [],
+        "extends": [],
+        "implements": [],
+        "publishes_to": [],
+        "subscribes_to": []
+      }
+    }
+  },
+  "status": {
+    "expected": 1,
+    "delivered": 1,
+    "missing": [],
+    "clean_first_pass": 0,
+    "corrected": [
+      "ts-plsql-oracle-forms-hrms-main/README.md"
+    ],
+    "still_incomplete": [],
+    "duplicate_count": 0
+  }
+}

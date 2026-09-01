@@ -1,0 +1,271 @@
+{
+  "chunk_index": 11,
+  "total_chunks": 19,
+  "type_group": "plsql-body",
+  "budget": 30000,
+  "expected_files": [
+    {
+      "path": "ts-plsql-oracle-forms-hrms-main/plsql/packages/PKG_PERFORMANCE.pkb",
+      "type": "plsql-body"
+    },
+    {
+      "path": "ts-plsql-oracle-forms-hrms-main/plsql/packages/PKG_REPORTING.pkb",
+      "type": "plsql-body"
+    }
+  ],
+  "total_source_chars": 29803,
+  "entries": {
+    "ts-plsql-oracle-forms-hrms-main/plsql/packages/PKG_PERFORMANCE.pkb": {
+      "type": "plsql-body",
+      "pass": "original",
+      "attempt": 1,
+      "content": "**IDENTITY:**\n  KIND: package body\n  PURPOSE: Performance review lifecycle management — review cycles, self/manager reviews, goals, and reporting cursors\n\n**STRUCTURES:**\n  None — no package-level constants, types, or cursors are declared in this body; the `t_review_cursor` type used as an OUT parameter type in `get_team_reviews` is presumably declared in the package spec (PKG_PERFORMANCE.pks), not here.\n\n**METHODS:**\n  **FUNCTION create_review_cycle(p_cycle_name VARCHAR2, p_cycle_year NUMBER, p_start_date DATE, p_end_date DATE, p_self_review_due DATE DEFAULT NULL, p_manager_review_due DATE DEFAULT NULL, p_user VARCHAR2 DEFAULT USER) RETURN NUMBER** [SOURCE: L6-31]\n  - What it does: Generates a new ID from SEQ_REVIEW_CYCLE.NEXTVAL [L17], inserts a REVIEW_CYCLES row with STATUS='DRAFT' [L19-27], logs the insert via PKG_AUDIT.log_action [L29], and returns the new cycle ID.\n  - Business rules: Every new review cycle starts in 'DRAFT' status.\n  - Numbers & thresholds: None beyond the fixed literal 'DRAFT' status.\n  - Security & error handling: None — no validation of inputs; p_user defaults to session USER.\n  - Data in/out: Inputs — p_cycle_name, p_cycle_year, p_start_date, p_end_date (required); p_self_review_due, p_manager_review_due, p_user (optional). Output — inserts REVIEW_CYCLES row (CYCLE_ID from SEQ_REVIEW_CYCLE.NEXTVAL); writes an audit log entry; returns v_cycle_id.\n\n  **PROCEDURE open_review_cycle(p_cycle_id NUMBER, p_user VARCHAR2 DEFAULT USER)** [SOURCE: L33-51]\n  - What it does: Updates REVIEW_CYCLES to STATUS='OPEN' (plus MODIFIED_BY/MODIFIED_DATE) where CYCLE_ID matches and current STATUS='DRAFT' [L39-44]; if no row matched, raises an error [L47-50].\n  - Business rules: A review cycle can only transition to OPEN from DRAFT status.\n  - Numbers & thresholds: -20401 (application error code for invalid state transition).\n  - Security & error handling: RAISE_APPLICATION_ERROR(-20401, 'Cannot open cycle - must be in DRAFT status') when SQL%ROWCOUNT = 0.\n  - Data in/out: Inputs — p_cycle_id, p_user. Output — updates REVIEW_CYCLES (STATUS, MODIFIED_BY, MODIFIED_DATE).\n\n  **PROCEDURE close_review_cycle(p_cycle_id NUMBER, p_user VARCHAR2 DEFAULT USER)** [SOURCE: L53-63]\n  - What it does: Updates REVIEW_CYCLES SET STATUS='CLOSED' (plus MODIFIED_BY/MODIFIED_DATE) where CYCLE_ID matches, with no prior-status restriction.\n  - Business rules: None — unlike open_review_cycle, no current-status check is enforced before closing.\n  - Numbers & thresholds: None.\n  - Security & error handling: None — no ROWCOUNT check, so calling with a non-existent CYCLE_ID silently updates zero rows without error.\n  - Data in/out: Inputs — p_cycle_id, p_user. Output — updates REVIEW_CYCLES (STATUS, MODIFIED_BY, MODIFIED_DATE).\n\n  **FUNCTION create_review(p_cycle_id NUMBER, p_emp_id NUMBER, p_reviewer_emp_id NUMBER, p_user VARCHAR2 DEFAULT USER) RETURN NUMBER** [SOURCE: L65-96]\n  - What it does: Generates a new ID from SEQ_PERF_REVIEW.NEXTVAL [L73], inserts a PERFORMANCE_REVIEWS row with REVIEW_TYPE='ANNUAL', STATUS='NOT_STARTED' [L75-83], sends an EMAIL notification to the employee announcing the review [L86-93], and returns the new review ID.\n  - Business rules: Every new review is created as type 'ANNUAL' in status 'NOT_STARTED'.\n  - Numbers & thresholds: None beyond the fixed literals 'ANNUAL' and 'NOT_STARTED'.\n  - Security & error handling: None — no validation of p_cycle_id/p_emp_id/p_reviewer_emp_id (relies on FK constraints, if any, at the DB level).\n  - Data in/out: Inputs — p_cycle_id, p_emp_id, p_reviewer_emp_id, p_user. Output — inserts PERFORMANCE_REVIEWS row (REVIEW_ID from SEQ_PERF_REVIEW.NEXTVAL); sends a notification; returns v_review_id.\n\n  **PROCEDURE submit_self_assessment(p_review_id NUMBER, p_self_assessment CLOB, p_user VARCHAR2 DEFAULT USER)** [SOURCE: L98-136]\n  - What it does: Updates PERFORMANCE_REVIEWS SET SELF_ASSESSMENT, STATUS='MANAGER_REVIEW' where REVIEW_ID matches and current STATUS is 'NOT_STARTED' or 'SELF_REVIEW' [L105-111]; if no row matched, raises an error [L114-117]; otherwise looks up the review's REVIEWER_EMP_ID [L123-125] and sends an EMAIL notification to the manager [L127-134].\n  - Business rules: A self-assessment can only be submitted while the review is in 'NOT_STARTED' or 'SELF_REVIEW' status; submission always advances the review to 'MANAGER_REVIEW'.\n  - Numbers & thresholds: -20402 (application error code for missing/invalid-status review).\n  - Security & error handling: RAISE_APPLICATION_ERROR(-20402, 'Review not found or not in correct status') when SQL%ROWCOUNT = 0.\n  - Data in/out: Inputs — p_review_id, p_self_assessment, p_user. Output — updates PERFORMANCE_REVIEWS (SELF_ASSESSMENT, STATUS, MODIFIED_BY, MODIFIED_DATE); reads REVIEWER_EMP_ID; sends a notification.\n\n  **PROCEDURE submit_manager_review(p_review_id NUMBER, p_overall_rating NUMBER, p_manager_assessment CLOB, p_strengths CLOB DEFAULT NULL, p_improvement_areas CLOB DEFAULT NULL, p_development_plan CLOB DEFAULT NULL, p_user VARCHAR2 DEFAULT USER)** [SOURCE: L138-194]\n  - What it does: Validates p_overall_rating is within [1.0, 5.0] [L149-152]; updates PERFORMANCE_REVIEWS with OVERALL_RATING, a derived RATING_LABEL, MANAGER_ASSESSMENT, STRENGTHS, AREAS_FOR_IMPROVEMENT, DEVELOPMENT_PLAN, and STATUS='COMPLETED' where REVIEW_ID matches, with no current-status restriction [L154-175]; looks up the review's EMP_ID [L181-183] and sends an EMAIL notification to the employee [L185-192].\n  - Business rules: Overall rating must be between 1.0 and 5.0 inclusive. RATING_LABEL banding: score >= 4.5 → 'Exceptional'; >= 3.5 (and < 4.5) → 'Exceeds Expectations'; >= 2.5 (and < 3.5) → 'Meets Expectations'; >= 1.5 (and < 2.5) → 'Needs Improvement'; else → 'Unsatisfactory'. The update carries no status-transition guard, so a manager review can be submitted regardless of the review's current STATUS.\n  - Numbers & thresholds: -20403 (application error code for out-of-range rating). Valid rating range: 1.0 to 5.0. Rating-label thresholds: 4.5, 3.5, 2.5, 1.5.\n  - Security & error handling: RAISE_APPLICATION_ERROR(-20403, 'Rating must be between 1.0 and 5.0') when p_overall_rating < 1.0 OR > 5.0. No ROWCOUNT check after the UPDATE.\n  - Data in/out: Inputs — p_review_id, p_overall_rating, p_manager_assessment (required); p_strengths, p_improvement_areas, p_development_plan, p_user (optional). Output — updates PERFORMANCE_REVIEWS (OVERALL_RATING, RATING_LABEL, MANAGER_ASSESSMENT, STRENGTHS, AREAS_FOR_IMPROVEMENT, DEVELOPMENT_PLAN, STATUS, MODIFIED_BY, MODIFIED_DATE); reads EMP_ID; sends a notification.\n\n  **PROCEDURE acknowledge_review(p_review_id NUMBER, p_emp_comments CLOB DEFAULT NULL, p_user VARCHAR2 DEFAULT USER)** [SOURCE: L196-211]\n  - What it does: Updates PERFORMANCE_REVIEWS SET EMPLOYEE_COMMENTS, EMPLOYEE_ACK_DATE=SYSDATE, STATUS='ACKNOWLEDGED' where REVIEW_ID matches and current STATUS='COMPLETED'.\n  - Business rules: An employee can only acknowledge a review that is currently in 'COMPLETED' status; reviews in any other status are silently unaffected (no error raised).\n  - Numbers & thresholds: None.\n  - Security & error handling: None — no ROWCOUNT check, so acknowledging a review not in 'COMPLETED' status fails silently.\n  - Data in/out: Inputs — p_review_id, p_emp_comments, p_user. Output — updates PERFORMANCE_REVIEWS (EMPLOYEE_COMMENTS, EMPLOYEE_ACK_DATE, STATUS, MODIFIED_BY, MODIFIED_DATE).\n\n  **FUNCTION add_goal(p_review_id NUMBER, p_emp_id NUMBER, p_goal_title VARCHAR2, p_goal_description CLOB DEFAULT NULL, p_goal_category VARCHAR2 DEFAULT 'BUSINESS', p_weight_pct NUMBER DEFAULT 0, p_target_date DATE DEFAULT NULL, p_user VARCHAR2 DEFAULT USER) RETURN NUMBER** [SOURCE: L213-240]\n  - What it does: Generates a new ID from SEQ_PERF_GOAL.NEXTVAL [L225], inserts a PERFORMANCE_GOALS row with STATUS='NOT_STARTED' and PROGRESS_PCT=0 [L227-237], and returns the new goal ID.\n  - Business rules: Every new goal starts as STATUS='NOT_STARTED' with PROGRESS_PCT=0. Default goal category is 'BUSINESS' if not supplied; default weight is 0%.\n  - Numbers & thresholds: Default p_weight_pct = 0. Initial PROGRESS_PCT = 0. Default p_goal_category = 'BUSINESS'.\n  - Security & error handling: None — no validation of p_weight_pct (e.g. no check that weights across a review's goals sum to 100).\n  - Data in/out: Inputs — p_review_id, p_emp_id, p_goal_title (required); p_goal_description, p_goal_category, p_weight_pct, p_target_date, p_user (optional). Output — inserts PERFORMANCE_GOALS row (GOAL_ID from SEQ_PERF_GOAL.NEXTVAL); returns v_goal_id.\n\n  **PROCEDURE update_goal_progress(p_goal_id NUMBER, p_progress_pct NUMBER, p_status VARCHAR2 DEFAULT NULL, p_comments CLOB DEFAULT NULL, p_user VARCHAR2 DEFAULT USER)** [SOURCE: L242-265]\n  - What it does: Updates PERFORMANCE_GOALS SET PROGRESS_PCT; if p_status is not supplied, derives STATUS from p_progress_pct (100+ → 'COMPLETED', >0 → 'IN_PROGRESS', else unchanged); preserves existing COMMENTS if p_comments is NULL; updates MODIFIED_BY/MODIFIED_DATE.\n  - Business rules: An explicit p_status always overrides the derived status. Progress >= 100 auto-completes the goal; any progress > 0 (and < 100) marks it in progress; 0 or negative leaves STATUS unchanged. Omitting p_comments preserves the existing comment rather than clearing it.\n  - Numbers & thresholds: 100 (progress threshold for auto-'COMPLETED'); 0 (progress threshold for auto-'IN_PROGRESS').\n  - Security & error handling: None — no validation that p_progress_pct is within 0-100; no ROWCOUNT check.\n  - Data in/out: Inputs — p_goal_id, p_progress_pct (required); p_status, p_comments, p_user (optional). Output — updates PERFORMANCE_GOALS (PROGRESS_PCT, STATUS, COMMENTS, MODIFIED_BY, MODIFIED_DATE).\n\n  **PROCEDURE get_team_reviews(p_cursor OUT t_review_cursor, p_manager_id NUMBER, p_cycle_id NUMBER)** [SOURCE: L267-286]\n  - What it does: Opens p_cursor over PERFORMANCE_REVIEWS joined to EMPLOYEES, JOB_TITLES, and DEPARTMENTS, returning review ID, employee name/title/department, status, rating, and rating label for one manager's reviews in one cycle, ordered by last name.\n  - Business rules: Only reviews where the given employee is the designated REVIEWER_EMP_ID, scoped to a single CYCLE_ID, are returned.\n  - Numbers & thresholds: None.\n  - Security & error handling: None — no existence check on p_manager_id/p_cycle_id; an unmatched combination simply yields an empty cursor.\n  - Data in/out: Inputs — p_manager_id, p_cycle_id. Output — p_cursor OUT REF CURSOR (t_review_cursor) opened over PERFORMANCE_REVIEWS/EMPLOYEES/JOB_TITLES/DEPARTMENTS.\n\n  **FUNCTION get_rating_distribution(p_cycle_id NUMBER, p_dept_id NUMBER DEFAULT NULL) RETURN SYS_REFCURSOR** [SOURCE: L288-307]\n  - What it does: Opens and returns a SYS_REFCURSOR selecting RATING_LABEL, COUNT(*), and each label's percentage of the cycle's rated reviews (optionally filtered to one department), ordered by the minimum rating in each label group, descending.\n  - Business rules: Only reviews with a non-NULL OVERALL_RATING (i.e. completed reviews) are included; department filter is optional (NULL = all departments).\n  - Numbers & thresholds: PERCENTAGE = ROUND(COUNT(*) * 100.0 / SUM(COUNT(*)) OVER (), 1) — percentage rounded to 1 decimal place.\n  - Security & error handling: None.\n  - Data in/out: Inputs — p_cycle_id (required), p_dept_id (optional). Output — returns an opened SYS_REFCURSOR over PERFORMANCE_REVIEWS/EMPLOYEES.\n\n  **PROCEDURE generate_reviews_for_cycle(p_cycle_id NUMBER, p_user VARCHAR2 DEFAULT USER)** [SOURCE: L309-339]\n  - What it does: Loops over all EMPLOYEES with EMPLOYMENT_STATUS='ACTIVE' and a non-NULL MANAGER_EMP_ID; for each, calls create_review (self-call) [L327-328], incrementing a counter on success; catches DUP_VAL_ON_INDEX per employee and skips silently (review already exists) [L331-334]; commits once after the loop [L337] and prints a summary line via DBMS_OUTPUT [L338].\n  - Business rules: Only ACTIVE employees with an assigned manager are eligible for bulk review generation. A duplicate review for an employee already having one in this cycle is silently skipped rather than erroring the whole batch.\n  - Numbers & thresholds: None.\n  - Security & error handling: Per-employee EXCEPTION WHEN DUP_VAL_ON_INDEX THEN NULL — swallows the duplicate-key error without logging; no other exception handling, so any other error aborts the entire loop without committing prior inserts (COMMIT is only reached after the loop finishes successfully).\n  - Data in/out: Inputs — p_cycle_id, p_user. Output — inserts PERFORMANCE_REVIEWS rows (via create_review) plus their notification side effects; COMMIT; DBMS_OUTPUT summary line.\n\n**DEPENDENCIES:**\n  Data touched:\n  - Reads: PERFORMANCE_REVIEWS — REVIEWER_EMP_ID lookup (submit_self_assessment), EMP_ID lookup (submit_manager_review), full rows for team/rating-distribution queries (get_team_reviews, get_rating_distribution)\n  - Reads: EMPLOYEES — active employees with a manager (generate_reviews_for_cycle); joined for name/department (get_team_reviews, get_rating_distribution)\n  - Reads: JOB_TITLES — joined for job title (get_team_reviews)\n  - Reads: DEPARTMENTS — joined for department name (get_team_reviews)\n  - Writes: REVIEW_CYCLES — insert (create_review_cycle); update status (open_review_cycle, close_review_cycle)\n  - Writes: PERFORMANCE_REVIEWS — insert (create_review); update (submit_self_assessment, submit_manager_review, acknowledge_review)\n  - Writes: PERFORMANCE_GOALS — insert (add_goal); update (update_goal_progress)\n\n  CALLS: PKG_AUDIT.log_action | EVIDENCE: OBSERVED | SOURCE: L29\n  CALLS: PKG_NOTIFICATION.send_notification | EVIDENCE: OBSERVED | SOURCE: L86\n  CALLS: PKG_NOTIFICATION.send_notification | EVIDENCE: OBSERVED | SOURCE: L127\n  CALLS: PKG_NOTIFICATION.send_notification | EVIDENCE: OBSERVED | SOURCE: L185\n  CALLS: create_review | EVIDENCE: OBSERVED | SOURCE: L327\n\n  Config/env: None\n  External integrations: None (PKG_AUDIT and PKG_NOTIFICATION are internal packages, invoked directly).\n\n**GAPS:**\n  t_review_cursor type used as OUT parameter type in get_team_reviews is not declared in this file — presumably in PKG_PERFORMANCE.pks — EXTERNAL/UNKNOWN.\n  PKG_AUDIT.log_action and PKG_NOTIFICATION.send_notification implementations are external to this file — EXTERNAL.\n  close_review_cycle enforces no prior-status check (unlike open_review_cycle) — UNRESOLVED whether this asymmetry is intentional.\n  submit_manager_review updates the review regardless of its current STATUS (no WHERE STATUS = ... guard) — UNRESOLVED whether intentional or a latent gap versus the other status-gated procedures in this package.",
+      "raw_chars": 14238,
+      "extracted_chars": 14659,
+      "expected_inventory": {
+        "numbers": [
+          "0",
+          "1.0",
+          "1.5",
+          "100",
+          "100.0",
+          "2.5",
+          "20401",
+          "20402",
+          "20403",
+          "3.5",
+          "4.5",
+          "5.0"
+        ],
+        "procedures": [
+          "ACKNOWLEDGE_REVIEW",
+          "ADD_GOAL",
+          "CLOSE_REVIEW_CYCLE",
+          "CREATE_REVIEW",
+          "CREATE_REVIEW_CYCLE",
+          "GENERATE_REVIEWS_FOR_CYCLE",
+          "GET_RATING_DISTRIBUTION",
+          "GET_TEAM_REVIEWS",
+          "OPEN_REVIEW_CYCLE",
+          "SUBMIT_MANAGER_REVIEW",
+          "SUBMIT_SELF_ASSESSMENT",
+          "UPDATE_GOAL_PROGRESS"
+        ],
+        "units": [
+          {
+            "name": "CREATE_REVIEW_CYCLE",
+            "line": 6
+          },
+          {
+            "name": "OPEN_REVIEW_CYCLE",
+            "line": 33
+          },
+          {
+            "name": "CLOSE_REVIEW_CYCLE",
+            "line": 53
+          },
+          {
+            "name": "CREATE_REVIEW",
+            "line": 65
+          },
+          {
+            "name": "SUBMIT_SELF_ASSESSMENT",
+            "line": 98
+          },
+          {
+            "name": "SUBMIT_MANAGER_REVIEW",
+            "line": 138
+          },
+          {
+            "name": "ACKNOWLEDGE_REVIEW",
+            "line": 196
+          },
+          {
+            "name": "ADD_GOAL",
+            "line": 213
+          },
+          {
+            "name": "UPDATE_GOAL_PROGRESS",
+            "line": 242
+          },
+          {
+            "name": "GET_TEAM_REVIEWS",
+            "line": 267
+          },
+          {
+            "name": "GET_RATING_DISTRIBUTION",
+            "line": 288
+          },
+          {
+            "name": "GENERATE_REVIEWS_FOR_CYCLE",
+            "line": 309
+          }
+        ]
+      },
+      "coverage": {
+        "numbers": {
+          "expected": 12,
+          "captured": 12,
+          "missing": []
+        },
+        "procedures": {
+          "expected": 12,
+          "captured": 12,
+          "missing": []
+        },
+        "units": {
+          "expected": 12,
+          "captured": 12,
+          "missing": []
+        },
+        "structure": {
+          "expected": 5,
+          "captured": 5,
+          "missing": []
+        }
+      },
+      "dependencies": {
+        "calls": [
+          {
+            "target": "PKG_AUDIT.log_action",
+            "evidence": "OBSERVED",
+            "source": "L29"
+          },
+          {
+            "target": "PKG_NOTIFICATION.send_notification",
+            "evidence": "OBSERVED",
+            "source": "L86"
+          },
+          {
+            "target": "PKG_NOTIFICATION.send_notification",
+            "evidence": "OBSERVED",
+            "source": "L127"
+          },
+          {
+            "target": "PKG_NOTIFICATION.send_notification",
+            "evidence": "OBSERVED",
+            "source": "L185"
+          },
+          {
+            "target": "create_review",
+            "evidence": "OBSERVED",
+            "source": "L327"
+          }
+        ],
+        "imports": [],
+        "extends": [],
+        "implements": [],
+        "publishes_to": [],
+        "subscribes_to": []
+      }
+    },
+    "ts-plsql-oracle-forms-hrms-main/plsql/packages/PKG_REPORTING.pkb": {
+      "type": "plsql-body",
+      "pass": "original",
+      "attempt": 1,
+      "content": "**IDENTITY:**\n  KIND: package body\n  PURPOSE: HR/payroll reporting — headcount, compensation, turnover, new hires, leave utilization, payroll summary, and EEO compliance report cursors\n\n**STRUCTURES:**\n  None — no package-level constants, types, or cursors are declared in this body; the `t_report_cursor` type used as an OUT parameter type throughout is presumably declared in the package spec (PKG_REPORTING.pks), not here.\n\n**METHODS:**\n  **PROCEDURE headcount_report(p_cursor OUT t_report_cursor, p_as_of_date DATE DEFAULT SYSDATE, p_dept_id NUMBER DEFAULT NULL, p_location VARCHAR2 DEFAULT NULL)** [SOURCE: L6-40]\n  - What it does: Opens p_cursor over EMPLOYEES joined to DEPARTMENTS and (left-joined) LOCATIONS, grouped by department/location, returning per-group headcount, full/part-time/contract sub-counts, male/female sub-counts, and average tenure in years as of a given date, optionally filtered by department and/or location.\n  - Business rules: Only ACTIVE employees hired on or before p_as_of_date and not yet terminated (TERMINATION_DATE NULL or in the future relative to p_as_of_date) are counted. Employment type is split into three mutually exclusive buckets: FULL_TIME, PART_TIME, CONTRACT. Gender is split into 'M' and 'F' counts only — any other/NULL gender code is excluded from both.\n  - Numbers & thresholds: AVG_TENURE_YEARS = ROUND(AVG(MONTHS_BETWEEN(p_as_of_date, HIRE_DATE) / 12), 1) — divide by 12 to convert months to years, rounded to 1 decimal place.\n  - Security & error handling: None.\n  - Data in/out: Inputs — p_as_of_date (default SYSDATE), p_dept_id, p_location (both optional filters). Output — p_cursor OUT REF CURSOR opened over EMPLOYEES/DEPARTMENTS/LOCATIONS.\n\n  **PROCEDURE compensation_summary(p_cursor OUT t_report_cursor, p_dept_id NUMBER DEFAULT NULL, p_grade_id NUMBER DEFAULT NULL)** [SOURCE: L42-72]\n  - What it does: Opens p_cursor over EMPLOYEES joined to DEPARTMENTS, JOB_TITLES, JOB_GRADES, and SALARY_RECORDS (active salary only), grouped by department/grade/job title, returning employee count, grade min/max, actual min/max/average/median salary, and a compa-ratio.\n  - Business rules: Only the currently active salary record (SALARY_RECORDS.ACTIVE_FLAG='Y') is used; only ACTIVE employees are included; department and grade filters are optional.\n  - Numbers & thresholds: COMPA_RATIO = ROUND(AVG(BASE_SALARY / ((MIN_SALARY + MAX_SALARY) / 2)) * 100, 1) — grade midpoint is (MIN_SALARY + MAX_SALARY) / 2, ratio expressed as a percentage rounded to 1 decimal. AVG_SALARY and MEDIAN_SALARY rounded to 2 decimals.\n  - Security & error handling: None.\n  - Data in/out: Inputs — p_dept_id, p_grade_id (both optional filters). Output — p_cursor OUT REF CURSOR opened over EMPLOYEES/DEPARTMENTS/JOB_TITLES/JOB_GRADES/SALARY_RECORDS.\n\n  **PROCEDURE turnover_report(p_cursor OUT t_report_cursor, p_start_date DATE, p_end_date DATE, p_dept_id NUMBER DEFAULT NULL)** [SOURCE: L74-111]\n  - What it does: Opens p_cursor over EMPLOYEES joined to DEPARTMENTS, grouped by department, returning termination count within the window, current headcount, turnover percentage, voluntary/involuntary termination counts, and average tenure at exit; departments with no employee ever hired by the period end are suppressed via HAVING.\n  - Business rules: A termination counts only if TERMINATION_DATE falls between p_start_date and p_end_date inclusive. CURRENT_HC reflects live EMPLOYMENT_STATUS='ACTIVE' at query time, not a historical snapshot. Voluntary = TERMINATION_REASON='VOLUNTARY'; involuntary = any other TERMINATION_REASON value. Departments with zero employees hired on/before p_end_date are excluded entirely (HAVING clause).\n  - Numbers & thresholds: TURNOVER_PCT = ROUND(terminations * 100.0 / NULLIF(count hired by end date, 0), 1) — percentage rounded to 1 decimal, NULLIF guards divide-by-zero. AVG_TENURE_AT_EXIT = ROUND(AVG(MONTHS_BETWEEN(TERMINATION_DATE, HIRE_DATE) / 12), 1) — divide by 12 to convert months to years.\n  - Security & error handling: NULLIF(...,0) prevents division-by-zero errors when a department has no eligible hire history; no other error handling.\n  - Data in/out: Inputs — p_start_date, p_end_date (required); p_dept_id (optional filter). Output — p_cursor OUT REF CURSOR opened over EMPLOYEES/DEPARTMENTS.\n\n  **PROCEDURE new_hires_report(p_cursor OUT t_report_cursor, p_start_date DATE, p_end_date DATE, p_dept_id NUMBER DEFAULT NULL)** [SOURCE: L113-138]\n  - What it does: Opens p_cursor over EMPLOYEES joined to DEPARTMENTS, JOB_TITLES, (left-joined) LOCATIONS, a self-join to EMPLOYEES for the manager's name, and (left-joined) SALARY_RECORDS (active salary only), returning new-hire details for employees hired within the given window, ordered most-recent-first.\n  - Business rules: Scoped to employees whose HIRE_DATE falls within [p_start_date, p_end_date]. A new hire without an active salary record still appears, with a NULL BASE_SALARY (LEFT JOIN).\n  - Numbers & thresholds: None.\n  - Security & error handling: None.\n  - Data in/out: Inputs — p_start_date, p_end_date (required); p_dept_id (optional filter). Output — p_cursor OUT REF CURSOR opened over EMPLOYEES/DEPARTMENTS/JOB_TITLES/LOCATIONS/SALARY_RECORDS.\n\n  **PROCEDURE leave_utilization_report(p_cursor OUT t_report_cursor, p_year NUMBER DEFAULT EXTRACT(YEAR FROM SYSDATE), p_dept_id NUMBER DEFAULT NULL)** [SOURCE: L140-167]\n  - What it does: Opens p_cursor over LEAVE_BALANCES joined to EMPLOYEES, DEPARTMENTS, and LEAVE_TYPES, grouped by department/leave type, returning employee count, average entitled/used/remaining balance, and utilization percentage for one calendar year.\n  - Business rules: Scoped to a single CALENDAR_YEAR (no cross-year combination); only ACTIVE employees are included; department filter is optional.\n  - Numbers & thresholds: AVG_REMAINING = ROUND(AVG(OPENING_BALANCE + ACCRUED - USED + ADJUSTMENT), 1). UTILIZATION_PCT = ROUND(AVG(USED) * 100.0 / NULLIF(AVG(OPENING_BALANCE + ACCRUED), 0), 1) — NULLIF guards divide-by-zero. All averages rounded to 1 decimal place.\n  - Security & error handling: NULLIF(...,0) prevents division-by-zero when average entitlement is 0; no other error handling.\n  - Data in/out: Inputs — p_year (default current calendar year), p_dept_id (optional filter). Output — p_cursor OUT REF CURSOR opened over LEAVE_BALANCES/EMPLOYEES/DEPARTMENTS/LEAVE_TYPES.\n\n  **PROCEDURE payroll_summary_report(p_cursor OUT t_report_cursor, p_period_id NUMBER)** [SOURCE: L169-200]\n  - What it does: Opens p_cursor over PAYROLL_DETAILS joined to PAYROLL_RUNS, EMPLOYEES, and DEPARTMENTS, grouped by department, returning employee count and payroll totals (gross, federal tax, state tax, Social Security, Medicare, total deductions, net pay) for a single pay period.\n  - Business rules: TOTAL_GROSS sums only ELEMENT_TYPE='EARNING' lines. TOTAL_DEDUCTIONS sums the absolute value of ELEMENT_TYPE IN ('DEDUCTION','BENEFIT') lines (amounts are stored negative in PAYROLL_DETAILS). TOTAL_NET is the raw sum of all line amounts. Lines with STATUS='ERROR' are excluded from every total.\n  - Numbers & thresholds: ELEMENT_ID lookup table used to attribute specific tax totals: 100 = Federal Income Tax, 101 = State Income Tax, 102 = Social Security (FICA), 103 = Medicare. Each of TOTAL_FED_TAX/TOTAL_STATE_TAX/TOTAL_SS/TOTAL_MEDICARE sums ABS(AMOUNT) for its respective ELEMENT_ID.\n  - Security & error handling: None.\n  - Data in/out: Inputs — p_period_id (required). Output — p_cursor OUT REF CURSOR opened over PAYROLL_DETAILS/PAYROLL_RUNS/EMPLOYEES/DEPARTMENTS.\n\n  **PROCEDURE eeo_compliance_report(p_cursor OUT t_report_cursor, p_as_of_date DATE DEFAULT SYSDATE)** [SOURCE: L202-227]\n  - What it does: Opens p_cursor over EMPLOYEES joined to JOB_TITLES, grouped by EEO_CATEGORY, returning total headcount, gender sub-counts (male/female/other/not-disclosed), and female representation percentage as of a given date.\n  - Business rules: Only ACTIVE employees hired on or before p_as_of_date are counted. Gender breakdown uses codes 'M', 'F', 'O'; employees with a NULL gender are counted separately as \"not disclosed\" and excluded from the M/F/O totals.\n  - Numbers & thresholds: FEMALE_PCT = ROUND(SUM(CASE GENDER='F' THEN 1 ELSE 0) * 100.0 / COUNT(*), 1) — percentage rounded to 1 decimal place.\n  - Security & error handling: None.\n  - Data in/out: Inputs — p_as_of_date (default SYSDATE). Output — p_cursor OUT REF CURSOR opened over EMPLOYEES/JOB_TITLES.\n\n  **PROCEDURE refresh_reporting_tables(p_user VARCHAR2 DEFAULT USER)** [SOURCE: L229-237]\n  - What it does: Placeholder procedure — logs a fixed informational message via PKG_COMMON.log_info [L235-236]; the source comments state that in production this would truncate and repopulate denormalized RPT_* tables, but no such DML is present in this body.\n  - Business rules: None implemented — this is a stub.\n  - Numbers & thresholds: None.\n  - Security & error handling: None.\n  - Data in/out: Inputs — p_user. Output — writes one log entry via PKG_COMMON.log_info; no table DML occurs despite the procedure's name.\n\n**DEPENDENCIES:**\n  Data touched:\n  - Reads: EMPLOYEES — headcount/compensation/turnover/new-hires/leave/EEO source rows (headcount_report, compensation_summary, turnover_report, new_hires_report, leave_utilization_report, payroll_summary_report via join, eeo_compliance_report), including a self-join for manager name (new_hires_report)\n  - Reads: DEPARTMENTS — department name/cost center grouping (headcount_report, compensation_summary, turnover_report, new_hires_report, leave_utilization_report, payroll_summary_report)\n  - Reads: LOCATIONS — location name/city/state (headcount_report, new_hires_report)\n  - Reads: JOB_TITLES — job title / EEO category (compensation_summary, new_hires_report, eeo_compliance_report)\n  - Reads: JOB_GRADES — grade name and min/max salary band (compensation_summary)\n  - Reads: SALARY_RECORDS — active base salary (compensation_summary, new_hires_report)\n  - Reads: LEAVE_BALANCES — opening balance/accrued/used/adjustment (leave_utilization_report)\n  - Reads: LEAVE_TYPES — leave type name (leave_utilization_report)\n  - Reads: PAYROLL_DETAILS — payroll line amounts/element IDs/status (payroll_summary_report)\n  - Reads: PAYROLL_RUNS — period linkage (payroll_summary_report)\n  - Writes: None (this package is read-only reporting; refresh_reporting_tables is a stub that performs no DML)\n\n  CALLS: PKG_COMMON.log_info | EVIDENCE: OBSERVED | SOURCE: L235\n\n  Config/env: None\n  External integrations: None\n\n**GAPS:**\n  refresh_reporting_tables is explicitly a placeholder — the comment at L233-234 states production behavior (truncate/repopulate RPT_* tables) that is not implemented in this body — NOT_ANALYZED / UNRESOLVED whether a real implementation exists elsewhere.\n  PKG_COMMON.log_info implementation is external to this file — EXTERNAL.\n  t_report_cursor type is referenced throughout but not declared in this file — presumably in PKG_REPORTING.pks — EXTERNAL/UNKNOWN.",
+      "raw_chars": 15565,
+      "extracted_chars": 10984,
+      "expected_inventory": {
+        "numbers": [
+          "0",
+          "100",
+          "100.0",
+          "101",
+          "102",
+          "103",
+          "12"
+        ],
+        "procedures": [
+          "COMPENSATION_SUMMARY",
+          "EEO_COMPLIANCE_REPORT",
+          "HEADCOUNT_REPORT",
+          "LEAVE_UTILIZATION_REPORT",
+          "NEW_HIRES_REPORT",
+          "PAYROLL_SUMMARY_REPORT",
+          "REFRESH_REPORTING_TABLES",
+          "TURNOVER_REPORT"
+        ],
+        "units": [
+          {
+            "name": "HEADCOUNT_REPORT",
+            "line": 6
+          },
+          {
+            "name": "COMPENSATION_SUMMARY",
+            "line": 42
+          },
+          {
+            "name": "TURNOVER_REPORT",
+            "line": 74
+          },
+          {
+            "name": "NEW_HIRES_REPORT",
+            "line": 113
+          },
+          {
+            "name": "LEAVE_UTILIZATION_REPORT",
+            "line": 140
+          },
+          {
+            "name": "PAYROLL_SUMMARY_REPORT",
+            "line": 169
+          },
+          {
+            "name": "EEO_COMPLIANCE_REPORT",
+            "line": 202
+          },
+          {
+            "name": "REFRESH_REPORTING_TABLES",
+            "line": 229
+          }
+        ]
+      },
+      "coverage": {
+        "numbers": {
+          "expected": 7,
+          "captured": 7,
+          "missing": []
+        },
+        "procedures": {
+          "expected": 8,
+          "captured": 8,
+          "missing": []
+        },
+        "units": {
+          "expected": 8,
+          "captured": 8,
+          "missing": []
+        },
+        "structure": {
+          "expected": 5,
+          "captured": 5,
+          "missing": []
+        }
+      },
+      "dependencies": {
+        "calls": [
+          {
+            "target": "PKG_COMMON.log_info",
+            "evidence": "OBSERVED",
+            "source": "L235"
+          }
+        ],
+        "imports": [],
+        "extends": [],
+        "implements": [],
+        "publishes_to": [],
+        "subscribes_to": []
+      }
+    }
+  },
+  "status": {
+    "expected": 2,
+    "delivered": 2,
+    "missing": [],
+    "clean_first_pass": 2,
+    "corrected": [],
+    "still_incomplete": [],
+    "duplicate_count": 0
+  }
+}

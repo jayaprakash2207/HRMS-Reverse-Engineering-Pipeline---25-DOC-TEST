@@ -1,0 +1,152 @@
+{
+  "chunk_index": 7,
+  "total_chunks": 19,
+  "type_group": "plsql-body",
+  "budget": 30000,
+  "expected_files": [
+    {
+      "path": "ts-plsql-oracle-forms-hrms-main/plsql/packages/PKG_INTEGRATION.pkb",
+      "type": "plsql-body"
+    }
+  ],
+  "total_source_chars": 8887,
+  "entries": {
+    "ts-plsql-oracle-forms-hrms-main/plsql/packages/PKG_INTEGRATION.pkb": {
+      "type": "plsql-body",
+      "pass": "correction",
+      "attempt": 2,
+      "content": "**IDENTITY:**\n  KIND: package body\n  PURPOSE: outbound/inbound integration with external systems — GL journal export, benefits feed export, time & attendance import, org structure sync, and integration status lookup\n\n**STRUCTURES:**\n  c_gl_output_dir — KIND: constant; TYPE: VARCHAR2(30)\n  c_benefits_output_dir — KIND: constant; TYPE: VARCHAR2(30)\n  c_time_input_dir — KIND: constant; TYPE: VARCHAR2(30)\n\n**METHODS:**\n  **PROCEDURE generate_gl_journal(p_run_id IN NUMBER, p_user IN VARCHAR2 DEFAULT USER)** [SOURCE: L16-83]\n  - What it does: Builds a GL journal flat file for a payroll run. Opens a file in directory GL_FEED_OUT named `GL_JOURNAL_<p_run_id>_<YYYYMMDD>.dat`, writes a header record `H|HRMS_PAYROLL|<YYYY-MM-DD>|<run_id>`, then loops over PAYROLL_DETAILS/PAYROLL_RUNS/PAY_PERIODS/EMPLOYEES/DEPARTMENTS/PAY_ELEMENTS joined and grouped by cost center, GL account code, element type, and period name, writing one detail line per group, then a trailer record `T|<count>` and closes the file.\n  - Business rules: Rows with PAYROLL_DETAILS.STATUS = 'ERROR' are excluded [L47]. Rows where PAY_ELEMENTS.GL_ACCOUNT_CODE IS NULL are excluded [L48]. If ELEMENT_TYPE = 'EARNING', the amount is posted as a debit to the expense account (debit column = amount, credit column = 0.00) [L54-58]; otherwise (deductions/taxes) it is posted as a credit to a liability account (debit column = 0.00, credit column = amount) [L59-63].\n  - Numbers & thresholds: v_filename sized VARCHAR2(100); UTL_FILE.FOPEN max line size 32767; amount format mask `FM999999990.00` (fixed 2 decimal places, no thousands separator); v_entries counter starts at 0.\n  - Security & error handling: No access control beyond OS-level directory-object permissions; file writes use UTL_FILE. On WHEN OTHERS: closes the file if still open, logs the error via PKG_COMMON.log_error, then RAISEs (propagates the exception).\n  - Data in/out: Inputs — p_run_id (NUMBER, required), p_user (VARCHAR2, defaults to session USER). Output/side effect — writes a pipe-delimited flat file to the GL_FEED_OUT directory; logs an info message with the entry count and filename.\n\n  **PROCEDURE export_benefits_feed(p_effective_date IN DATE DEFAULT SYSDATE, p_user IN VARCHAR2 DEFAULT USER)** [SOURCE: L90-147]\n  - What it does: Builds a fixed-width ADP-format benefits enrollment file. Opens a file in directory BENEFITS_FEED_OUT named `BENEFITS_<YYYYMMDD>.txt`, loops over EMPLOYEES left-joined to EMPLOYEE_DEPENDENTS, and writes one fixed-width line per employee/dependent row, then closes the file. Note: p_effective_date is accepted as a parameter but the query itself filters only on employment status, not on this date.\n  - Business rules: Only employees with EMPLOYMENT_STATUS = 'ACTIVE' are included [L115]. Only dependents with ACTIVE_FLAG = 'Y' are included (via the LEFT JOIN condition) [L114]. Output ordered by EMP_NUMBER, then DEPENDENT_ID [L116].\n  - Numbers & thresholds: v_filename sized VARCHAR2(100); UTL_FILE.FOPEN max line size 32767; fixed-width field widths (via RPAD): EMP_NUMBER 10, FIRST_NAME 30, LAST_NAME 30, DATE_OF_BIRTH 10, HIRE_DATE 10, EMPLOYMENT_STATUS 12, MARITAL_STATUS 10, GENDER 1, DEP_FIRST_NAME 30, DEP_LAST_NAME 30, RELATIONSHIP 20, DEP_DOB 10.\n  - Security & error handling: No access control beyond directory-object permissions. On WHEN OTHERS: closes the file if open, logs the error via PKG_COMMON.log_error, then RAISEs.\n  - Data in/out: Inputs — p_effective_date (DATE, defaults to SYSDATE, currently unused in the query), p_user (VARCHAR2, defaults to session USER). Output/side effect — writes a fixed-width flat file to BENEFITS_FEED_OUT; logs an info message with record count and filename.\n\n  **PROCEDURE import_time_attendance(p_file_name IN VARCHAR2, p_user IN VARCHAR2 DEFAULT USER)** [SOURCE: L153-194]\n  - What it does: Opens p_file_name for read from directory TIME_ATTENDANCE_IN and loops line by line via UTL_FILE.GET_LINE. Skips blank lines and lines starting with `#` (comments) [L168]; for any other line it only increments the imported counter — the CSV parsing (emp_number,date,hours_regular,hours_overtime) and the actual payroll/database update are marked `TODO: Implement actual parsing and database update` [L170] and are not implemented. Exits the loop on NO_DATA_FOUND (end of file), closes the file, and logs the imported/error counts.\n  - Business rules: Blank lines and lines beginning with `#` are treated as non-data and skipped [L168]. No other validation or persistence is performed — this is effectively a stub that counts lines without writing any data.\n  - Numbers & thresholds: UTL_FILE.FOPEN max line size 32767; v_line sized VARCHAR2(4000); v_imported and v_errors counters start at 0.\n  - Security & error handling: Per-line errors are caught inside the loop (WHEN OTHERS increments v_errors and logs via PKG_COMMON.log_error) without aborting the loop; NO_DATA_FOUND exits the loop normally. Outer WHEN OTHERS closes the file if open, logs the error via PKG_COMMON.log_error, then RAISEs.\n  - Data in/out: Inputs — p_file_name (VARCHAR2, required, name of file in TIME_ATTENDANCE_IN), p_user (VARCHAR2, defaults to session USER). Output/side effect — none to the database (parsing/update not implemented); logs an info message with imported/error counts.\n\n  **PROCEDURE sync_org_structure(p_user IN VARCHAR2 DEFAULT USER)** [SOURCE: L196-203]\n  - What it does: Placeholder procedure — contains no logic beyond logging completion; comment states it is intended to sync org structure with an external directory (LDAP/AD) but this is not implemented.\n  - Business rules: None (unimplemented placeholder).\n  - Numbers & thresholds: None.\n  - Security & error handling: None — no exception handler present in this procedure.\n  - Data in/out: Input — p_user (VARCHAR2, defaults to session USER). Output/side effect — logs an info message \"Org structure sync completed\"; no actual sync performed.\n\n  **FUNCTION get_integration_status(p_integration_name IN VARCHAR2) RETURN VARCHAR2** [SOURCE: L205-210]\n  - What it does: Looks up and returns a configuration parameter named `<p_integration_name>_STATUS` under the 'INTEGRATION' category via PKG_COMMON.get_param.\n  - Business rules: None beyond the fixed parameter-name convention `<name>_STATUS`.\n  - Numbers & thresholds: None.\n  - Security & error handling: None — no exception handler; behavior on missing parameter depends on PKG_COMMON.get_param's own handling (not visible in this file).\n  - Data in/out: Input — p_integration_name (VARCHAR2). Output — returns the parameter value as VARCHAR2.\n\n**DEPENDENCIES:**\n  Data touched:\n  - Reads: PAYROLL_DETAILS — payroll line amounts/status for the run\n  - Reads: PAYROLL_RUNS — links PAYROLL_DETAILS to its pay period\n  - Reads: PAY_PERIODS — period name for the journal file\n  - Reads: EMPLOYEES — department linkage (GL journal) and demographic/status data (benefits feed)\n  - Reads: DEPARTMENTS — cost center for GL journal\n  - Reads: PAY_ELEMENTS — GL account code and element type (earning vs. deduction/tax)\n  - Reads: EMPLOYEE_DEPENDENTS — dependent demographic data for benefits feed\n  - Reads: external CSV file (via UTL_FILE) from TIME_ATTENDANCE_IN directory, named by p_file_name\n  - Writes: external flat file `GL_JOURNAL_<run_id>_<YYYYMMDD>.dat` in GL_FEED_OUT directory (not a DB table)\n  - Writes: external flat file `BENEFITS_<YYYYMMDD>.txt` in BENEFITS_FEED_OUT directory (not a DB table)\n\n  CALLS: PKG_COMMON.log_info | EVIDENCE: OBSERVED | SOURCE: L74\n  CALLS: PKG_COMMON.log_error | EVIDENCE: OBSERVED | SOURCE: L81\n  CALLS: PKG_COMMON.log_info | EVIDENCE: OBSERVED | SOURCE: L138\n  CALLS: PKG_COMMON.log_error | EVIDENCE: OBSERVED | SOURCE: L145\n  CALLS: PKG_COMMON.log_error | EVIDENCE: OBSERVED | SOURCE: L178\n  CALLS: PKG_COMMON.log_info | EVIDENCE: OBSERVED | SOURCE: L185\n  CALLS: PKG_COMMON.log_error | EVIDENCE: OBSERVED | SOURCE: L192\n  CALLS: PKG_COMMON.log_info | EVIDENCE: OBSERVED | SOURCE: L201\n  CALLS: PKG_COMMON.get_param | EVIDENCE: OBSERVED | SOURCE: L209\n\n  Config/env: Oracle directory objects GL_FEED_OUT, BENEFITS_FEED_OUT, TIME_ATTENDANCE_IN (referenced via constants c_gl_output_dir/c_benefits_output_dir/c_time_input_dir); PKG_COMMON parameter category 'INTEGRATION' with keys `<integration_name>_STATUS`.\n  External integrations: Oracle Financials batch import (consumes the pipe-delimited GL journal file, per header comment L14) [EXTERNAL]; ADP benefits enrollment system (consumes the fixed-width benefits file, per header comment L87-88) [EXTERNAL]; external time & attendance CSV source feeding TIME_ATTENDANCE_IN [EXTERNAL]; LDAP/AD directory service intended for org structure sync but not implemented [EXTERNAL, INFERRED from comment L200].\n\n**GAPS:**\n  import_time_attendance's actual CSV parsing and database update logic is an unimplemented TODO [L170] — UNRESOLVED, cannot determine target table(s) it would write to.\n  sync_org_structure's intended LDAP/AD sync logic is not implemented — UNRESOLVED, cannot determine what would be read/written.\n  get_integration_status: underlying storage/table behind PKG_COMMON.get_param is not visible in this file — UNKNOWN.\n  Directory object physical OS paths for GL_FEED_OUT, BENEFITS_FEED_OUT, TIME_ATTENDANCE_IN are not defined in this file — EXTERNAL (defined at the Oracle DIRECTORY object / DBA level).",
+      "raw_chars": 8887,
+      "extracted_chars": 9342,
+      "expected_inventory": {
+        "numbers": [
+          "0",
+          "00",
+          "10",
+          "100",
+          "12",
+          "20",
+          "30",
+          "32767",
+          "4000"
+        ],
+        "procedures": [
+          "EXPORT_BENEFITS_FEED",
+          "GENERATE_GL_JOURNAL",
+          "GET_INTEGRATION_STATUS",
+          "IMPORT_TIME_ATTENDANCE",
+          "SYNC_ORG_STRUCTURE"
+        ],
+        "units": [
+          {
+            "name": "GENERATE_GL_JOURNAL",
+            "line": 16
+          },
+          {
+            "name": "EXPORT_BENEFITS_FEED",
+            "line": 90
+          },
+          {
+            "name": "IMPORT_TIME_ATTENDANCE",
+            "line": 153
+          },
+          {
+            "name": "SYNC_ORG_STRUCTURE",
+            "line": 196
+          },
+          {
+            "name": "GET_INTEGRATION_STATUS",
+            "line": 205
+          }
+        ]
+      },
+      "coverage": {
+        "numbers": {
+          "expected": 9,
+          "captured": 9,
+          "missing": []
+        },
+        "procedures": {
+          "expected": 5,
+          "captured": 5,
+          "missing": []
+        },
+        "units": {
+          "expected": 5,
+          "captured": 5,
+          "missing": []
+        },
+        "structure": {
+          "expected": 5,
+          "captured": 5,
+          "missing": []
+        }
+      },
+      "dependencies": {
+        "calls": [
+          {
+            "target": "PKG_COMMON.log_info",
+            "evidence": "OBSERVED",
+            "source": "L74"
+          },
+          {
+            "target": "PKG_COMMON.log_error",
+            "evidence": "OBSERVED",
+            "source": "L81"
+          },
+          {
+            "target": "PKG_COMMON.log_info",
+            "evidence": "OBSERVED",
+            "source": "L138"
+          },
+          {
+            "target": "PKG_COMMON.log_error",
+            "evidence": "OBSERVED",
+            "source": "L145"
+          },
+          {
+            "target": "PKG_COMMON.log_error",
+            "evidence": "OBSERVED",
+            "source": "L178"
+          },
+          {
+            "target": "PKG_COMMON.log_info",
+            "evidence": "OBSERVED",
+            "source": "L185"
+          },
+          {
+            "target": "PKG_COMMON.log_error",
+            "evidence": "OBSERVED",
+            "source": "L192"
+          },
+          {
+            "target": "PKG_COMMON.log_info",
+            "evidence": "OBSERVED",
+            "source": "L201"
+          },
+          {
+            "target": "PKG_COMMON.get_param",
+            "evidence": "OBSERVED",
+            "source": "L209"
+          }
+        ],
+        "imports": [],
+        "extends": [],
+        "implements": [],
+        "publishes_to": [],
+        "subscribes_to": []
+      }
+    }
+  },
+  "status": {
+    "expected": 1,
+    "delivered": 1,
+    "missing": [],
+    "clean_first_pass": 0,
+    "corrected": [
+      "ts-plsql-oracle-forms-hrms-main/plsql/packages/PKG_INTEGRATION.pkb"
+    ],
+    "still_incomplete": [],
+    "duplicate_count": 0
+  }
+}
